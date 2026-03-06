@@ -36,7 +36,7 @@ ml_dtypes==0.5.4
 mmh3==5.2.1
 multidict==6.7.1
 namex==0.1.0
-numpy==2.2.6
+numpy==1.26.4
 opt_einsum==3.4.0
 optree==0.19.0
 packaging==26.0
