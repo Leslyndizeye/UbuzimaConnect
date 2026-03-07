@@ -38,4 +38,8 @@ print(f'Model downloaded: {size:.1f} MB')\
 # HF Spaces uses port 7860
 EXPOSE 7860
 
+<<<<<<< HEAD
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
+=======
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
+>>>>>>> 6d86023cd9418cca74ec33f8504e207967c0e0a6
