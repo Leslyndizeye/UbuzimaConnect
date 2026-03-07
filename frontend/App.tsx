@@ -12,7 +12,7 @@ import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { supabase } from './components/supabaseConfig';
 
-const ADMIN_EMAIL = 'leslyndiz6@gmail.com';
+// Admin check uses is_admin from database only
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 
 type AppState = 'loading' | 'landing' | 'auth' | 'pending' | 'approved' | 'admin' | 'reset-password';
@@ -51,7 +51,7 @@ function ResetPasswordPage() {
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password });
     if (error) { setMsg(error.message); setLoading(false); return; }
-    setMsg(' Password updated successfully!');
+    setMsg('✅ Password updated successfully!');
     setTimeout(async () => {
       await supabase.auth.signOut();
       window.location.href = '/';
@@ -81,11 +81,11 @@ function ResetPasswordPage() {
         {ready && (
           <>
             {msg && (
-              <div className={`mb-4 p-3 rounded-xl text-xs font-semibold ${msg.startsWith('') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
+              <div className={`mb-4 p-3 rounded-xl text-xs font-semibold ${msg.startsWith('✅') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
                 {msg}
               </div>
             )}
-            {!msg.startsWith('') && (
+            {!msg.startsWith('✅') && (
               <form onSubmit={handleReset} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-widest text-gray-400 mb-1.5">New Password</label>
@@ -152,7 +152,7 @@ const App: React.FC = () => {
     const email = user.email?.toLowerCase() ?? '';
 
     // Strict admin check — only this exact email
-    if (email === ADMIN_EMAIL) { setAppState('admin'); return; }
+    // Admin check done after fetching profile below
 
     // For radiologists — verify with backend
     try {
@@ -167,6 +167,7 @@ const App: React.FC = () => {
       if (!res.ok) { setAppState('pending'); return; }
 
       const profile = await res.json();
+      if (profile.is_admin) { setAppState('admin'); return; }
       setAppState(profile.status === 'approved' ? 'approved' : 'pending');
     } catch {
       setAppState('pending');

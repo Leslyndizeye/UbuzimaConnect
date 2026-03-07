@@ -460,7 +460,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-bold">Verify Diagnosis #{verifyDiag.id}</h2>
+              <h2 className="text-lg font-bold">Verify Diagnosis</h2>
               <button onClick={() => setVerifyDiag(null)} className="w-8 h-8 rounded-lg border flex items-center justify-center text-sm hover:bg-gray-50">✕</button>
             </div>
             <div className={`p-4 rounded-2xl text-center border ${classBadge(verifyDiag.ai_classification)}`}>
@@ -662,7 +662,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                         <div className="text-[8px] font-bold uppercase tracking-widest text-gray-400 mb-1">Patient</div>
                         <div className="flex justify-between"><span className="text-gray-400">Name</span><span className="font-semibold">{savedPat.name}</span></div>
                         <div className="flex justify-between"><span className="text-gray-400">National ID</span><span className="font-mono">{savedPat.patient_ref_id}</span></div>
-                        {savedDiag && <div className="flex justify-between"><span className="text-gray-400">Diagnosis ID</span><span className="font-mono text-emerald-600">#{savedDiag.id}</span></div>}
+                        
                       </div>
                     )}
 
@@ -739,7 +739,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
 
                     {savedDiag && !showVerifyInline && (
                       <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-semibold">
-                        Diagnosis #{savedDiag.id} saved {diagnoses.find(d => d.id === savedDiag.id)?.radiologist_verified ? '· Verified ✓' : '· Pending verification'}
+                        Diagnosis saved {diagnoses.find(d => d.id === savedDiag.id)?.radiologist_verified ? '· Verified ✓' : '· Pending verification'}
                       </div>
                     )}
 
