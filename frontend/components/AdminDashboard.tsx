@@ -494,7 +494,7 @@ export default function AdminDashboard() {
                       const pt = patients.find(p => p.id === d.patient_id);
                       return (
                         <div key={d.id} className={`flex items-center justify-between p-2.5 rounded-xl ${isDark ? "bg-zinc-800" : "bg-gray-50"}`}>
-                          <div className="flex items-center gap-2"><span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${classBadge(d.ai_classification)}`}>{d.ai_classification}</span><span className={`text-[10px] ${sub}`}>{pt?.name ?? `P#${d.patient_id}`}</span></div>
+                          <div className="flex items-center gap-2"><span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${classBadge(d.ai_classification)}`}>{d.ai_classification}</span><span className={`text-[10px] ${sub}`}>{pt?.name ?? "Unknown Patient"}</span></div>
                           <span className="text-[10px] font-bold">{d.confidence_score.toFixed(1)}%</span>
                         </div>
                       );
@@ -524,7 +524,7 @@ export default function AdminDashboard() {
                     <tbody>
                       {apiUsers.filter(u => !search || u.full_name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())).map(u => (
                         <tr key={u.id} className={`border-b last:border-0 ${isDark ? "border-zinc-800/50 hover:bg-zinc-800/30" : "border-gray-50 hover:bg-gray-50/50"} transition-colors`}>
-                          <td className="px-4 py-3 text-xs font-mono text-gray-400">#{u.id}</td>
+
                           <td className="px-4 py-3 text-sm font-semibold">{u.full_name}</td>
                           <td className="px-4 py-3 text-xs text-gray-500">{u.email}</td>
                           <td className="px-4 py-3 text-xs text-gray-500">{u.hospital || "—"}</td>
@@ -585,7 +585,7 @@ export default function AdminDashboard() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead><tr className={`border-b ${isDark ? "border-zinc-800" : "border-gray-100"}`}>
-                      {["ID","Patient","National ID","Result","Confidence","TB%","Pneumonia%","Normal%","Radiologist","Verified","Date"].map(h => (
+                      {["Patient","National ID","Result","Confidence","TB%","Pneumonia%","Normal%","Radiologist","Verified","Date"].map(h => (
                         <th key={h} className={`text-left px-4 py-3 text-[9px] font-bold uppercase tracking-widest ${sub}`}>{h}</th>
                       ))}
                     </tr></thead>
@@ -594,8 +594,7 @@ export default function AdminDashboard() {
                         const pt = patients.find(p => p.id === d.patient_id);
                         return (
                           <tr key={d.id} className={`border-b last:border-0 ${isDark ? "border-zinc-800/50 hover:bg-zinc-800/30" : "border-gray-50 hover:bg-gray-50/50"}`}>
-                            <td className="px-4 py-3 text-xs font-mono text-gray-400">#{d.id}</td>
-                            <td className="px-4 py-3 text-sm font-semibold">{pt?.name ?? `P#${d.patient_id}`}</td>
+                            <td className="px-4 py-3 text-sm font-semibold">{pt?.name ?? "Unknown Patient"}</td>
                             <td className="px-4 py-3 text-xs font-mono text-gray-500">{pt?.patient_ref_id ?? "—"}</td>
                             <td className="px-4 py-3"><span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${classBadge(d.ai_classification)}`}>{d.ai_classification}</span></td>
                             <td className="px-4 py-3"><div className="flex items-center gap-2"><div className={`w-12 h-1.5 rounded-full overflow-hidden ${isDark ? "bg-zinc-800" : "bg-gray-100"}`}><div className="h-full bg-emerald-500 rounded-full" style={{ width: `${d.confidence_score}%` }} /></div><span className="text-xs font-bold">{d.confidence_score.toFixed(1)}%</span></div></td>
@@ -965,7 +964,7 @@ export default function AdminDashboard() {
                           const targetUser = apiUsers.find(u => u.id === l.entity_id);
                           return (
                             <tr key={l.id} className={`border-b last:border-0 ${isDark ? "border-zinc-800/50" : "border-gray-50"}`}>
-                              <td className={`px-4 py-3 text-xs font-mono ${sub}`}>#{l.id}</td>
+                              
                               <td className="px-4 py-3">
                                 <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${
                                   l.action === "admin_generate_password" ? "bg-purple-100 text-purple-700" :
@@ -975,8 +974,8 @@ export default function AdminDashboard() {
                                    l.action === "admin_set_password" ? "✏️ Manually Set" : l.action}
                                 </span>
                               </td>
-                              <td className="px-4 py-3 text-sm">{targetUser ? `${targetUser.full_name}` : `User #${l.entity_id}`}</td>
-                              <td className={`px-4 py-3 text-xs font-mono ${sub}`}>Admin #{l.user_id}</td>
+                              <td className="px-4 py-3 text-sm">{targetUser ? `${targetUser.full_name}` : apiUsers.find(u => u.id === l.entity_id)?.full_name ?? "—"}</td>
+                              <td className="px-4 py-3 text-xs">{apiUsers.find(u => u.id === l.user_id)?.full_name ?? "Admin"}</td>
                               <td className={`px-4 py-3 text-xs ${sub}`}>{fmt(l.timestamp)}</td>
                             </tr>
                           );
