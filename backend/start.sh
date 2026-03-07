@@ -18,4 +18,8 @@ else
     echo "Model already present."
 fi
 
+<<<<<<< HEAD
 uvicorn main:app --host 0.0.0.0 --port $PORT
+=======
+uvicorn main:app --host 0.0.0.0 --port $PORT
+>>>>>>> 6d86023cd9418cca74ec33f8504e207967c0e0a6
