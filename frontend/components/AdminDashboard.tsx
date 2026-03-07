@@ -19,7 +19,7 @@ async function adminFetch(path: string, options: RequestInit = {}) {
 }
 
 interface ApiUser { id: number; email: string; full_name: string; hospital?: string; license_number?: string; role: string; status: string; created_at: string; firebase_uid?: string; }
-interface Diagnosis { id: number; patient_id: number; ai_classification: string; confidence_score: number; tb_probability: number; pneumonia_probability: number; normal_probability: number; unknown_probability?: number; radiologist_verified: boolean; created_at: string; }
+interface Diagnosis { id: number; patient_id: number; radiologist_id?: number; ai_classification: string; confidence_score: number; tb_probability: number; pneumonia_probability: number; normal_probability: number; unknown_probability?: number; radiologist_verified: boolean; created_at: string; }
 interface Patient { id: number; name: string; patient_ref_id?: string; hospital?: string; clinical_notes?: string; created_at: string; }
 interface Stats { total_radiologists: number; pending_requests: number; total_patients: number; total_diagnoses: number; model_status: string; uptime_seconds: number; }
 interface ModelInfo { status: string; path: string; size_mb: number; last_modified: string; classes: string[]; architecture: string; input_shape: number[]; }
@@ -72,7 +72,7 @@ function PasswordModal({ user, onClose, isDark, card, sub }: {
     try {
       const r = await adminFetch(`/users/${user.id}/generate-password`, { method: "POST" });
       setGeneratedPw(r.password);
-      setMsg(` Password generated and set for ${r.email}`);
+      setMsg(`✅ Password generated and set for ${r.email}`);
       setMsgType("ok");
     } catch (e: any) { setMsg(e.message); setMsgType("err"); }
     finally { setLoading(false); }
@@ -83,7 +83,7 @@ function PasswordModal({ user, onClose, isDark, card, sub }: {
     setLoading(true); setMsg("");
     try {
       await adminFetch(`/users/${user.id}/set-password`, { method: "POST", body: JSON.stringify({ password: newPw }) });
-      setMsg(` Password updated for ${user.email}`);
+      setMsg(`✅ Password updated for ${user.email}`);
       setMsgType("ok");
       setNewPw("");
     } catch (e: any) { setMsg(e.message); setMsgType("err"); }
@@ -109,7 +109,7 @@ function PasswordModal({ user, onClose, isDark, card, sub }: {
 
         {!hasAuth && (
           <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold">
-             This user has no Supabase Auth account yet. Approve them first to enable password management.
+            ⚠ This user has no Supabase Auth account yet. Approve them first to enable password management.
           </div>
         )}
 
@@ -119,7 +119,7 @@ function PasswordModal({ user, onClose, isDark, card, sub }: {
           <p className={`text-xs ${sub}`}>Generate a secure random password and set it instantly.</p>
           <button onClick={generate} disabled={loading || !hasAuth}
             className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-widest rounded-xl disabled:opacity-40">
-            {loading ? "Generating…" : " Generate & Set Password"}
+            {loading ? "Generating…" : "⚡ Generate & Set Password"}
           </button>
 
           {generatedPw && (
@@ -131,7 +131,7 @@ function PasswordModal({ user, onClose, isDark, card, sub }: {
                 </code>
                 <button onClick={() => copy(generatedPw)}
                   className="px-3 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-500">
-                  {copied ? "" : "Copy"}
+                  {copied ? "✓" : "Copy"}
                 </button>
               </div>
               <p className={`text-[10px] mt-2 ${sub}`}>
@@ -322,7 +322,7 @@ export default function AdminDashboard() {
         const { type, existingId } = parseDuplicateError(e.message);
         if ((type === "NATIONAL_ID" || type === "NAME") && existingId) {
           const existing = patients.find(p => p.id === existingId) ?? await adminFetch(`/patients/${existingId}`).catch(() => null);
-          if (existing) { patient = existing; setPredInfo(` Using existing patient: ${existing.name}`); }
+          if (existing) { patient = existing; setPredInfo(`ℹ️ Using existing patient: ${existing.name}`); }
           else throw e;
         } else throw e;
       }
@@ -387,15 +387,15 @@ export default function AdminDashboard() {
   const inp = `w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${card}`;
 
   const tabs: { id: Tab; label: string; icon: string; badge?: number }[] = [
-    { id: "overview", label: "Overview", icon: "" },
-    { id: "users", label: "Users", icon: "", badge: apiUsers.filter(u => u.status === "pending").length || undefined },
-    { id: "predictions", label: "Predictions", icon: "", badge: diagnoses.length || undefined },
-    { id: "patients", label: "Patients", icon: "", badge: patients.length || undefined },
-    { id: "diagnose", label: "Diagnose", icon: "" },
-    { id: "retrain", label: "Retrain AI", icon: "" },
-    { id: "model", label: "Model", icon: "" },
-    { id: "passwords", label: "Passwords", icon: "" },
-    { id: "audit", label: "Audit Log", icon: "" },
+    { id: "overview", label: "Overview", icon: "⬡" },
+    { id: "users", label: "Users", icon: "◎", badge: apiUsers.filter(u => u.status === "pending").length || undefined },
+    { id: "predictions", label: "Predictions", icon: "◈", badge: diagnoses.length || undefined },
+    { id: "patients", label: "Patients", icon: "◉", badge: patients.length || undefined },
+    { id: "diagnose", label: "Diagnose", icon: "✦" },
+    { id: "retrain", label: "Retrain AI", icon: "⟳" },
+    { id: "model", label: "Model", icon: "◆" },
+    { id: "passwords", label: "Passwords", icon: "🔑" },
+    { id: "audit", label: "Audit Log", icon: "◇" },
   ];
 
   return (
@@ -440,8 +440,8 @@ export default function AdminDashboard() {
           </div>
           <div className="flex items-center gap-3">
             {health && <div className="flex items-center gap-1.5"><div className={`w-1.5 h-1.5 rounded-full ${health.status === "healthy" ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} /><span className={`text-[9px] font-bold uppercase tracking-widest ${sub}`}>{health.status === "healthy" ? `Live · ${uptime(health.uptime_seconds)}` : "Offline"}</span></div>}
-            <button onClick={() => setIsDark(!isDark)} className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm border ${card}`}>{isDark ? "" : ""}</button>
-            <button onClick={loadAll} className={`text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg border ${card} hover:border-emerald-500`}> Refresh</button>
+            <button onClick={() => setIsDark(!isDark)} className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm border ${card}`}>{isDark ? "☀" : "☾"}</button>
+            <button onClick={loadAll} className={`text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg border ${card} hover:border-emerald-500`}>↺ Refresh</button>
             <button onClick={() => supabase.auth.signOut()} className="text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-black">Sign Out</button>
           </div>
         </div>
@@ -461,7 +461,7 @@ export default function AdminDashboard() {
         </aside>
 
         <main className="flex-1 min-w-0">
-          {error && <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-xs font-semibold flex items-center gap-2"><span></span> {error} <button onClick={() => setError("")} className="ml-auto">✕</button></div>}
+          {error && <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-xs font-semibold flex items-center gap-2"><span>⚠</span> {error} <button onClick={() => setError("")} className="ml-auto">✕</button></div>}
 
           {/* ── OVERVIEW ── */}
           {tab === "overview" && (
@@ -539,7 +539,7 @@ export default function AdminDashboard() {
                                 <button onClick={() => rejectUser(u.id)} className="text-[9px] font-bold uppercase px-2 py-1 bg-red-100 text-red-600 rounded-lg hover:bg-red-200">Reject</button>
                               </>}
                               {u.status === "approved" && (
-                                <button onClick={() => setPwUser(u)} className="text-[9px] font-bold uppercase px-2 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200"> Password</button>
+                                <button onClick={() => setPwUser(u)} className="text-[9px] font-bold uppercase px-2 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200">🔑 Password</button>
                               )}
                               <button onClick={() => deleteUser(u.id, u.full_name)} className="text-[9px] font-bold uppercase px-2 py-1 bg-zinc-100 text-zinc-500 rounded-lg hover:bg-red-100 hover:text-red-600">Delete</button>
                             </div>
@@ -585,7 +585,7 @@ export default function AdminDashboard() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead><tr className={`border-b ${isDark ? "border-zinc-800" : "border-gray-100"}`}>
-                      {["ID","Patient","National ID","Result","Confidence","TB%","Pneumonia%","Normal%","Verified","Date"].map(h => (
+                      {["ID","Patient","National ID","Result","Confidence","TB%","Pneumonia%","Normal%","Radiologist","Verified","Date"].map(h => (
                         <th key={h} className={`text-left px-4 py-3 text-[9px] font-bold uppercase tracking-widest ${sub}`}>{h}</th>
                       ))}
                     </tr></thead>
@@ -602,6 +602,7 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3 text-xs font-mono">{(d.tb_probability * 100).toFixed(1)}%</td>
                             <td className="px-4 py-3 text-xs font-mono">{(d.pneumonia_probability * 100).toFixed(1)}%</td>
                             <td className="px-4 py-3 text-xs font-mono">{(d.normal_probability * 100).toFixed(1)}%</td>
+                            <td className="px-4 py-3 text-sm">{apiUsers.find(u => u.id === d.radiologist_id)?.full_name ?? "—"}</td>
                             <td className="px-4 py-3"><span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${d.radiologist_verified ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>{d.radiologist_verified ? "Yes" : "Pending"}</span></td>
                             <td className={`px-4 py-3 text-xs ${sub}`}>{fmt(d.created_at)}</td>
                           </tr>
@@ -629,7 +630,7 @@ export default function AdminDashboard() {
                   return (
                     <div key={p.id} className={`rounded-2xl border overflow-hidden ${card}`}>
                       <div className="flex items-center gap-4 px-5 py-4">
-                        <button onClick={() => setExpandedPatient(isExpanded ? null : p.id)} className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs border flex-shrink-0 ${isDark ? "border-zinc-700 hover:bg-zinc-700" : "border-gray-200 hover:bg-gray-100"}`}>{isExpanded ? "" : ""}</button>
+                        <button onClick={() => setExpandedPatient(isExpanded ? null : p.id)} className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs border flex-shrink-0 ${isDark ? "border-zinc-700 hover:bg-zinc-700" : "border-gray-200 hover:bg-gray-100"}`}>{isExpanded ? "▾" : "▸"}</button>
                         <div className="flex-1 grid grid-cols-5 gap-4 items-center min-w-0">
                           <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>Name</div><div className="text-sm font-semibold truncate">{p.name}</div></div>
                           <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>National ID</div><div className="text-xs font-mono text-gray-500">{p.patient_ref_id || "—"}</div></div>
@@ -684,7 +685,7 @@ export default function AdminDashboard() {
                       <label className={`block text-[9px] font-bold uppercase tracking-widest mb-1.5 ${sub}`}>Rwanda National ID * <span className="normal-case font-normal">(16 digits)</span></label>
                       <input value={patientNationalId} onChange={e => handleNationalIdChange(e.target.value)} placeholder="1199080012345678" maxLength={16} inputMode="numeric" className={`${inp} font-mono ${nationalIdError ? "border-red-400" : patientNationalId.length === 16 ? "border-emerald-400" : ""}`} />
                       <div className="flex justify-between mt-1">
-                        {nationalIdError ? <span className="text-[10px] text-red-500 font-semibold">{nationalIdError}</span> : patientNationalId.length === 16 ? <span className="text-[10px] text-emerald-600 font-semibold"> Valid</span> : <span className={`text-[10px] ${sub}`}>Must be exactly 16 digits</span>}
+                        {nationalIdError ? <span className="text-[10px] text-red-500 font-semibold">{nationalIdError}</span> : patientNationalId.length === 16 ? <span className="text-[10px] text-emerald-600 font-semibold">✓ Valid</span> : <span className={`text-[10px] ${sub}`}>Must be exactly 16 digits</span>}
                         <span className={`text-[10px] font-mono ${sub}`}>{patientNationalId.length}/16</span>
                       </div>
                     </div>
@@ -700,7 +701,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className={`p-6 rounded-2xl border ${card}`}>
                   <div className={`text-[9px] font-bold uppercase tracking-widest mb-4 ${sub}`}>Diagnostic Result</div>
-                  {!prediction && !predicting && <div className="flex flex-col items-center justify-center h-64 space-y-3"><div className="text-5xl opacity-20"></div><div className={`text-sm font-bold uppercase tracking-widest ${sub}`}>Awaiting Scan</div></div>}
+                  {!prediction && !predicting && <div className="flex flex-col items-center justify-center h-64 space-y-3"><div className="text-5xl opacity-20">◈</div><div className={`text-sm font-bold uppercase tracking-widest ${sub}`}>Awaiting Scan</div></div>}
                   {predicting && <div className="flex flex-col items-center justify-center h-64 space-y-4"><div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-500 rounded-full animate-spin" /><div className={`text-sm ${sub}`}>Analyzing with ResNet-50…</div></div>}
                   {prediction && (
                     <div className="space-y-4">
@@ -717,7 +718,7 @@ export default function AdminDashboard() {
                           </div>
                         ))}
                       </div>
-                      {savedDiagnosis && <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-semibold"> Diagnosis #{savedDiagnosis.id} saved</div>}
+                      {savedDiagnosis && <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-semibold">✅ Diagnosis #{savedDiagnosis.id} saved</div>}
                       <button onClick={() => { setPrediction(null); setSavedDiagnosis(null); setSavedPatient(null); setXrayFile(null); setXrayPreview(null); setPatientName(""); setPatientNationalId(""); setNationalIdError(""); setPredError(""); setPredInfo(""); }} className={`w-full py-2.5 rounded-xl border text-xs font-bold uppercase tracking-widest ${card} hover:border-emerald-400`}>New Scan</button>
                     </div>
                   )}
@@ -926,13 +927,13 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3"><span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Approved</span></td>
                             <td className={`px-4 py-3 text-xs ${sub}`}>
                               {lastPwLog ? (
-                                <span>{lastPwLog.action === "admin_generate_password" ? " Generated" : "✏️ Set manually"} · {fmt(lastPwLog.timestamp)}</span>
+                                <span>{lastPwLog.action === "admin_generate_password" ? "🔑 Generated" : "✏️ Set manually"} · {fmt(lastPwLog.timestamp)}</span>
                               ) : <span className="text-gray-400 italic">No record</span>}
                             </td>
                             <td className="px-4 py-3">
                               <button onClick={() => setPwUser(u)}
                                 className="text-[9px] font-bold uppercase px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200">
-                                 Manage Password
+                                🔑 Manage Password
                               </button>
                             </td>
                           </tr>
@@ -970,7 +971,7 @@ export default function AdminDashboard() {
                                   l.action === "admin_generate_password" ? "bg-purple-100 text-purple-700" :
                                   l.action === "admin_set_password" ? "bg-blue-100 text-blue-700" : "bg-zinc-100 text-zinc-600"
                                 }`}>
-                                  {l.action === "admin_generate_password" ? " Auto-Generated" :
+                                  {l.action === "admin_generate_password" ? "🔑 Auto-Generated" :
                                    l.action === "admin_set_password" ? "✏️ Manually Set" : l.action}
                                 </span>
                               </td>
