@@ -5,7 +5,7 @@ import AuthPage from './AuthPage';
 import AdminDashboard from './AdminDashboard';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
-const ADMIN_EMAILS = new Set(['leslyndiz6@gmail.com', 'l.ndizeye@alustudent.com']);
+// Admin status is determined by is_admin field from database only
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface BUser {
@@ -430,7 +430,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                   {editPat.patient_ref_id?.length > 0 && editPat.patient_ref_id.length < 16
                     ? <span className="text-[10px] text-red-500 font-semibold">Must be 16 digits</span>
                     : editPat.patient_ref_id?.length === 16
-                      ? <span className="text-[10px] text-emerald-600 font-semibold"> Valid</span>
+                      ? <span className="text-[10px] text-emerald-600 font-semibold">✓ Valid</span>
                       : <span />}
                   <span className="text-[10px] text-gray-400 font-mono">{(editPat.patient_ref_id || '').length}/16</span>
                 </div>
@@ -486,7 +486,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
             <div className="flex gap-2 pt-1">
               <button onClick={() => setVerifyDiag(null)} className="flex-1 py-2.5 rounded-xl border text-xs font-bold uppercase tracking-widest hover:bg-gray-50">Cancel</button>
               <button onClick={saveVerify} disabled={verSaving} className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-widest disabled:opacity-40">
-                {verSaving ? 'Saving…' : ' Confirm'}
+                {verSaving ? 'Saving…' : '✓ Confirm'}
               </button>
             </div>
           </div>
@@ -522,7 +522,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
         <div className="max-w-screen-xl mx-auto px-6 flex">
           {([
             { id: 'diagnose', label: 'Diagnose', icon: '' },
-            { id: 'history', label: 'Patient History', icon: '', count: patients.length },
+            { id: 'history', label: 'Patient History', icon: '◉', count: patients.length },
             { id: 'profile', label: 'My Profile', icon: '' },
           ] as const).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -560,7 +560,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                     className={`${inp} font-mono ${nidErr ? 'border-red-400' : pNid.length === 16 ? 'border-emerald-400' : ''}`} />
                   <div className="flex justify-between mt-1">
                     {nidErr ? <span className="text-[10px] text-red-500 font-semibold">{nidErr}</span>
-                      : pNid.length === 16 ? <span className="text-[10px] text-emerald-600 font-semibold"> Valid</span>
+                      : pNid.length === 16 ? <span className="text-[10px] text-emerald-600 font-semibold">✓ Valid</span>
                       : <span className="text-[10px] text-gray-400">Must be exactly 16 digits</span>}
                     <span className="text-[10px] text-gray-400 font-mono">{pNid.length}/16</span>
                   </div>
@@ -606,7 +606,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                             <button key={i} onClick={e => { e.stopPropagation(); setActiveImg(i); setPred(null); setSavedDiag(null); setShowVerifyInline(false); }}
                               className={`relative flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${i === activeImg ? 'border-emerald-500 scale-105' : done ? 'border-emerald-300' : 'border-gray-200 hover:border-emerald-300'}`}>
                               <img src={p} alt={`scan ${i+1}`} className="w-full h-full object-cover" />
-                              {done && <div className="absolute inset-0 bg-emerald-500/60 flex items-center justify-center text-white text-lg font-bold"></div>}
+                              {done && <div className="absolute inset-0 bg-emerald-500/60 flex items-center justify-center text-white text-lg font-bold">✓</div>}
                             </button>
                           );
                         })}
@@ -621,7 +621,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                   <input ref={fileRef} type="file" accept="image/*" multiple onChange={onFileInput} className="hidden" />
                 </div>
 
-                {predInfo && <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold">{predInfo.replace(" ", "")}</div>}
+                {predInfo && <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold">{predInfo.replace("ℹ️ ", "")}</div>}
                 {predErr && <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-xs font-semibold">{predErr}</div>}
 
                 <button onClick={runDiagnosis} disabled={predicting || !files[activeImg] || !pName.trim() || !validId(pNid)}
@@ -731,7 +731,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                           </button>
                           <button onClick={saveInlineVerify} disabled={inlineSaving}
                             className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold disabled:opacity-40">
-                            {inlineSaving ? 'Saving…' : inlineOverride ? `Confirm: ${inlineOverride}` : ` Accept AI: ${pred?.classification}`}
+                            {inlineSaving ? 'Saving…' : inlineOverride ? `Confirm: ${inlineOverride}` : `✓ Accept AI: ${pred?.classification}`}
                           </button>
                         </div>
                       </div>
@@ -739,7 +739,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
 
                     {savedDiag && !showVerifyInline && (
                       <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-semibold">
-                        Diagnosis #{savedDiag.id} saved {diagnoses.find(d => d.id === savedDiag.id)?.radiologist_verified ? '· Verified ' : '· Pending verification'}
+                        Diagnosis #{savedDiag.id} saved {diagnoses.find(d => d.id === savedDiag.id)?.radiologist_verified ? '· Verified ✓' : '· Pending verification'}
                       </div>
                     )}
 
@@ -747,7 +747,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                       {savedDiag && !showVerifyInline && !diagnoses.find(d => d.id === savedDiag.id)?.radiologist_verified && (
                         <button onClick={() => { setInlineOverride(''); setInlineNotes(''); setShowVerifyInline(true); }}
                           className="flex-1 py-2.5 rounded-xl bg-blue-100 text-blue-700 text-xs font-bold hover:bg-blue-200">
-                           Verify Now
+                          ✦ Verify Now
                         </button>
                       )}
                       <button onClick={clearScan} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-bold uppercase tracking-widest hover:border-emerald-400 text-gray-600">
@@ -784,7 +784,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                     <div className="flex items-center gap-3 px-5 py-4">
                       <button onClick={() => setExpanded(isOpen ? null : p.id)}
                         className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-xs hover:bg-gray-50 flex-shrink-0">
-                        {isOpen ? '' : ''}
+                        {isOpen ? '▾' : '▸'}
                       </button>
                       <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 items-center min-w-0">
                         <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Name</div><div className="text-sm font-semibold truncate">{p.name}</div></div>
@@ -870,7 +870,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                   <div>
                     <div className="font-bold text-gray-900">{user.full_name}</div>
                     <div className="text-sm text-gray-400">{user.email}</div>
-                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 mt-1 inline-block"> Approved</span>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 mt-1 inline-block">✓ Approved</span>
                   </div>
                 </div>
                 <button onClick={() => { setEditing(!editing); setProfMsg(''); }}
@@ -963,7 +963,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                       <EyeBtn show={showPw2} onToggle={() => setShowPw2(s => !s)} />
                     </div>
                     {pw2 && pw1 !== pw2 && <p className="text-[10px] text-red-500 font-semibold mt-1">Passwords do not match</p>}
-                    {pw2 && pw1 === pw2 && pw1.length >= 6 && pw1 !== pwCurrent && <p className="text-[10px] text-emerald-600 font-semibold mt-1"> Passwords match</p>}
+                    {pw2 && pw1 === pw2 && pw1.length >= 6 && pw1 !== pwCurrent && <p className="text-[10px] text-emerald-600 font-semibold mt-1">✓ Passwords match</p>}
                     {pw1 && pwCurrent && pw1 === pwCurrent && <p className="text-[10px] text-red-500 font-semibold mt-1">New password must differ from current</p>}
                   </div>
                   {pwMsg && <div className={`p-3 rounded-xl text-xs font-semibold ${pwMsg.startsWith('Error') || pwMsg.toLowerCase().includes('incorrect') || pwMsg.toLowerCase().includes('must') || pwMsg.toLowerCase().includes('match') || pwMsg.toLowerCase().includes('enter') ? 'bg-red-50 text-red-700 border border-red-100' : pwMsg === 'Verifying…' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>{pwMsg}</div>}
@@ -1062,13 +1062,13 @@ export default function Dashboard() {
     }
     if (!session) { setAppState('unauthenticated'); setBUser(null); return; }
     const email = (session.user?.email || '').toLowerCase();
-    if (ADMIN_EMAILS.has(email)) { setAppState('admin'); return; }
+    // Admin check handled by is_admin from database below
     try {
       const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${session.access_token}` } });
       if (res.ok) {
         const u: BUser = await res.json();
         setBUser(u);
-        if (u.is_admin || ADMIN_EMAILS.has(u.email?.toLowerCase())) setAppState('admin');
+        if (u.is_admin) setAppState('admin');
         else if (u.status === 'approved') setAppState('approved');
         else if (u.status === 'rejected' || u.status === 'revoked') setAppState('rejected');
         else setAppState('pending');
