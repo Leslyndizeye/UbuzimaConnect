@@ -20,7 +20,7 @@ async function adminFetch(path: string, options: RequestInit = {}) {
 
 interface ApiUser { id: number; email: string; full_name: string; hospital?: string; license_number?: string; role: string; status: string; created_at: string; firebase_uid?: string; }
 interface Diagnosis { id: number; patient_id: number; radiologist_id?: number; ai_classification: string; confidence_score: number; tb_probability: number; pneumonia_probability: number; normal_probability: number; unknown_probability?: number; radiologist_verified: boolean; created_at: string; }
-interface Patient { id: number; name: string; patient_ref_id?: string; hospital?: string; clinical_notes?: string; created_at: string; }
+interface Patient { id: number; name: string; patient_ref_id?: string; age?: number; sex?: string; hospital?: string; clinical_notes?: string; radiologist_id?: number; created_at: string; }
 interface Stats { total_radiologists: number; pending_requests: number; total_patients: number; total_diagnoses: number; model_status: string; uptime_seconds: number; }
 interface ModelInfo { status: string; path: string; size_mb: number; last_modified: string; classes: string[]; architecture: string; input_shape: number[]; }
 interface AuditLog { id: number; user_id: number; action: string; entity?: string; entity_id?: number; timestamp: string; }
@@ -630,9 +630,11 @@ export default function AdminDashboard() {
                     <div key={p.id} className={`rounded-2xl border overflow-hidden ${card}`}>
                       <div className="flex items-center gap-4 px-5 py-4">
                         <button onClick={() => setExpandedPatient(isExpanded ? null : p.id)} className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs border flex-shrink-0 ${isDark ? "border-zinc-700 hover:bg-zinc-700" : "border-gray-200 hover:bg-gray-100"}`}>{isExpanded ? "▾" : "▸"}</button>
-                        <div className="flex-1 grid grid-cols-5 gap-4 items-center min-w-0">
+                        <div className="flex-1 grid grid-cols-7 gap-4 items-center min-w-0">
                           <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>Name</div><div className="text-sm font-semibold truncate">{p.name}</div></div>
                           <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>National ID</div><div className="text-xs font-mono text-gray-500">{p.patient_ref_id || "—"}</div></div>
+                          <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>Age</div><div className="text-xs text-gray-500">{p.age ? `${p.age} yrs` : "—"}</div></div>
+                          <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>Sex</div><div className="text-xs text-gray-500">{p.sex || "—"}</div></div>
                           <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>Hospital</div><div className="text-xs text-gray-500 truncate">{p.hospital || "—"}</div></div>
                           <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>Scans</div><span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${ptDiagnoses.length > 0 ? "bg-blue-100 text-blue-700" : "bg-zinc-100 text-zinc-500"}`}>{ptDiagnoses.length} scan{ptDiagnoses.length !== 1 ? "s" : ""}</span></div>
                           <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>Registered</div><div className={`text-xs ${sub}`}>{fmt(p.created_at)}</div></div>
@@ -650,6 +652,7 @@ export default function AdminDashboard() {
                               {ptDiagnoses.map(d => (
                                 <div key={d.id} className={`flex items-center gap-4 p-3 rounded-xl border ${card}`}>
                                   <div className="flex-1 grid grid-cols-5 gap-3 items-center">
+                                    <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>Radiologist</div><div className="text-xs font-semibold">{apiUsers.find(u => u.id === d.radiologist_id)?.full_name ?? "—"}</div></div>
                                     <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>Result</div><span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${classBadge(d.ai_classification)}`}>{d.ai_classification}</span></div>
                                     <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>Confidence</div><div className="text-xs font-bold">{d.confidence_score.toFixed(1)}%</div></div>
                                     <div><div className={`text-[8px] font-bold uppercase ${sub} mb-0.5`}>TB / Pneumonia / Normal</div><div className="text-xs font-mono text-gray-500">{(d.tb_probability*100).toFixed(0)}% / {(d.pneumonia_probability*100).toFixed(0)}% / {(d.normal_probability*100).toFixed(0)}%</div></div>
