@@ -238,13 +238,11 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
 
         {/* Header */}
         <header className="flex justify-between items-center auth-fade">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-emerald-900 rounded-md flex items-center justify-center">
-              <svg className="w-4 h-4 text-emerald-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
-              </svg>
+          <div className="flex items-center gap-2 group cursor-pointer" onClick={() => window.location.href = '/'}>
+            <div className="w-7 h-7 bg-emerald-900 rounded-md flex items-center justify-center relative overflow-hidden transition-transform group-hover:scale-105">
+              <div className="w-4 h-[1.5px] bg-emerald-100 rounded-full"></div>
             </div>
-            <span className="text-sm font-bold text-gray-900 uppercase tracking-tight">{t.brand}</span>
+            <span className="text-[13px] font-bold text-gray-900 uppercase tracking-tight">{t.brand}</span>
           </div>
           <div className="flex items-center gap-0.5 bg-gray-50 p-1 rounded-lg">
             {(['En', 'Fr'] as Language[]).map(l => (
@@ -388,7 +386,7 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
                     </div>
                     <InputField label="Work Email" type="email" value={regEmail} onChange={setRegEmail} placeholder="doctor@hospital.rw" />
                     <InputField label="Hospital / Clinic" value={hospital} onChange={setHospital} placeholder="CHUK" />
-                    <InputField label="RBC License ID" value={licenseNumber} onChange={setLicenseNumber} placeholder="MC/2026/001" />
+                    <InputField label="RBC License ID" value={licenseNumber} onChange={setLicenseNumber} placeholder="4356-6487" />
                     <InputField label="Phone" type="tel" value={phone} onChange={setPhone} placeholder="+250 7XX XXX XXX" required={false} />
                     <InputField label="Specialization" value={specialization} onChange={setSpecialization} placeholder="Radiology" required={false} />
                     <InputField label="Years Experience" type="number" value={yearsExp} onChange={setYearsExp} placeholder="5" required={false} />
