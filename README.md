@@ -310,7 +310,3 @@ Full interactive docs: https://leslylezoo-ubuzima-backend.hf.space/docs
 - **Repository:** https://huggingface.co/leslylezoo/ubuzima-model/tree/main
 
 
-
-## License
-
-Academic project. All rights reserved.
