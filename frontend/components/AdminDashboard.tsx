@@ -503,7 +503,7 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-12 gap-5">
                   {/* Team */}
                   <Panel className="col-span-5 p-7 anim-in">
-                    <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Team Members</h3><button onClick={()=>setTab("users")} className="text-[11px] border border-slate-200 px-3 py-1.5 rounded-full text-slate-600 font-medium">Manage</button></div>
+                    <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Radiologists</h3><button onClick={()=>setTab("users")} className="text-[11px] border border-slate-200 px-3 py-1.5 rounded-full text-slate-600 font-medium">Manage</button></div>
                     <div className="space-y-4">
                       {apiUsers.slice(0,4).map((u,i)=>{const emojis=["👨‍⚕️","👩‍⚕️","🧑‍⚕️","👨‍💼"];return(
                         <div key={u.id} className="flex items-center justify-between">
