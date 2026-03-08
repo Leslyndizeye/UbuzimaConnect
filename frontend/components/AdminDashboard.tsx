@@ -27,7 +27,12 @@ interface EditPatient { id:number; name:string; patient_ref_id:string; hospital:
 type Tab = "overview"|"users"|"passwords"|"predictions"|"patients"|"diagnose"|"retrain"|"model"|"audit";
 
 const fmt = (iso:string) => new Date(iso).toLocaleString("en-RW",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
-const uptimeFmt = (s:number) => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60); return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`; };
+const uptimeFmt = (s:number) => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60); return `${h.toString().padStart(2,'0')}h ${m.toString().padStart(2,'0')}m ${sec.toString().padStart(2,'0')}s`; };
+function useRwandaTime() {
+  const [time,setTime]=useState(()=>new Date().toLocaleTimeString("en-RW",{timeZone:"Africa/Kigali",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}));
+  useEffect(()=>{const id=setInterval(()=>setTime(new Date().toLocaleTimeString("en-RW",{timeZone:"Africa/Kigali",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})),1000);return()=>clearInterval(id);},[]);
+  return time;
+}
 const validateRwandaId = (id:string) => /^\d{16}$/.test(id.replace(/\s/g,""));
 function parseDuplicateError(msg:string):{type:"NATIONAL_ID"|"NAME"|null;existingId:number|null;message:string}{
   if(msg.startsWith("DUPLICATE_NATIONAL_ID|")){const p=msg.split("|");return{type:"NATIONAL_ID",existingId:parseInt(p[1])||null,message:p[2]||msg};}
@@ -207,6 +212,7 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════
 export default function AdminDashboard() {
+  const rwandaTime = useRwandaTime();
   const [tab,setTab]=useState<Tab>("overview");
   const [apiUsers,setApiUsers]=useState<ApiUser[]>([]);
   const [diagnoses,setDiagnoses]=useState<Diagnosis[]>([]);
@@ -223,7 +229,8 @@ export default function AdminDashboard() {
   const [editPatient,setEditPatient]=useState<EditPatient|null>(null);
   const [editError,setEditError]=useState(""); const [editSaving,setEditSaving]=useState(false);
   const [expandedPt,setExpandedPt]=useState<number|null>(null);
-  const [ptName,setPtName]=useState(""); const [ptNID,setPtNID]=useState(""); const [nidErr,setNidErr]=useState("");
+  const [selectedPtId,setSelectedPtId]=useState<number|"">("");
+  const [ptSearch,setPtSearch]=useState("");
   const [xFile,setXFile]=useState<File|null>(null); const [xPrev,setXPrev]=useState<string|null>(null);
   const [predicting,setPredicting]=useState(false); const [pred,setPred]=useState<PredictionResult|null>(null);
   const [savedDx,setSavedDx]=useState<Diagnosis|null>(null); const [savedPt,setSavedPt]=useState<Patient|null>(null);
@@ -266,18 +273,15 @@ export default function AdminDashboard() {
   };
   const deletePt=async(id:number,name:string)=>{if(!confirm(`Delete "${name}"?`))return;try{await adminFetch(`/patients/${id}`,{method:"DELETE"});loadAll();}catch(e:any){setError(e.message);}};
   const deleteDx=async(id:number)=>{if(!confirm("Delete?"))return;try{await adminFetch(`/diagnoses/${id}`,{method:"DELETE"});loadAll();}catch(e:any){setError(e.message);}};
-  const handleNID=(v:string)=>{const d=v.replace(/\D/g,"").slice(0,16);setPtNID(d);setNidErr(d.length>0&&d.length<16?"Must be 16 digits":"");};
   const handleFile=(e:React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files?.[0];if(!f)return;setXFile(f);setXPrev(URL.createObjectURL(f));setPred(null);setSavedDx(null);setPredErr("");setPredInfo("");};
 
   const runPred=async()=>{
-    if(!xFile||!ptName.trim()){setPredErr("Enter patient name and upload X-ray");return;}
-    if(!validateRwandaId(ptNID)){setPredErr("Enter valid 16-digit Rwanda National ID");return;}
+    if(!xFile){setPredErr("Please upload an X-ray image");return;}
+    if(!selectedPtId){setPredErr("Please select a patient");return;}
     setPredicting(true);setPredErr("");setPredInfo("");setPred(null);setSavedDx(null);setSavedPt(null);
     try{
-      let patient:Patient|null=null;
-      try{patient=await adminFetch("/patients",{method:"POST",body:JSON.stringify({name:ptName.trim(),patient_ref_id:ptNID})});setPatients(prev=>[patient!,...prev.filter(p=>p.id!==patient!.id)]);}
-      catch(e:any){const{type,existingId}=parseDuplicateError(e.message);if((type==="NATIONAL_ID"||type==="NAME")&&existingId){const ex=patients.find(p=>p.id===existingId)??await adminFetch(`/patients/${existingId}`).catch(()=>null);if(ex){patient=ex;setPredInfo(`Using existing: ${ex.name}`);}else throw e;}else throw e;}
-      if(!patient)throw new Error("Could not resolve patient");
+      const patient=patients.find(p=>p.id===selectedPtId);
+      if(!patient)throw new Error("Patient not found");
       setSavedPt(patient);
       const fd=new FormData();fd.append("file",xFile);
       const{data:sd}=await supabase.auth.getSession();const token=sd.session?.access_token;
@@ -352,12 +356,12 @@ export default function AdminDashboard() {
             FLOATING SIDEBAR
         ════════════════════ */}
         <aside className="w-[260px] shrink-0 flex flex-col sticky top-0 h-screen bg-white m-4 rounded-[32px] shadow-[0_4px_30px_rgba(0,0,0,0.04)] z-30">
-          {/* Logo */}
+          {/* Logo — Ubuzima Connect */}
           <div className="h-[88px] flex items-center px-7 gap-3">
-            <div className="w-8 h-8 rounded-full border-[3px] border-[#38A169] flex items-center justify-center">
-              <div className="w-3 h-3 rounded-full bg-[#38A169]"/>
+            <div className="w-8 h-8 bg-emerald-900 rounded-md flex items-center justify-center relative overflow-hidden shrink-0">
+              <div className="w-5 h-[2px] rounded-full bg-emerald-100"/>
             </div>
-            <span className="text-[17px] font-bold tracking-tight text-slate-900">Ubuzima</span>
+            <span className="text-[17px] font-bold tracking-tight text-slate-900">Ubuzima Connect</span>
           </div>
 
           <p className="px-7 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Menu</p>
@@ -376,15 +380,18 @@ export default function AdminDashboard() {
             })}
           </nav>
 
-          {/* Live status card */}
+          {/* Rwanda time + status card */}
           <div className="p-4 mt-auto">
             <div className="wavy-bg rounded-[24px] p-5 text-white shadow-xl relative overflow-hidden">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-2 h-2 rounded-full pdot" style={{backgroundColor:"#4ADE80"}}/>
-                <span className="text-xs font-bold text-white/70">System Live</span>
+                <span className="text-xs font-bold text-white/70">Kigali Time (CAT)</span>
               </div>
-              <div className="text-2xl font-black tracking-widest mb-1">{health?uptimeFmt(health.uptime_seconds):"00:00:00"}</div>
-              <p className="text-[11px] text-white/60 mb-4">Platform uptime</p>
+              <div className="text-2xl font-black tracking-widest mb-1 font-mono">{rwandaTime}</div>
+              <p className="text-[11px] text-white/60 mb-4">
+                {health?.status==="healthy"?"System operational":"Checking…"}
+                {stats ? ` · up ${uptimeFmt(stats.uptime_seconds)}` : ""}
+              </p>
               <button onClick={loadAll} className="w-full bg-white/20 hover:bg-white/30 text-white text-[12px] font-bold py-2.5 rounded-full transition-colors">
                 Refresh Data
               </button>
@@ -533,19 +540,13 @@ export default function AdminDashboard() {
                     </div>
                   </Panel>
 
-                  {/* Uptime tracker */}
+                  {/* Rwanda time tracker */}
                   <div className="col-span-3 anim-in wavy-bg rounded-[28px] p-7 text-white flex flex-col items-center justify-center shadow-lg relative overflow-hidden">
-                    <h3 className="text-sm font-bold absolute top-6 left-6 text-white/70">Uptime Tracker</h3>
-                    <div className="text-[32px] font-black tracking-widest mt-4 drop-shadow">{health?uptimeFmt(health.uptime_seconds):"00:00:00"}</div>
-                    <div className="flex items-center gap-1.5 mt-3"><div className="w-2 h-2 rounded-full pdot" style={{backgroundColor:"#4ADE80"}}/><span className="text-xs text-white/70 font-semibold">{health?.status==="healthy"?"System operational":"Checking…"}</span></div>
-                    <div className="flex gap-3 mt-6">
-                      <button className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors">
-                        <svg width="14" height="14" fill="white" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                      </button>
-                      <button onClick={loadAll} className="w-10 h-10 rounded-full bg-red-500/80 hover:bg-red-500 flex items-center justify-center transition-colors shadow-lg">
-                        <div className="w-3.5 h-3.5 bg-white rounded-sm"/>
-                      </button>
-                    </div>
+                    <h3 className="text-sm font-bold absolute top-6 left-6 text-white/70">Kigali Time (CAT)</h3>
+                    <div className="text-[28px] font-black tracking-widest mt-4 drop-shadow font-mono">{rwandaTime}</div>
+                    <div className="flex items-center gap-1.5 mt-2"><div className="w-2 h-2 rounded-full pdot" style={{backgroundColor:"#4ADE80"}}/><span className="text-xs text-white/70 font-semibold">{health?.status==="healthy"?"System operational":"Checking…"}</span></div>
+                    {stats&&<p className="text-[10px] text-white/50 mt-1">Uptime: {uptimeFmt(stats.uptime_seconds)}</p>}
+                    <button onClick={loadAll} className="mt-5 px-5 py-2 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors">Refresh</button>
                   </div>
                 </div>
               </div>
@@ -676,38 +677,58 @@ export default function AdminDashboard() {
             ══════════════════════════════════ */}
             {tab==="diagnose"&&(
               <div className="space-y-6 max-w-[1200px] anim-in">
-                <PageHead title="Run AI Scan" sub="Upload chest X-ray for instant ResNet-50 analysis"/>
+                <PageHead title="Run AI Scan" sub="Select an existing patient and upload their chest X-ray for instant ResNet-50 analysis"/>
                 <div className="grid lg:grid-cols-2 gap-7">
                   <Panel className="p-8 space-y-6">
-                    <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-4">Patient Details</h3>
-                    <div className="space-y-4">
-                      <div><label className="block text-[11px] font-bold text-slate-500 mb-2 ml-1">Full Name *</label><input value={ptName} onChange={e=>setPtName(e.target.value)} placeholder="Jean Uwimana" className={INP}/></div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-500 mb-2 ml-1">Rwanda National ID * (16 digits)</label>
-                        <input value={ptNID} onChange={e=>handleNID(e.target.value)} placeholder="1199080012345678" maxLength={16} inputMode="numeric" className={`${INP} font-mono ${nidErr?"border-red-400":ptNID.length===16?"border-green-500":""}`}/>
-                        <div className="flex justify-between mt-1.5 px-1">
-                          {nidErr?<span className="text-[10px] text-red-500 font-semibold">{nidErr}</span>:ptNID.length===16?<span className="text-[10px] font-bold text-green-600">✓ Valid ID</span>:<span className="text-[10px] text-slate-400">16 digits required</span>}
-                          <span className="text-[10px] font-mono text-slate-400">{ptNID.length}/16</span>
-                        </div>
-                      </div>
+                    <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-4">Select Patient & Upload X-ray</h3>
+
+                    {/* Patient search + select */}
+                    <div className="space-y-2">
+                      <label className="block text-[11px] font-bold text-slate-500 ml-1">Select Patient *</label>
+                      <input value={ptSearch} onChange={e=>setPtSearch(e.target.value)} placeholder="Type to search patients…" className={INP}/>
+                      {patients.length===0
+                        ? <p className="text-xs text-amber-600 font-semibold px-1">⚠ No patients yet — radiologists must register patients first</p>
+                        : (
+                          <div className="max-h-48 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+                            {patients.filter(p=>!ptSearch||p.name.toLowerCase().includes(ptSearch.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(ptSearch))).slice(0,10).map(p=>(
+                              <button key={p.id} onClick={()=>{setSelectedPtId(p.id);setPtSearch(p.name);}}
+                                className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${selectedPtId===p.id?"bg-emerald-50":"hover:bg-slate-50"}`}>
+                                <div>
+                                  <p className={`text-sm font-bold ${selectedPtId===p.id?"text-emerald-800":"text-slate-800"}`}>{p.name}</p>
+                                  <p className="text-[10px] text-slate-400 font-mono">{p.patient_ref_id||"No NID"} {p.hospital?`· ${p.hospital}`:""}</p>
+                                </div>
+                                {selectedPtId===p.id&&<span className="text-emerald-600 text-lg">✓</span>}
+                              </button>
+                            ))}
+                            {patients.filter(p=>!ptSearch||p.name.toLowerCase().includes(ptSearch.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(ptSearch))).length===0&&<p className="px-4 py-3 text-sm text-slate-400">No match found</p>}
+                          </div>
+                        )
+                      }
+                      {selectedPtId&&(()=>{const p=patients.find(pt=>pt.id===selectedPtId);return p?(<div className="flex items-center gap-3 p-3 rounded-2xl" style={{background:"#F0FDF4",border:"1.5px solid #86EFAC"}}><div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0" style={{backgroundColor:DARK_GREEN}}>{p.name.charAt(0)}</div><div><p className="text-sm font-bold text-emerald-800">{p.name}</p><p className="text-[10px] text-emerald-600 font-mono">{p.patient_ref_id} {p.hospital?`· ${p.hospital}`:""}</p></div></div>):null;})()}
                     </div>
+
+                    {/* X-ray upload */}
                     <div onClick={()=>fileRef.current?.click()} className="border-2 border-dashed rounded-3xl p-8 text-center cursor-pointer transition-colors" style={{borderColor:xPrev?"#38A169":"#E2E8F0",backgroundColor:xPrev?"#F0FDF4":"#FAFAFA"}}>
                       {xPrev?<img src={xPrev} alt="X-ray" className="max-h-52 mx-auto rounded-2xl shadow-md object-contain"/>
                         :<div className="space-y-3 float-it"><div className="text-4xl">🩻</div><div className="text-sm font-bold text-slate-500">Click to upload X-ray</div><div className="text-xs text-slate-400">JPG or PNG</div></div>}
                       <input ref={fileRef} type="file" accept="image/jpeg,image/png" onChange={handleFile} className="hidden"/>
                     </div>
+
                     {predInfo&&<div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-800 text-sm font-semibold">{predInfo}</div>}
                     {predErr&&<div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm font-semibold">{predErr}</div>}
-                    <button onClick={runPred} disabled={predicting||!xFile||!ptName.trim()||!validateRwandaId(ptNID)} className="btn-s w-full py-4 rounded-full text-white font-bold text-sm disabled:opacity-40" style={{backgroundColor:DARK_GREEN,boxShadow:`0 8px 24px ${DARK_GREEN}44`}}>
+
+                    <button onClick={runPred} disabled={predicting||!xFile||!selectedPtId} className="btn-s w-full py-4 rounded-full text-white font-bold text-sm disabled:opacity-40" style={{backgroundColor:DARK_GREEN,boxShadow:`0 8px 24px ${DARK_GREEN}44`}}>
                       {predicting?"Analyzing X-ray…":"▶ Run AI Diagnosis"}
                     </button>
                   </Panel>
+
                   <Panel className="p-8">
                     <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-4 mb-6">Result</h3>
                     {!pred&&!predicting&&<div className="h-64 flex flex-col items-center justify-center text-slate-300 gap-3"><svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><p className="text-sm font-medium">Awaiting scan data</p></div>}
                     {predicting&&<div className="h-64 flex items-center justify-center"><div className="w-12 h-12 border-4 border-slate-100 rounded-full animate-spin" style={{borderTopColor:ACCENT_GREEN}}/></div>}
-                    {pred&&(()=>{const c=CLS_META[pred.classification]||CLS_META["Unknown"];return(
+                    {pred&&(()=>{const c=CLS_META[pred.classification]||CLS_META["Unknown"];const pt=patients.find(p=>p.id===selectedPtId);return(
                       <div className="space-y-6 anim-pop">
+                        {pt&&<div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{pt.name.charAt(0)}</div><div><p className="text-sm font-bold text-slate-800">{pt.name}</p><p className="text-[10px] text-slate-400">Diagnosed by Admin · {new Date().toLocaleString("en-RW",{timeZone:"Africa/Kigali"})}</p></div></div>}
                         <div className="p-6 rounded-3xl text-center" style={{backgroundColor:c.bg,border:`2px solid ${c.bar}`}}>
                           <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{color:c.text}}>AI Classification</p>
                           <h2 className="text-5xl font-black" style={{color:c.text}}>{pred.classification}</h2>
@@ -718,8 +739,8 @@ export default function AdminDashboard() {
                             <div key={r.l}><div className="flex justify-between text-[12px] font-bold mb-1.5"><span className="text-slate-500">{r.l}</span><span style={{color:r.c}}>{(r.v*100).toFixed(1)}%</span></div><div className="h-2.5 rounded-full overflow-hidden" style={{backgroundColor:`${r.c}20`}}><div className="bar-in h-full rounded-full" style={{"--w":`${r.v*100}%`,width:`${r.v*100}%`,backgroundColor:r.c} as any}/></div></div>
                           ))}
                         </div>
-                        {savedDx&&<div className="p-4 rounded-2xl text-sm font-bold" style={{backgroundColor:CLS_META["Normal"].bg,border:`1px solid ${CLS_META["Normal"].bar}`,color:CLS_META["Normal"].text}}>✅ Diagnosis #{savedDx.id} saved to patient record</div>}
-                        <button onClick={()=>{setPred(null);setSavedDx(null);setSavedPt(null);setXFile(null);setXPrev(null);setPtName("");setPtNID("");setNidErr("");setPredErr("");setPredInfo("");}} className="w-full py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors">New Scan</button>
+                        {savedDx&&<div className="p-4 rounded-2xl text-sm font-bold" style={{backgroundColor:CLS_META["Normal"].bg,border:`1px solid ${CLS_META["Normal"].bar}`,color:CLS_META["Normal"].text}}>✅ Diagnosis #{savedDx.id} saved — recorded as Admin diagnosis</div>}
+                        <button onClick={()=>{setPred(null);setSavedDx(null);setSavedPt(null);setXFile(null);setXPrev(null);setSelectedPtId("");setPtSearch("");setPredErr("");setPredInfo("");}} className="w-full py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors">New Scan</button>
                       </div>
                     );})()}
                   </Panel>
