@@ -315,7 +315,7 @@ export default function AdminDashboard() {
   const dist=["Normal","Tuberculosis","Pneumonia","Unknown"].map(cls=>({cls,count:diagnoses.filter(d=>d.ai_classification===cls).length,pct:diagnoses.length?Math.round((diagnoses.filter(d=>d.ai_classification===cls).length/diagnoses.length)*100):0,color:CLS_META[cls].bar}));
 
   const navItems:[Tab,string,number?][]=[
-    ["overview","Dashboard"],["users","Team",pending||undefined],
+    ["overview","Dashboard"],["users","Radiologists",pending||undefined],
     ["predictions","Diagnoses",diagnoses.length||undefined],["patients","Patients"],
     ["diagnose","Run Scan"],["retrain","Retrain AI"],["model","Model Data"],
     ["passwords","Passwords"],["audit","Audit Log"],
@@ -553,7 +553,7 @@ export default function AdminDashboard() {
             ══════════════════════════════════ */}
             {tab==="users"&&(
               <div className="space-y-5 max-w-[1200px] anim-in">
-                <PageHead title="Team Management" sub={`${apiUsers.length} platform users`} right={
+                <PageHead title="Radiologists" sub={`${apiUsers.length} platform users`} right={
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search team…" className={INP+" w-[220px]"}/>
                 }/>
                 <Tbl heads={["Name","Email","Hospital","License","Role","Status","Joined","Actions"]} empty={apiUsers.length===0?"No users yet":undefined}>
