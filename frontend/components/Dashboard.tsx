@@ -14,7 +14,7 @@ interface BUser {
   years_experience?: number; role: string; status: string; is_admin: boolean; created_at: string;
 }
 interface Patient {
-  id: number; name: string; patient_ref_id?: string; age?: number; sex?: string; hospital?: string;
+  id: number; name: string; patient_ref_id?: string; hospital?: string;
   clinical_notes?: string; created_at: string;
 }
 interface Diagnosis {
@@ -100,8 +100,6 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   // Diagnose state
   const [pName, setPName] = useState('');
   const [pNid, setPNid] = useState('');
-  const [pAge, setPAge] = useState('');
-  const [pSex, setPSex] = useState('');
   const [nidErr, setNidErr] = useState('');
   const [files, setFiles] = useState<File[]>([]);           // multiple images
   const [previews, setPreviews] = useState<string[]>([]);   // preview URLs
@@ -231,8 +229,6 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     const currentFile = files[activeImg];
     if (!currentFile || !pName.trim()) { setPredErr('Enter patient name and upload an X-ray'); return; }
     if (!validId(pNid)) { setPredErr('Enter a valid 16-digit Rwanda National ID'); return; }
-    if (!pAge || isNaN(Number(pAge)) || Number(pAge) < 1 || Number(pAge) > 120) { setPredErr('Enter a valid patient age (1-120)'); return; }
-    if (!pSex) { setPredErr('Select patient sex'); return; }
     // Warn if this exact image was already diagnosed this session
     const imgKey = `${currentFile.name}-${currentFile.size}`;
     if (scannedKeys.has(imgKey)) {
@@ -246,7 +242,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
       try {
         patient = await apiFetch('/patients', {
           method: 'POST',
-          body: JSON.stringify({ name: pName.trim(), patient_ref_id: pNid, age: Number(pAge), sex: pSex }),
+          body: JSON.stringify({ name: pName.trim(), patient_ref_id: pNid }),
         });
         if (patient && patients.some(p => p.id === patient!.id)) {
           setPredInfo(`Existing patient — adding scan #${diagnoses.filter(d => d.patient_id === patient!.id).length + 1}`);
@@ -570,20 +566,6 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Age (years) *</label>
-                    <input type="number" min={1} max={120} value={pAge} onChange={e => setPAge(e.target.value)} placeholder="45" className={inp} />
-                  </div>
-                  <div>
-                    <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Sex *</label>
-                    <select value={pSex} onChange={e => setPSex(e.target.value)} className={inp}>
-                      <option value="">Select…</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
-                  </div>
-                </div>
                 {/* Drop zone */}
                 <div className="text-[9px] font-bold uppercase tracking-widest text-gray-400 pt-1">X-Ray Images</div>
                 <div
@@ -680,8 +662,6 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                         <div className="text-[8px] font-bold uppercase tracking-widest text-gray-400 mb-1">Patient</div>
                         <div className="flex justify-between"><span className="text-gray-400">Name</span><span className="font-semibold">{savedPat.name}</span></div>
                         <div className="flex justify-between"><span className="text-gray-400">National ID</span><span className="font-mono">{savedPat.patient_ref_id}</span></div>
-                        {savedPat.age && <div className="flex justify-between"><span className="text-gray-400">Age</span><span>{savedPat.age} yrs</span></div>}
-                        {savedPat.sex && <div className="flex justify-between"><span className="text-gray-400">Sex</span><span>{savedPat.sex}</span></div>}
                         
                       </div>
                     )}
@@ -809,8 +789,6 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                       <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 items-center min-w-0">
                         <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Name</div><div className="text-sm font-semibold truncate">{p.name}</div></div>
                         <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">National ID</div><div className="text-xs font-mono text-gray-500">{p.patient_ref_id || '—'}</div></div>
-                        <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Age</div><div className="text-xs text-gray-500">{p.age ? `${p.age} yrs` : '—'}</div></div>
-                        <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Sex</div><div className="text-xs text-gray-500">{p.sex || '—'}</div></div>
                         <div>
                           <div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Scans</div>
                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${ptDiags.length > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
