@@ -324,7 +324,7 @@ export default function AdminDashboard() {
   return (
     <>
       <style>{CSS}</style>
-      <div className="min-h-[80vh] flex text-slate-800" style={{backgroundColor:BG_APP}}>
+      <div className="min-h-screen flex text-slate-800" style={{backgroundColor:BG_APP}}>
 
         {/* ── MODALS ── */}
         {pwUser&&<PwModal user={pwUser} onClose={()=>setPwUser(null)}/>}
@@ -355,7 +355,7 @@ export default function AdminDashboard() {
         {/* ════════════════════
             FLOATING SIDEBAR
         ════════════════════ */}
-        <aside className="w-[260px] shrink-0 flex flex-col sticky top-0 h-screen bg-white m-4 rounded-[32px] shadow-[0_4px_30px_rgba(0,0,0,0.04)] z-30">
+        <aside className="w-[260px] shrink-0 flex flex-col sticky top-0 h-[80vh] bg-white m-4 rounded-[32px] shadow-[0_4px_30px_rgba(0,0,0,0.04)] z-30">
           {/* Logo — Ubuzima Connect */}
           <div className="h-[88px] flex items-center px-7 gap-3">
             <div className="w-8 h-8 bg-emerald-900 rounded-md flex items-center justify-center relative overflow-hidden shrink-0">
