@@ -424,7 +424,7 @@ export default function AdminDashboard() {
               </div>}
               <div className="flex items-center gap-3 bg-white rounded-full px-2 py-1.5 pr-5 border border-slate-100 shadow-sm">
                 <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>AD</div>
-                <div><p className="text-[12px] font-bold text-slate-800 leading-tight">Admin</p><p className="text-[10px] text-slate-400">ubuzima@admin.rw</p></div>
+                <div><p className="text-[12px] font-bold text-slate-800 leading-tight">Admin</p><p className="text-[10px] text-slate-400">leslyndiz6@gmail.com</p></div>
               </div>
             </div>
           </header>
