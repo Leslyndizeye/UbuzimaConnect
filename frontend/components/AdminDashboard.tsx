@@ -395,7 +395,7 @@ export default function AdminDashboard() {
           </div> */}
 
           {/* Sign out */}
-          <button onClick={()=>supabase.auth.signOut()} className="mx-4 mb-12 flex items-center gap-3 px-5 py-3 rounded-2xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors text-[13px] font-semibold">
+          <button onClick={()=>supabase.auth.signOut()} className="mx-4 mb-4 flex items-center gap-3 px-5 py-3 rounded-2xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors text-[13px] font-semibold">
             <svg width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
             Sign Out
           </button>
