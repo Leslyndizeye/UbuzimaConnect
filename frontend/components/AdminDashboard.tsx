@@ -385,13 +385,9 @@ export default function AdminDashboard() {
             <div className="wavy-bg rounded-[24px] p-5 text-white shadow-xl relative overflow-hidden">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-2 h-2 rounded-full pdot" style={{backgroundColor:"#4ADE80"}}/>
-                <span className="text-xs font-bold text-white/70">Kigali Time (CAT)</span>
+                <span className="text-xs font-bold text-white/70">Rwanda Time</span>
               </div>
               <div className="text-2xl font-black tracking-widest mb-1 font-mono">{rwandaTime}</div>
-              <p className="text-[11px] text-white/60 mb-4">
-                {health?.status==="healthy"?"System operational":"Checking…"}
-                {stats ? ` · up ${uptimeFmt(stats.uptime_seconds)}` : ""}
-              </p>
               <button onClick={loadAll} className="w-full bg-white/20 hover:bg-white/30 text-white text-[12px] font-bold py-2.5 rounded-full transition-colors">
                 Refresh Data
               </button>
