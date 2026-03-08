@@ -585,7 +585,7 @@ export default function AdminDashboard() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead><tr className={`border-b ${isDark ? "border-zinc-800" : "border-gray-100"}`}>
-                      {["Patient","National ID","Result","Confidence","TB%","Pneumonia%","Normal%","Radiologist","Verified","Date"].map(h => (
+                      {["Patient","National ID","Result","Confidence","TB%","Pneumonia%","Normal%","Radiologist","Verified","Date","Action"].map(h => (
                         <th key={h} className={`text-left px-4 py-3 text-[9px] font-bold uppercase tracking-widest ${sub}`}>{h}</th>
                       ))}
                     </tr></thead>
@@ -604,10 +604,11 @@ export default function AdminDashboard() {
                             <td className="px-4 py-3 text-sm">{apiUsers.find(u => u.id === d.radiologist_id)?.full_name ?? "—"}</td>
                             <td className="px-4 py-3"><span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${d.radiologist_verified ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>{d.radiologist_verified ? "Yes" : "Pending"}</span></td>
                             <td className={`px-4 py-3 text-xs ${sub}`}>{fmt(d.created_at)}</td>
+                            <td className="px-4 py-3"><button onClick={() => deletePatientDiagnosis(d.id)} className="text-[9px] font-bold uppercase px-2.5 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 whitespace-nowrap">Delete</button></td>
                           </tr>
                         );
                       })}
-                      {diagnoses.length === 0 && <tr><td colSpan={10} className={`px-4 py-8 text-center text-sm ${sub}`}>No predictions yet</td></tr>}
+                      {diagnoses.length === 0 && <tr><td colSpan={11} className={`px-4 py-8 text-center text-sm ${sub}`}>No predictions yet</td></tr>}
                     </tbody>
                   </table>
                 </div>
