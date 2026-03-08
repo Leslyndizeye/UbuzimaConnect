@@ -189,7 +189,7 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
           {!hasAuth&&<div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium">⚠ Approve user first.</div>}
           <div className="p-5 rounded-3xl space-y-3" style={{background:"#F0FDF4",border:"1px solid #86EFAC"}}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-green-700">Auto-Generate</p>
-            <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating…":"⚡ Generate & Set Password"}</button>
+            <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating…":" Generate & Set Password"}</button>
             {gen&&<div className="rounded-2xl p-4 bg-white border border-green-200">
               <p className="text-[9px] font-bold uppercase text-slate-400 mb-2">Share with user</p>
               <div className="flex items-center gap-2"><code className="flex-1 text-sm font-bold font-mono px-3 py-2 rounded-xl" style={{background:"#DCFCE7",color:"#14532D"}}>{gen}</code><button onClick={()=>{navigator.clipboard.writeText(gen);setCopied(true);setTimeout(()=>setCopied(false),2000);}} className="btn-s px-4 py-2 rounded-full text-white text-xs font-bold" style={{backgroundColor:DARK_GREEN}}>{copied?"✓":"Copy"}</button></div>
@@ -785,7 +785,7 @@ export default function AdminDashboard() {
                       </div>
                       <div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Step 3 — Start Training</p>
                       <button onClick={triggerRetrain} disabled={!canTrigger} className="btn-s w-full py-4 rounded-full text-white font-bold disabled:opacity-40" style={{backgroundColor:"#7C3AED",boxShadow:"0 8px 24px rgba(124,58,237,.35)"}}>
-                        {canTrigger?"⚡ Trigger Retraining":notReady.length>0?`Need more (${notReady.join(", ")})`:"Upload to 2+ classes first"}
+                        {canTrigger?" Trigger Retraining":notReady.length>0?`Need more (${notReady.join(", ")})`:"Upload to 2+ classes first"}
                       </button></div>
                     </>);})()}
                     {rtMsg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${rtOk?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{rtMsg}</div>}
@@ -839,7 +839,7 @@ export default function AdminDashboard() {
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
                       <TD mono>{u.email}</TD>
                       <TD><StatusBadge status="approved"/></TD>
-                      <TD mono>{last?`${last.action==="admin_generate_password"?"Generated":"✏️ Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
+                      <TD mono>{last?`${last.action==="admin_generate_password"?"Generated":" Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
                       <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">Manage</button></TD>
                     </TR>);
                   })}
@@ -850,7 +850,7 @@ export default function AdminDashboard() {
                     <Tbl heads={["Action","Target","Admin","When"]}>
                       {pwLogs.map(l=>{const target=apiUsers.find(u=>u.id===l.entity_id);return(
                         <TR key={l.id}>
-                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"Auto":"✏️ Manual"}</span></TD>
+                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"Auto":" Manual"}</span></TD>
                           <TD>{target?.full_name??"—"}</TD>
                           <TD>{apiUsers.find(u=>u.id===l.user_id)?.full_name??"Admin"}</TD>
                           <TD mono>{fmt(l.timestamp)}</TD>
