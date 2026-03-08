@@ -12,6 +12,7 @@ import AuthPage from './components/AuthPage';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { supabase } from './components/supabaseConfig';
+import IntroSequence from './components/IntroSequence';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 
@@ -26,32 +27,22 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const resolving = useRef(false);
 
   const resolve = async (user: any, event?: string) => {
-    // Prevent multiple simultaneous resolves
     if (resolving.current) return;
     resolving.current = true;
-
     try {
-      // Password recovery flow
       if (event === 'PASSWORD_RECOVERY') { setRole('reset'); return; }
       const url = window.location.href;
       if (url.includes('type=recovery') || (url.includes('access_token') && url.includes('recovery'))) {
         setRole('reset'); return;
       }
-
-      // No user = guest
       if (!user) { setRole('guest'); return; }
-
-      // Get token and fetch profile
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) { setRole('guest'); return; }
-
       const res = await fetch(`${API_BASE}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       if (!res.ok) { setRole('pending'); return; }
-
       const profile = await res.json();
       if (profile.is_admin) { setRole('admin'); return; }
       setRole(profile.status === 'approved' ? 'approved' : 'pending');
@@ -63,16 +54,11 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    // Check session once on mount
     supabase.auth.getSession().then(({ data }) => {
       resolve(data.session?.user ?? null);
     });
-
-    // Listen for auth changes (login, logout, password recovery)
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      // Skip INITIAL_SESSION — already handled by getSession above
       if (event === 'INITIAL_SESSION') return;
-      // On USER_UPDATED (password changed) → sign out and go to login
       if (event === 'USER_UPDATED') {
         supabase.auth.signOut().then(() => {
           setRole('guest');
@@ -82,7 +68,6 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       resolve(session?.user ?? null, event);
     });
-
     return () => listener.subscription.unsubscribe();
   }, []);
 
@@ -105,7 +90,6 @@ function ResetPasswordPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // Check if we already have a session from the email link
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setReady(true);
     });
@@ -125,7 +109,6 @@ function ResetPasswordPage() {
     const { error } = await supabase.auth.updateUser({ password });
     if (error) { setMsg(error.message); setLoading(false); return; }
     setMsg('✅ Password updated! Redirecting to login…');
-    // Sign out and go to /auth — USER_UPDATED event handled in AuthProvider
     setTimeout(async () => {
       await supabase.auth.signOut();
       window.location.href = '/auth';
@@ -244,7 +227,6 @@ function ProtectedRoute({ children, allow }: { children: React.ReactNode; allow:
   const role = useContext(AuthContext);
   if (role === 'loading') return <Spinner />;
   if (role === allow) return <>{children}</>;
-  // Wrong role — redirect to correct place
   if (role === 'reset') return <Navigate to="/reset-password" replace />;
   if (role === 'admin') return <Navigate to="/admin" replace />;
   if (role === 'approved') return <Navigate to="/dashboard" replace />;
@@ -252,7 +234,7 @@ function ProtectedRoute({ children, allow }: { children: React.ReactNode; allow:
   return <Navigate to="/auth" replace />;
 }
 
-// ─── Auth Page wrapper — redirect if already logged in ───────────────────────
+// ─── Auth Route — redirect if already logged in ───────────────────────────────
 function AuthRoute() {
   const role = useContext(AuthContext);
   if (role === 'loading') return <Spinner />;
@@ -262,21 +244,32 @@ function AuthRoute() {
   return <AuthPage onAuth={() => { window.location.href = '/'; }} />;
 }
 
-// ─── App ──────────────────────────────────────────────────────────────────────
-const App: React.FC = () => (
-  <BrowserRouter>
-    <AuthProvider>
-      <Routes>
-        <Route path="/" element={<RootPage />} />
-        <Route path="/auth" element={<AuthRoute />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/pending" element={<PendingPage />} />
-        <Route path="/dashboard" element={<ProtectedRoute allow="approved"><Dashboard /></ProtectedRoute>} />
-        <Route path="/admin" element={<ProtectedRoute allow="admin"><AdminDashboard /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AuthProvider>
-  </BrowserRouter>
-);
+// ─── App — shows IntroSequence on every page load ─────────────────────────────
+const App: React.FC = () => {
+  const [introFinished, setIntroFinished] = useState(false);
+
+  const handleIntroFinish = () => {
+    setIntroFinished(true);
+  };
+
+  return (
+    <>
+      {!introFinished && <IntroSequence onFinish={handleIntroFinish} />}
+      <BrowserRouter>
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<RootPage />} />
+            <Route path="/auth" element={<AuthRoute />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/pending" element={<PendingPage />} />
+            <Route path="/dashboard" element={<ProtectedRoute allow="approved"><Dashboard /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute allow="admin"><AdminDashboard /></ProtectedRoute>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </BrowserRouter>
+    </>
+  );
+};
 
 export default App;
