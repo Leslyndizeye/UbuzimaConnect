@@ -352,10 +352,8 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ════════════════════
-            FLOATING SIDEBAR
-        ════════════════════ */}
-        <aside className="w-[260px] shrink-0 flex flex-col sticky top-0 h-[90vh] bg-white m-4 rounded-[32px] shadow-[0_4px_30px_rgba(0,0,0,0.04)] z-30">
+        {/* FLOATING SIDEBAR */}
+        <aside className="w-[260px] shrink-0 flex flex-col sticky top-4 h-[90vh] bg-white m-4 rounded-[32px] shadow-[0_4px_30px_rgba(0,0,0,0.04)] z-30">
           {/* Logo — Ubuzima Connect */}
           <div className="h-[88px] flex items-center px-7 gap-3">
             <div className="w-8 h-8 bg-emerald-900 rounded-md flex items-center justify-center relative overflow-hidden shrink-0">
@@ -401,9 +399,7 @@ export default function AdminDashboard() {
           </button>
         </aside>
 
-        {/* ════════════════════
-            MAIN CONTENT
-        ════════════════════ */}
+        {/* MAIN CONTENT */}
         <div className="flex-1 flex flex-col min-w-0">
 
           {/* Header */}
@@ -427,9 +423,7 @@ export default function AdminDashboard() {
 
           <main className="flex-1 px-10 pb-10 overflow-y-auto">
 
-            {/* ══════════════════════════════════
-                OVERVIEW
-            ══════════════════════════════════ */}
+            {/* OVERVIEW */}
             {tab==="overview"&&(
               <div className="space-y-6 max-w-[1400px]">
                 <div className="flex items-center justify-between">
