@@ -26,7 +26,7 @@ interface PredictionResult { classification:string; confidence_score:number; tb_
 interface EditPatient { id:number; name:string; patient_ref_id:string; hospital:string; clinical_notes:string; }
 type Tab = "overview"|"users"|"passwords"|"predictions"|"patients"|"diagnose"|"retrain"|"model"|"audit";
 
-const fmt = (iso:string) => new Date(iso).toLocaleString("en-RW",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+const fmt = (iso:string) => new Date(iso).toLocaleString("en-RW",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Kigali"});
 const uptimeFmt = (s:number) => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60); return `${h.toString().padStart(2,'0')}h ${m.toString().padStart(2,'0')}m ${sec.toString().padStart(2,'0')}s`; };
 function useRwandaTime() {
   const [time,setTime]=useState(()=>new Date().toLocaleTimeString("en-RW",{timeZone:"Africa/Kigali",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}));
@@ -45,6 +45,7 @@ const DARK_GREEN   = "#1C5438";
 const VERY_DARK    = "#0E2B1C";
 const ACCENT_GREEN = "#38A169";
 const BG_APP       = "#F2F4F7";
+const BRAND        = "#86EFAC"; // single brand accent for retrain UI
 
 const CLS_META: Record<string,{bg:string;border:string;text:string;bar:string}> = {
   "Normal":       {bg:"#DCFCE7",border:"#86EFAC",text:"#14532D",bar:"#38A169"},
@@ -53,8 +54,11 @@ const CLS_META: Record<string,{bg:string;border:string;text:string;bar:string}> 
   "Unknown":      {bg:"#F1F5F9",border:"#CBD5E1",text:"#334155",bar:"#A0AEC0"},
 };
 
-const INP = "w-full px-5 py-3 rounded-full bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:border-[#38A169] focus:ring-4 focus:ring-[#38A169]/10 transition-all";
-const INP_RECT = "w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:border-[#38A169] focus:ring-4 focus:ring-[#38A169]/10 transition-all";
+// Retrain minimum images per class
+const RT_MIN = 5;
+
+const INP = "w-full px-5 py-3 rounded-full bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:border-[#86EFAC] focus:ring-4 focus:ring-[#86EFAC]/20 transition-all";
+const INP_RECT = "w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:border-[#86EFAC] focus:ring-4 focus:ring-[#86EFAC]/20 transition-all";
 
 // ─── Global CSS ───────────────────────────────────
 const CSS = `
@@ -100,6 +104,15 @@ const CSS = `
   background:radial-gradient(circle at 50% 120%, rgba(255,255,255,.06) 0%, transparent 60%);
   pointer-events:none;
 }
+
+/* Retrain step ring */
+.step-ring {
+  width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:800; flex-shrink:0;
+}
+.step-ring.done  { background:#86EFAC; color:#14532D; }
+.step-ring.active{ background:#1C5438; color:#fff; }
+.step-ring.idle  { background:#F1F5F9; color:#94A3B8; border:2px solid #E2E8F0; }
 `;
 
 // ─── ICONS ────────────────────────────────────────
@@ -119,7 +132,6 @@ const ICONS: Record<Tab,React.ReactNode> = {
 function Panel({children,className=""}:{children:React.ReactNode;className?:string}) {
   return <div className={`panel-card ${className}`}>{children}</div>;
 }
-
 function StatusBadge({status}:{status:string}) {
   const good = status==="approved"||status==="verified"||status==="completed"||status==="healthy"||status==="Verified"||status==="active";
   const pend = status==="pending"||status==="processing"||status==="Pending";
@@ -127,12 +139,10 @@ function StatusBadge({status}:{status:string}) {
   const tx   = good?"#166534":pend?"#92400E":"#991B1B";
   return <span className="inline-flex items-center text-[10px] font-bold px-2.5 py-1 rounded-full capitalize" style={{backgroundColor:bg,color:tx}}>{status}</span>;
 }
-
 function ClsBadge({cls}:{cls:string}) {
   const c=CLS_META[cls]||CLS_META["Unknown"];
   return <span className="inline-flex text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:c.bar}}>{cls}</span>;
 }
-
 function PageHead({title,sub,right}:{title:string;sub?:string;right?:React.ReactNode}) {
   return (
     <div className="flex items-start justify-between gap-4 mb-7">
@@ -141,15 +151,6 @@ function PageHead({title,sub,right}:{title:string;sub?:string;right?:React.React
     </div>
   );
 }
-
-function ProgressBar({pct,color}:{pct:number;color:string}) {
-  return (
-    <div className="h-2.5 rounded-full overflow-hidden" style={{backgroundColor:`${color}25`}}>
-      <div className="bar-in h-full rounded-full" style={{"--w":`${pct}%`,width:`${pct}%`,backgroundColor:color} as any}/>
-    </div>
-  );
-}
-
 function Tbl({heads,children,empty}:{heads:string[];children:React.ReactNode;empty?:string}) {
   return (
     <Panel className="overflow-hidden">
@@ -186,17 +187,17 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
           </div>
         </div>
         <div className="p-8 space-y-5">
-          {!hasAuth&&<div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium">⚠ Approve user first.</div>}
-          <div className="p-5 rounded-3xl space-y-3" style={{background:"#F0FDF4",border:"1px solid #86EFAC"}}>
+          {!hasAuth&&<div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium">⚠ Approve user first before setting a password.</div>}
+          <div className="p-5 rounded-3xl space-y-3" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-green-700">Auto-Generate</p>
-            <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating…":" Generate & Set Password"}</button>
+            <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating…":"⚡ Generate & Set Password"}</button>
             {gen&&<div className="rounded-2xl p-4 bg-white border border-green-200">
               <p className="text-[9px] font-bold uppercase text-slate-400 mb-2">Share with user</p>
-              <div className="flex items-center gap-2"><code className="flex-1 text-sm font-bold font-mono px-3 py-2 rounded-xl" style={{background:"#DCFCE7",color:"#14532D"}}>{gen}</code><button onClick={()=>{navigator.clipboard.writeText(gen);setCopied(true);setTimeout(()=>setCopied(false),2000);}} className="btn-s px-4 py-2 rounded-full text-white text-xs font-bold" style={{backgroundColor:DARK_GREEN}}>{copied?"✓":"Copy"}</button></div>
+              <div className="flex items-center gap-2"><code className="flex-1 text-sm font-bold font-mono px-3 py-2 rounded-xl" style={{background:"#DCFCE7",color:"#14532D"}}>{gen}</code><button onClick={()=>{navigator.clipboard.writeText(gen);setCopied(true);setTimeout(()=>setCopied(false),2000);}} className="btn-s px-4 py-2 rounded-full text-white text-xs font-bold" style={{backgroundColor:DARK_GREEN}}>{copied?"✓ Copied":"Copy"}</button></div>
             </div>}
           </div>
-          <div className="p-5 rounded-3xl space-y-3" style={{background:"#EFF6FF",border:"1px solid #86EFAC"}}>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Set Custom</p>
+          <div className="p-5 rounded-3xl space-y-3" style={{background:"#EFF6FF",border:"1px solid #BFDBFE"}}>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Set Custom Password</p>
             <div className="relative"><input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 characters" className={INP_RECT+" pr-16"}/><button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold px-2 py-1 rounded-xl bg-slate-200 text-slate-500">{show?"Hide":"Show"}</button></div>
             <button onClick={setManual} disabled={loading||!hasAuth||!pw} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:"#2563EB"}}>Set Password</button>
           </div>
@@ -229,6 +230,10 @@ export default function AdminDashboard() {
   const [editPatient,setEditPatient]=useState<EditPatient|null>(null);
   const [editError,setEditError]=useState(""); const [editSaving,setEditSaving]=useState(false);
   const [expandedPt,setExpandedPt]=useState<number|null>(null);
+
+  // ── Diagnose state ──
+  const [dxRadiologist,setDxRadiologist]=useState<number|"">("");
+  const [dxRadSearch,setDxRadSearch]=useState("");
   const [selectedPtId,setSelectedPtId]=useState<number|"">("");
   const [ptSearch,setPtSearch]=useState("");
   const [xFile,setXFile]=useState<File|null>(null); const [xPrev,setXPrev]=useState<string|null>(null);
@@ -236,9 +241,14 @@ export default function AdminDashboard() {
   const [savedDx,setSavedDx]=useState<Diagnosis|null>(null); const [savedPt,setSavedPt]=useState<Patient|null>(null);
   const [predErr,setPredErr]=useState(""); const [predInfo,setPredInfo]=useState("");
   const fileRef=useRef<HTMLInputElement>(null);
-  const [rtFiles,setRtFiles]=useState<File[]>([]); const [rtLabel,setRtLabel]=useState("Normal");
-  const [uploading,setUploading]=useState(false); const [rtMsg,setRtMsg]=useState(""); const [rtOk,setRtOk]=useState(true);
-  const [uploadedC,setUploadedC]=useState<Record<string,number>>({}); const [stagedC,setStagedC]=useState<Record<string,number>>({});
+
+  // ── Retrain state ──
+  // uploadedByLabel: files staged this session (local tracking)
+  const [rtLabel,setRtLabel]=useState("Normal");
+  const [rtFiles,setRtFiles]=useState<File[]>([]);
+  const [uploading,setUploading]=useState(false);
+  const [rtMsg,setRtMsg]=useState(""); const [rtOk,setRtOk]=useState(true);
+  const [stagedC,setStagedC]=useState<Record<string,number>>({});
   const [rtDrag,setRtDrag]=useState(false); const rtRef=useRef<HTMLInputElement>(null);
 
   const loadAll=useCallback(async()=>{
@@ -249,7 +259,7 @@ export default function AdminDashboard() {
       if(s.status==="fulfilled")setStats(s.value); if(m.status==="fulfilled")setModelInfo(m.value); if(h.status==="fulfilled")setHealth(h.value);
       if(a.status==="fulfilled"){setAuditLogs(a.value);setPwLogs(a.value.filter((l:AuditLog)=>l.action.includes("password")||l.action.includes("Password")));}
       if(j.status==="fulfilled")setRetrainJobs(j.value);
-      adminFetch("/retrain/staged").then(r=>setStagedC(r.counts)).catch(()=>{});
+      adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
     }catch(e:any){setError(e.message);}
   },[]);
 
@@ -275,7 +285,15 @@ export default function AdminDashboard() {
   const deleteDx=async(id:number)=>{if(!confirm("Delete?"))return;try{await adminFetch(`/diagnoses/${id}`,{method:"DELETE"});loadAll();}catch(e:any){setError(e.message);}};
   const handleFile=(e:React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files?.[0];if(!f)return;setXFile(f);setXPrev(URL.createObjectURL(f));setPred(null);setSavedDx(null);setPredErr("");setPredInfo("");};
 
+  // ── Diagnose: radiologist-first, then patient ──
+  const radiologists = apiUsers.filter(u=>u.status==="approved"&&(u.role==="radiologist"||u.role==="user"));
+  // patients belonging to the selected radiologist (or all if admin chose no filter)
+  const filteredPatients = dxRadiologist
+    ? patients.filter(p=>p.radiologist_id===dxRadiologist)
+    : patients;
+
   const runPred=async()=>{
+    if(!dxRadiologist){setPredErr("Please select a radiologist first");return;}
     if(!xFile){setPredErr("Please upload an X-ray image");return;}
     if(!selectedPtId){setPredErr("Please select a patient");return;}
     setPredicting(true);setPredErr("");setPredInfo("");setPred(null);setSavedDx(null);setSavedPt(null);
@@ -293,6 +311,7 @@ export default function AdminDashboard() {
     }catch(e:any){setPredErr(e.message);}finally{setPredicting(false);}
   };
 
+  // ── Retrain: upload for a single label ──
   const uploadForRetrain=async()=>{
     if(!rtFiles.length){setRtMsg("Select files first");setRtOk(false);return;}
     setUploading(true);setRtMsg("");
@@ -301,18 +320,28 @@ export default function AdminDashboard() {
       const{data}=await supabase.auth.getSession();const token=data.session?.access_token;
       const res=await fetch(`${API_BASE}/retrain/upload?label=${encodeURIComponent(rtLabel)}`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
       if(!res.ok){const e=await res.json();throw new Error(e.detail);}
-      const r=await res.json();setUploadedC(prev=>({...prev,[rtLabel]:(prev[rtLabel]||0)+r.files_saved}));setRtMsg(`Uploaded ${r.files_saved} file(s) as "${rtLabel}"`);setRtOk(true);setRtFiles([]);
-      adminFetch("/retrain/staged").then(r=>setStagedC(r.counts)).catch(()=>{});
+      const r=await res.json();
+      setRtMsg(`Uploaded ${r.files_saved} file(s) as "${rtLabel}"`);setRtOk(true);setRtFiles([]);
+      adminFetch("/retrain/staged").then(r2=>setStagedC(r2.counts||{})).catch(()=>{});
     }catch(e:any){setRtMsg(e.message);setRtOk(false);}finally{setUploading(false);}
   };
+
+  // ── Retrain: trigger — only needs 1 class with RT_MIN images ──
   const triggerRetrain=async()=>{
-    if(!window.confirm("Start retraining?"))return;
-    try{const job=await adminFetch("/retrain/trigger",{method:"POST"});setRtMsg(`Job #${job.id} started!`);setRtOk(true);setUploadedC({});setStagedC({});loadAll();}
+    const cls=Object.keys(stagedC).filter(k=>stagedC[k]>=RT_MIN);
+    if(cls.length===0){setRtMsg(`Need at least ${RT_MIN} images in one class to start training`);setRtOk(false);return;}
+    if(!window.confirm(`Start retraining with ${cls.length} class(es)? (${cls.join(", ")})`))return;
+    try{const job=await adminFetch("/retrain/trigger",{method:"POST"});setRtMsg(`Job #${job.id} started!`);setRtOk(true);setStagedC({});loadAll();}
     catch(e:any){setRtMsg(e.message);setRtOk(false);}
   };
 
   const pending=apiUsers.filter(u=>u.status==="pending").length;
   const dist=["Normal","Tuberculosis","Pneumonia","Unknown"].map(cls=>({cls,count:diagnoses.filter(d=>d.ai_classification===cls).length,pct:diagnoses.length?Math.round((diagnoses.filter(d=>d.ai_classification===cls).length/diagnoses.length)*100):0,color:CLS_META[cls].bar}));
+
+  // Retrain summary helpers
+  const stagedClasses = Object.keys(stagedC).filter(k=>stagedC[k]>0);
+  const readyClasses  = stagedClasses.filter(k=>stagedC[k]>=RT_MIN);
+  const canTrigger    = readyClasses.length>=1;
 
   const navItems:[Tab,string,number?][]=[
     ["overview","Dashboard"],["users","Radiologists",pending||undefined],
@@ -352,18 +381,15 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* FLOATING SIDEBAR */}
-        <aside className="w-[260px] shrink-0 flex flex-col sticky top-4 h-[90vh] bg-white m-4 rounded-[32px] shadow-[0_4px_30px_rgba(0,0,0,0.04)] z-30">
-          {/* Logo — Ubuzima Connect */}
+        {/* ════════ SIDEBAR ════════ */}
+        <aside className="w-[260px] shrink-0 flex flex-col sticky top-4 h-[calc(100vh-2rem)] bg-white m-4 rounded-[32px] shadow-[0_4px_30px_rgba(0,0,0,0.04)] z-30">
           <div className="h-[88px] flex items-center px-7 gap-3">
             <div className="w-8 h-8 bg-emerald-900 rounded-md flex items-center justify-center relative overflow-hidden shrink-0">
               <div className="w-5 h-[2px] rounded-full bg-emerald-100"/>
             </div>
             <span className="text-[17px] font-bold tracking-tight text-slate-900">Ubuzima Connect</span>
           </div>
-
           <p className="px-7 pb-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Menu</p>
-
           <nav className="flex-1 px-4 space-y-0.5 overflow-y-auto">
             {navItems.map(([id,label,badge])=>{
               const active=tab===id;
@@ -377,32 +403,14 @@ export default function AdminDashboard() {
               );
             })}
           </nav>
-
-          {/* Rwanda time + status card */}
-          {/* <div className="p-4 mt-auto">
-            <div className="wavy-bg rounded-[24px] p-5 text-white shadow-xl relative overflow-hidden">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-2 h-2 rounded-full pdot" style={{backgroundColor:"#4ADE80"}}/>
-                <span className="text-xs font-bold text-white/70">Rwanda Time</span>
-              </div>
-              <div className="text-2xl font-black tracking-widest mb-1 font-mono">{rwandaTime}</div>
-              <button onClick={loadAll} className="w-full bg-white/20 hover:bg-white/30 text-white text-[12px] font-bold py-2.5 rounded-full transition-colors">
-                Refresh Data
-              </button>
-            </div>
-          </div> */}
-
-          {/* Sign out */}
           <button onClick={()=>supabase.auth.signOut()} className="mx-4 mb-4 flex items-center gap-3 px-5 py-3 rounded-2xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors text-[13px] font-semibold">
             <svg width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
             Sign Out
           </button>
         </aside>
 
-        {/* MAIN CONTENT */}
+        {/* ════════ MAIN ════════ */}
         <div className="flex-1 flex flex-col min-w-0">
-
-          {/* Header */}
           <header className="h-[90px] flex items-center justify-between px-10 sticky top-0 z-20">
             <div className="flex items-center gap-3 bg-white rounded-full px-5 py-3 border border-slate-100 shadow-sm w-[320px]">
               <svg width="16" height="16" fill="none" stroke="#A0AEC0" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -410,7 +418,7 @@ export default function AdminDashboard() {
               {search&&<button onClick={()=>setSearch("")} className="text-slate-400 hover:text-slate-700">✕</button>}
             </div>
             <div className="flex items-center gap-4">
-              {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700">⚠ {error}<button onClick={()=>setError("")} className="ml-1">✕</button></div>}
+              {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
               {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-amber-50 border border-amber-200 text-amber-700">
                 <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-amber-500"/>{pending} pending
               </div>}
@@ -423,22 +431,20 @@ export default function AdminDashboard() {
 
           <main className="flex-1 px-10 pb-10 overflow-y-auto">
 
-            {/* OVERVIEW */}
+            {/* ══ OVERVIEW ══ */}
             {tab==="overview"&&(
               <div className="space-y-6 max-w-[1400px]">
                 <div className="flex items-center justify-between">
                   <div><h1 className="text-3xl font-bold text-slate-900">Dashboard</h1><p className="text-slate-500 mt-1 text-sm">Ubuzima Connect — AI-powered chest X-ray diagnostics.</p></div>
                   <div className="flex gap-3">
-                    <button onClick={()=>setTab("diagnose")} className="btn-s flex items-center gap-2 px-5 py-2.5 rounded-full text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>＋ Add Patient</button>
+                    <button onClick={()=>setTab("diagnose")} className="btn-s flex items-center gap-2 px-5 py-2.5 rounded-full text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>＋ Run Scan</button>
                     <button onClick={loadAll} className="btn-s px-5 py-2.5 rounded-full text-slate-700 text-sm font-bold bg-white border border-slate-200">Refresh</button>
                   </div>
                 </div>
-
-                {/* 4 Stat cards */}
                 <div className="grid grid-cols-4 gap-5">
                   <div className="anim-in-1 rounded-[28px] p-6 flex flex-col justify-between" style={{backgroundColor:DARK_GREEN,color:"white",minHeight:160}}>
                     <div className="flex justify-between items-start"><span className="text-sm font-medium text-white/90">Radiologists</span><div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">↗</div></div>
-                    <div><div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??apiUsers.filter(u=>u.status==="approved").length}</div><div className="text-[11px] text-white/70 flex items-center gap-2"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending}▲ pending</span></div></div>
+                    <div><div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??apiUsers.filter(u=>u.status==="approved").length}</div><div className="text-[11px] text-white/70"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending} pending</span></div></div>
                   </div>
                   {[{l:"AI Diagnoses",v:diagnoses.length},{l:"Total Patients",v:patients.length},{l:"Pending Reviews",v:pending}].map((c,i)=>(
                     <div key={c.l} className={`anim-in-${i+2} panel-card p-6 flex flex-col justify-between`} style={{minHeight:160}}>
@@ -447,10 +453,7 @@ export default function AdminDashboard() {
                     </div>
                   ))}
                 </div>
-
-                {/* Middle row */}
                 <div className="grid grid-cols-12 gap-5">
-                  {/* Bar chart */}
                   <Panel className="col-span-5 p-7 flex flex-col anim-in">
                     <h3 className="text-base font-bold text-slate-800 mb-5">Diagnosis Distribution</h3>
                     <div className="flex-1 flex items-end justify-between gap-4 px-2">
@@ -466,8 +469,6 @@ export default function AdminDashboard() {
                       ))}
                     </div>
                   </Panel>
-
-                  {/* Model status */}
                   <Panel className="col-span-4 p-7 flex flex-col justify-between anim-in">
                     <div>
                       <h3 className="text-base font-bold text-slate-800 mb-3">AI Model Status</h3>
@@ -477,8 +478,6 @@ export default function AdminDashboard() {
                     </div>
                     <button onClick={()=>setTab("model")} className="btn-s w-full py-3.5 rounded-full text-white text-sm font-bold mt-4" style={{backgroundColor:DARK_GREEN}}>Manage Model</button>
                   </Panel>
-
-                  {/* Recent scans */}
                   <Panel className="col-span-3 p-7 anim-in">
                     <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Recent Scans</h3><button onClick={()=>setTab("predictions")} className="text-[11px] border px-2.5 py-1 rounded-full text-slate-500 border-slate-200">All →</button></div>
                     <div className="space-y-4">
@@ -492,10 +491,7 @@ export default function AdminDashboard() {
                     </div>
                   </Panel>
                 </div>
-
-                {/* Bottom row */}
                 <div className="grid grid-cols-12 gap-5">
-                  {/* Team */}
                   <Panel className="col-span-5 p-7 anim-in">
                     <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Radiologists</h3><button onClick={()=>setTab("users")} className="text-[11px] border border-slate-200 px-3 py-1.5 rounded-full text-slate-600 font-medium">Manage</button></div>
                     <div className="space-y-4">
@@ -508,16 +504,13 @@ export default function AdminDashboard() {
                       {apiUsers.length===0&&<p className="text-sm text-slate-400 text-center py-4">No team members yet</p>}
                     </div>
                   </Panel>
-
-                  {/* Distribution donut-style */}
                   <Panel className="col-span-4 p-7 anim-in flex flex-col items-center">
                     <h3 className="text-base font-bold text-slate-800 self-start mb-5">AI Confidence</h3>
                     <div className="relative w-[160px] h-[160px]">
                       <svg viewBox="0 0 160 160" className="w-full h-full -rotate-90">
                         <circle cx="80" cy="80" r="60" fill="none" stroke="#F1F5F9" strokeWidth="20"/>
                         <circle cx="80" cy="80" r="60" fill="none" stroke={ACCENT_GREEN} strokeWidth="20"
-                          strokeDasharray={`${2*Math.PI*60*0.85} ${2*Math.PI*60}`} strokeLinecap="round"
-                          style={{transition:"stroke-dasharray 1s ease"}}/>
+                          strokeDasharray={`${2*Math.PI*60*0.85} ${2*Math.PI*60}`} strokeLinecap="round"/>
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
                         <span className="text-3xl font-black text-slate-900">85%</span>
@@ -529,8 +522,6 @@ export default function AdminDashboard() {
                       <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-slate-300"/> Pending</span>
                     </div>
                   </Panel>
-
-                  {/* Rwanda time tracker */}
                   <div className="col-span-3 anim-in wavy-bg rounded-[28px] p-7 text-white flex flex-col items-center justify-center shadow-lg relative overflow-hidden">
                     <h3 className="text-sm font-bold absolute top-6 left-6 text-white/70">Kigali Time (CAT)</h3>
                     <div className="text-[28px] font-black tracking-widest mt-4 drop-shadow font-mono">{rwandaTime}</div>
@@ -542,9 +533,7 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* ══════════════════════════════════
-                USERS
-            ══════════════════════════════════ */}
+            {/* ══ USERS ══ */}
             {tab==="users"&&(
               <div className="space-y-5 max-w-[1200px] anim-in">
                 <PageHead title="Radiologists" sub={`${apiUsers.length} platform users`} right={
@@ -560,7 +549,7 @@ export default function AdminDashboard() {
                       <TD mono>{fmt(u.created_at)}</TD>
                       <TD><div className="flex gap-1.5 flex-wrap">
                         {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200">Reject</button></>}
-                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">Password</button>}
+                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Password</button>}
                         <button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">Delete</button>
                       </div></TD>
                     </TR>
@@ -569,9 +558,7 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* ══════════════════════════════════
-                PREDICTIONS
-            ══════════════════════════════════ */}
+            {/* ══ PREDICTIONS ══ */}
             {tab==="predictions"&&(
               <div className="space-y-5 max-w-[1200px] anim-in">
                 <PageHead title="AI Diagnoses" sub={`${diagnoses.length} total scans`} right={
@@ -606,9 +593,7 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* ══════════════════════════════════
-                PATIENTS
-            ══════════════════════════════════ */}
+            {/* ══ PATIENTS ══ */}
             {tab==="patients"&&(
               <div className="space-y-4 max-w-[1200px] anim-in">
                 <PageHead title="Patients" sub={`${patients.length} registered`} right={
@@ -662,75 +647,121 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* ══════════════════════════════════
-                DIAGNOSE
-            ══════════════════════════════════ */}
+            {/* ══ DIAGNOSE — radiologist first, then patient ══ */}
             {tab==="diagnose"&&(
               <div className="space-y-6 max-w-[1200px] anim-in">
-                <PageHead title="Run AI Scan" sub="Select an existing patient and upload their chest X-ray for instant ResNet-50 analysis"/>
+                <PageHead title="Run AI Scan" sub="Select a radiologist, then their patient, then upload the chest X-ray"/>
                 <div className="grid lg:grid-cols-2 gap-7">
-                  <Panel className="p-8 space-y-6">
-                    <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-4">Select Patient & Upload X-ray</h3>
+                  <Panel className="p-8 space-y-7">
 
-                    {/* Patient search + select */}
-                    <div className="space-y-2">
-                      <label className="block text-[11px] font-bold text-slate-500 ml-1">Select Patient *</label>
-                      <input value={ptSearch} onChange={e=>setPtSearch(e.target.value)} placeholder="Type to search patients…" className={INP}/>
-                      {patients.length===0
-                        ? <p className="text-xs text-amber-600 font-semibold px-1">⚠ No patients yet — radiologists must register patients first</p>
-                        : (
-                          <div className="max-h-48 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
-                            {patients.filter(p=>!ptSearch||p.name.toLowerCase().includes(ptSearch.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(ptSearch))).slice(0,10).map(p=>(
-                              <button key={p.id} onClick={()=>{setSelectedPtId(p.id);setPtSearch(p.name);}}
-                                className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${selectedPtId===p.id?"bg-emerald-50":"hover:bg-slate-50"}`}>
-                                <div>
-                                  <p className={`text-sm font-bold ${selectedPtId===p.id?"text-emerald-800":"text-slate-800"}`}>{p.name}</p>
-                                  <p className="text-[10px] text-slate-400 font-mono">{p.patient_ref_id||"No NID"} {p.hospital?`· ${p.hospital}`:""}</p>
-                                </div>
-                                {selectedPtId===p.id&&<span className="text-emerald-600 text-lg">✓</span>}
-                              </button>
-                            ))}
-                            {patients.filter(p=>!ptSearch||p.name.toLowerCase().includes(ptSearch.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(ptSearch))).length===0&&<p className="px-4 py-3 text-sm text-slate-400">No match found</p>}
-                          </div>
-                        )
-                      }
-                      {selectedPtId&&(()=>{const p=patients.find(pt=>pt.id===selectedPtId);return p?(<div className="flex items-center gap-3 p-3 rounded-2xl" style={{background:"#F0FDF4",border:"1.5px solid #86EFAC"}}><div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0" style={{backgroundColor:DARK_GREEN}}>{p.name.charAt(0)}</div><div><p className="text-sm font-bold text-emerald-800">{p.name}</p><p className="text-[10px] text-emerald-600 font-mono">{p.patient_ref_id} {p.hospital?`· ${p.hospital}`:""}</p></div></div>):null;})()}
+                    {/* ── Step 1: Radiologist ── */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`step-ring ${dxRadiologist?"done":"active"}`}>{dxRadiologist?"✓":"1"}</div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">Select Radiologist</p>
+                          <p className="text-[11px] text-slate-400">Patients will be filtered by this radiologist</p>
+                        </div>
+                      </div>
+                      <input value={dxRadSearch} onChange={e=>{setDxRadSearch(e.target.value);if(dxRadiologist){setDxRadiologist("");setSelectedPtId("");setPtSearch("");}}}
+                        placeholder="Type to search radiologists…" className={INP}/>
+                      {!dxRadiologist&&(
+                        <div className="max-h-44 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-50">
+                          {radiologists.filter(u=>!dxRadSearch||u.full_name.toLowerCase().includes(dxRadSearch.toLowerCase())||u.email.toLowerCase().includes(dxRadSearch.toLowerCase())).slice(0,8).map(u=>(
+                            <button key={u.id} onClick={()=>{setDxRadiologist(u.id);setDxRadSearch(u.full_name);setSelectedPtId("");setPtSearch("");}}
+                              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{backgroundColor:DARK_GREEN}}>{u.full_name.charAt(0)}</div>
+                              <div><p className="text-sm font-bold text-slate-800">{u.full_name}</p><p className="text-[10px] text-slate-400">{u.hospital||u.email}</p></div>
+                            </button>
+                          ))}
+                          {radiologists.filter(u=>!dxRadSearch||u.full_name.toLowerCase().includes(dxRadSearch.toLowerCase())||u.email.toLowerCase().includes(dxRadSearch.toLowerCase())).length===0&&(
+                            <p className="px-4 py-3 text-sm text-slate-400">No approved radiologists found</p>
+                          )}
+                        </div>
+                      )}
+                      {dxRadiologist&&(()=>{const u=apiUsers.find(r=>r.id===dxRadiologist);return u?(<div className="flex items-center justify-between p-3 rounded-2xl" style={{background:"#F0FDF4",border:`1.5px solid ${BRAND}`}}>
+                        <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{u.full_name.charAt(0)}</div><div><p className="text-sm font-bold text-emerald-800">{u.full_name}</p><p className="text-[10px] text-emerald-600">{u.hospital||u.email}</p></div></div>
+                        <button onClick={()=>{setDxRadiologist("");setDxRadSearch("");setSelectedPtId("");setPtSearch("");}} className="text-xs text-slate-400 hover:text-red-500 font-bold px-2">✕</button>
+                      </div>):null;})()}
                     </div>
 
-                    {/* X-ray upload */}
-                    <div onClick={()=>fileRef.current?.click()} className="border-2 border-dashed rounded-3xl p-8 text-center cursor-pointer transition-colors" style={{borderColor:xPrev?"#38A169":"#E2E8F0",backgroundColor:xPrev?"#F0FDF4":"#FAFAFA"}}>
-                      {xPrev?<img src={xPrev} alt="X-ray" className="max-h-52 mx-auto rounded-2xl shadow-md object-contain"/>
-                        :<div className="space-y-3 float-it"><div className="text-4xl">🩻</div><div className="text-sm font-bold text-slate-500">Click to upload X-ray</div><div className="text-xs text-slate-400">JPG or PNG</div></div>}
-                      <input ref={fileRef} type="file" accept="image/jpeg,image/png" onChange={handleFile} className="hidden"/>
+                    {/* ── Step 2: Patient (locked until radiologist set) ── */}
+                    <div className={`space-y-3 transition-opacity ${dxRadiologist?"opacity-100":"opacity-40 pointer-events-none"}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`step-ring ${selectedPtId?"done":dxRadiologist?"active":"idle"}`}>{selectedPtId?"✓":"2"}</div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">Select Patient</p>
+                          <p className="text-[11px] text-slate-400">{dxRadiologist?`${filteredPatients.length} patient(s) under this radiologist`:"Select radiologist first"}</p>
+                        </div>
+                      </div>
+                      <input value={ptSearch} onChange={e=>{setPtSearch(e.target.value);setSelectedPtId("");}} placeholder="Type to search patients…" className={INP} disabled={!dxRadiologist}/>
+                      {dxRadiologist&&!selectedPtId&&(
+                        <div className="max-h-44 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-50">
+                          {filteredPatients.filter(p=>!ptSearch||p.name.toLowerCase().includes(ptSearch.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(ptSearch))).slice(0,10).map(p=>(
+                            <button key={p.id} onClick={()=>{setSelectedPtId(p.id);setPtSearch(p.name);}}
+                              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors">
+                              <div><p className="text-sm font-bold text-slate-800">{p.name}</p><p className="text-[10px] text-slate-400 font-mono">{p.patient_ref_id||"No NID"}{p.hospital?` · ${p.hospital}`:""}</p></div>
+                            </button>
+                          ))}
+                          {filteredPatients.filter(p=>!ptSearch||p.name.toLowerCase().includes(ptSearch.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(ptSearch))).length===0&&(
+                            <p className="px-4 py-3 text-sm text-slate-400">{filteredPatients.length===0?"No patients registered for this radiologist yet":"No match"}</p>
+                          )}
+                        </div>
+                      )}
+                      {selectedPtId&&(()=>{const p=patients.find(pt=>pt.id===selectedPtId);return p?(<div className="flex items-center justify-between p-3 rounded-2xl" style={{background:"#EFF6FF",border:"1.5px solid #BFDBFE"}}>
+                        <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold bg-blue-600">{p.name.charAt(0)}</div><div><p className="text-sm font-bold text-blue-800">{p.name}</p><p className="text-[10px] text-blue-500 font-mono">{p.patient_ref_id||"—"}</p></div></div>
+                        <button onClick={()=>{setSelectedPtId("");setPtSearch("");}} className="text-xs text-slate-400 hover:text-red-500 font-bold px-2">✕</button>
+                      </div>):null;})()}
+                    </div>
+
+                    {/* ── Step 3: Upload (locked until patient set) ── */}
+                    <div className={`space-y-3 transition-opacity ${selectedPtId?"opacity-100":"opacity-40 pointer-events-none"}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`step-ring ${xFile?"done":selectedPtId?"active":"idle"}`}>{xFile?"✓":"3"}</div>
+                        <div><p className="text-sm font-bold text-slate-800">Upload X-ray</p><p className="text-[11px] text-slate-400">JPG or PNG chest X-ray</p></div>
+                      </div>
+                      <div onClick={()=>selectedPtId&&fileRef.current?.click()} className="border-2 border-dashed rounded-3xl p-7 text-center cursor-pointer transition-colors" style={{borderColor:xPrev?"#38A169":"#E2E8F0",backgroundColor:xPrev?"#F0FDF4":"#FAFAFA"}}>
+                        {xPrev?<img src={xPrev} alt="X-ray" className="max-h-48 mx-auto rounded-2xl shadow-md object-contain"/>
+                          :<div className="space-y-2 float-it"><div className="text-4xl">🩻</div><div className="text-sm font-bold text-slate-500">Click to upload X-ray</div></div>}
+                        <input ref={fileRef} type="file" accept="image/jpeg,image/png" onChange={handleFile} className="hidden"/>
+                      </div>
                     </div>
 
                     {predInfo&&<div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-800 text-sm font-semibold">{predInfo}</div>}
                     {predErr&&<div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm font-semibold">{predErr}</div>}
 
-                    <button onClick={runPred} disabled={predicting||!xFile||!selectedPtId} className="btn-s w-full py-4 rounded-full text-white font-bold text-sm disabled:opacity-40" style={{backgroundColor:DARK_GREEN,boxShadow:`0 8px 24px ${DARK_GREEN}44`}}>
+                    <button onClick={runPred} disabled={predicting||!xFile||!selectedPtId||!dxRadiologist} className="btn-s w-full py-4 rounded-full text-white font-bold text-sm disabled:opacity-40" style={{backgroundColor:DARK_GREEN,boxShadow:`0 8px 24px ${DARK_GREEN}44`}}>
                       {predicting?"Analyzing X-ray…":"▶ Run AI Diagnosis"}
                     </button>
                   </Panel>
 
                   <Panel className="p-8">
                     <h3 className="text-lg font-bold text-slate-800 border-b border-slate-100 pb-4 mb-6">Result</h3>
-                    {!pred&&!predicting&&<div className="h-64 flex flex-col items-center justify-center text-slate-300 gap-3"><svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><p className="text-sm font-medium">Awaiting scan data</p></div>}
+                    {!pred&&!predicting&&<div className="h-64 flex flex-col items-center justify-center text-slate-300 gap-3"><svg width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><p className="text-sm font-medium">Complete all 3 steps to run a scan</p></div>}
                     {predicting&&<div className="h-64 flex items-center justify-center"><div className="w-12 h-12 border-4 border-slate-100 rounded-full animate-spin" style={{borderTopColor:ACCENT_GREEN}}/></div>}
-                    {pred&&(()=>{const c=CLS_META[pred.classification]||CLS_META["Unknown"];const pt=patients.find(p=>p.id===selectedPtId);return(
-                      <div className="space-y-6 anim-pop">
-                        {pt&&<div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{pt.name.charAt(0)}</div><div><p className="text-sm font-bold text-slate-800">{pt.name}</p><p className="text-[10px] text-slate-400">Diagnosed by Admin · {new Date().toLocaleString("en-RW",{timeZone:"Africa/Kigali"})}</p></div></div>}
+                    {pred&&(()=>{
+                      const c=CLS_META[pred.classification]||CLS_META["Unknown"];
+                      const pt=patients.find(p=>p.id===selectedPtId);
+                      const rad=apiUsers.find(u=>u.id===dxRadiologist);
+                      return(
+                      <div className="space-y-5 anim-pop">
+                        {/* Who / patient summary */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {rad&&<div className="p-3 rounded-2xl bg-slate-50 border border-slate-100"><p className="text-[9px] font-bold uppercase text-slate-300 mb-1">Radiologist</p><p className="text-sm font-bold text-slate-800">{rad.full_name}</p></div>}
+                          {pt&&<div className="p-3 rounded-2xl bg-slate-50 border border-slate-100"><p className="text-[9px] font-bold uppercase text-slate-300 mb-1">Patient</p><p className="text-sm font-bold text-slate-800">{pt.name}</p></div>}
+                        </div>
                         <div className="p-6 rounded-3xl text-center" style={{backgroundColor:c.bg,border:`2px solid ${c.bar}`}}>
                           <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{color:c.text}}>AI Classification</p>
                           <h2 className="text-5xl font-black" style={{color:c.text}}>{pred.classification}</h2>
                           <p className="text-sm font-bold mt-1.5" style={{color:c.text,opacity:.7}}>{pred.confidence_score.toFixed(1)}% Confidence</p>
                         </div>
-                        <div className="space-y-4 px-1">
+                        <div className="space-y-3 px-1">
                           {[{l:"Normal",v:pred.normal_probability,c:CLS_META["Normal"].bar},{l:"Pneumonia",v:pred.pneumonia_probability,c:CLS_META["Pneumonia"].bar},{l:"Tuberculosis",v:pred.tb_probability,c:CLS_META["Tuberculosis"].bar}].map(r=>(
-                            <div key={r.l}><div className="flex justify-between text-[12px] font-bold mb-1.5"><span className="text-slate-500">{r.l}</span><span style={{color:r.c}}>{(r.v*100).toFixed(1)}%</span></div><div className="h-2.5 rounded-full overflow-hidden" style={{backgroundColor:`${r.c}20`}}><div className="bar-in h-full rounded-full" style={{"--w":`${r.v*100}%`,width:`${r.v*100}%`,backgroundColor:r.c} as any}/></div></div>
+                            <div key={r.l}><div className="flex justify-between text-[12px] font-bold mb-1"><span className="text-slate-500">{r.l}</span><span style={{color:r.c}}>{(r.v*100).toFixed(1)}%</span></div><div className="h-2.5 rounded-full overflow-hidden" style={{backgroundColor:`${r.c}20`}}><div className="bar-in h-full rounded-full" style={{"--w":`${r.v*100}%`,width:`${r.v*100}%`,backgroundColor:r.c} as any}/></div></div>
                           ))}
                         </div>
-                        {savedDx&&<div className="p-4 rounded-2xl text-sm font-bold" style={{backgroundColor:CLS_META["Normal"].bg,border:`1px solid ${CLS_META["Normal"].bar}`,color:CLS_META["Normal"].text}}>Diagnosis #{savedDx.id} saved — recorded as Admin diagnosis</div>}
-                        <button onClick={()=>{setPred(null);setSavedDx(null);setSavedPt(null);setXFile(null);setXPrev(null);setSelectedPtId("");setPtSearch("");setPredErr("");setPredInfo("");}} className="w-full py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors">New Scan</button>
+                        {savedDx&&<div className="p-4 rounded-2xl text-sm font-bold" style={{backgroundColor:CLS_META["Normal"].bg,border:`1px solid ${BRAND}`,color:"#14532D"}}>✅ Diagnosis #{savedDx.id} saved — recorded under {rad?.full_name}</div>}
+                        <button onClick={()=>{setPred(null);setSavedDx(null);setSavedPt(null);setXFile(null);setXPrev(null);setSelectedPtId("");setPtSearch("");setDxRadiologist("");setDxRadSearch("");setPredErr("");setPredInfo("");}} className="w-full py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors">New Scan</button>
                       </div>
                     );})()}
                   </Panel>
@@ -738,73 +769,140 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* ══════════════════════════════════
-                RETRAIN
-            ══════════════════════════════════ */}
+            {/* ══ RETRAIN — unified brand colours, 1-class minimum ══ */}
             {tab==="retrain"&&(
               <div className="space-y-6 max-w-[1200px] anim-in">
-                <PageHead title="Retrain AI Model" sub="Upload labelled X-rays — minimum 3 per class"/>
+                <PageHead title="Retrain AI Model" sub={`Upload labelled X-rays and trigger retraining — minimum ${RT_MIN} images per class`}/>
+
                 <div className="grid lg:grid-cols-2 gap-7">
-                  <Panel className="p-8 space-y-5">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Step 1 — Choose Label</p>
+                  {/* Left: upload panel */}
+                  <Panel className="p-8 space-y-6">
+
+                    {/* Step 1 — choose label */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="step-ring active">1</div>
+                        <div><p className="text-sm font-bold text-slate-800">Choose Class Label</p><p className="text-[11px] text-slate-400">Pick which class these images belong to</p></div>
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
-                        {(["Normal","Pneumonia","Tuberculosis","Unknown"] as const).map(l=>{const active=rtLabel===l;const col=CLS_META[l].bar;return(
-                          <button key={l} onClick={()=>{setRtLabel(l);setRtFiles([]);}} className="btn-s py-3.5 rounded-2xl text-sm font-bold border-2 transition-all" style={active?{backgroundColor:col,color:"#fff",borderColor:col,boxShadow:`0 6px 18px ${col}44`}:{backgroundColor:"white",borderColor:"#E2E8F0",color:"#94a3b8"}}>
-                            {l}{uploadedC[l]?<span className="block text-[9px] font-normal opacity-70 mt-0.5">{uploadedC[l]} uploaded</span>:null}
-                          </button>);
+                        {(["Normal","Pneumonia","Tuberculosis","Unknown"] as const).map(l=>{
+                          const active=rtLabel===l;
+                          const n=stagedC[l]||0;
+                          const ready=n>=RT_MIN;
+                          return(
+                            <button key={l} onClick={()=>{setRtLabel(l);setRtFiles([]);}}
+                              className="btn-s py-4 rounded-2xl text-sm font-bold border-2 transition-all text-left px-4 relative"
+                              style={active
+                                ?{backgroundColor:DARK_GREEN,color:"#fff",borderColor:DARK_GREEN,boxShadow:`0 6px 18px ${DARK_GREEN}33`}
+                                :{backgroundColor:"white",borderColor:n>0?"#86EFAC":"#E2E8F0",color:"#475569"}}>
+                              <span>{l}</span>
+                              {n>0&&<span className="block text-[10px] font-semibold mt-0.5 opacity-80">{n} staged {ready?"✓":`(need ${RT_MIN-n} more)`}</span>}
+                              {n===0&&<span className="block text-[10px] opacity-50 mt-0.5">Not uploaded</span>}
+                            </button>
+                          );
                         })}
                       </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Step 2 — Upload for "{rtLabel}"</p>
-                      <div onDragOver={e=>{e.preventDefault();setRtDrag(true);}} onDragLeave={()=>setRtDrag(false)}
+
+                    {/* Step 2 — upload files */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="step-ring active">2</div>
+                        <div><p className="text-sm font-bold text-slate-800">Upload images for <span style={{color:DARK_GREEN}}>"{rtLabel}"</span></p><p className="text-[11px] text-slate-400">Minimum {RT_MIN} images · JPG or PNG</p></div>
+                      </div>
+                      <div
+                        onDragOver={e=>{e.preventDefault();setRtDrag(true);}}
+                        onDragLeave={()=>setRtDrag(false)}
                         onDrop={e=>{e.preventDefault();setRtDrag(false);setRtFiles(Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/")));}}
                         onClick={()=>rtRef.current?.click()}
                         className="border-2 border-dashed rounded-3xl p-7 text-center cursor-pointer transition-all"
-                        style={{borderColor:rtDrag?"#2563EB":rtFiles.length>0?"#2563EB":"#E2E8F0",backgroundColor:rtDrag||rtFiles.length>0?"#EFF6FF":"#FAFAFA"}}>
-                        {rtFiles.length>0?<div><div className="text-lg font-bold text-blue-700">{rtFiles.length} file{rtFiles.length!==1?"s":""} ready</div><div className="text-xs text-slate-400 mt-1">Click to change</div></div>
-                          :<div className="float-it"><div className="text-sm font-bold text-slate-500">Drop files or click to browse</div><div className="text-xs text-slate-400 mt-1">JPG, PNG — multiple files OK</div></div>}
+                        style={{borderColor:rtDrag?"#1C5438":rtFiles.length>0?"#86EFAC":"#E2E8F0",backgroundColor:rtDrag||rtFiles.length>0?"#F0FDF4":"#FAFAFA"}}>
+                        {rtFiles.length>0
+                          ?<div><p className="text-base font-bold text-emerald-700">{rtFiles.length} file{rtFiles.length!==1?"s":""} selected</p><p className="text-xs text-slate-400 mt-1">Click to change</p></div>
+                          :<div className="float-it"><p className="text-sm font-bold text-slate-500">Drop files here or click to browse</p><p className="text-xs text-slate-400 mt-1">Multiple files OK</p></div>}
                         <input ref={rtRef} type="file" accept="image/*" multiple onChange={e=>setRtFiles(Array.from(e.target.files||[]))} className="hidden"/>
                       </div>
+                      <button onClick={uploadForRetrain} disabled={uploading||!rtFiles.length}
+                        className="btn-s w-full py-3.5 rounded-full text-white font-bold text-sm disabled:opacity-40"
+                        style={{backgroundColor:DARK_GREEN,boxShadow:`0 6px 18px ${DARK_GREEN}33`}}>
+                        {uploading?"Uploading…":rtFiles.length?`Upload ${rtFiles.length} file${rtFiles.length!==1?"s":""} as "${rtLabel}"`:"Select files first"}
+                      </button>
                     </div>
-                    <button onClick={uploadForRetrain} disabled={uploading||!rtFiles.length} className="btn-s w-full py-4 rounded-full text-white font-bold disabled:opacity-40" style={{backgroundColor:"#2563EB",boxShadow:"0 8px 24px rgba(37,99,235,.35)"}}>
-                      {uploading?"Uploading…":rtFiles.length?`Upload ${rtFiles.length} file(s) as "${rtLabel}"`:"Select files first"}
-                    </button>
-                    {(()=>{const all={...stagedC};const cls=Object.keys(all).filter(k=>all[k]>0);const notReady=cls.filter(k=>all[k]<3);const canTrigger=cls.length>=2&&notReady.length===0;return(<>
-                      <div className="rounded-2xl p-5 space-y-2" style={{background:"#F8FAFC",border:"1px solid #E2E8F0"}}>
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Staged Images</p>
-                        {["Normal","Pneumonia","Tuberculosis","Unknown"].map(l=>{const n=all[l]||0;if(n===0)return<div key={l} className="flex justify-between"><span className="text-xs text-slate-400">{l}</span><span className="text-xs italic text-slate-300">Not uploaded</span></div>;const ok=n>=3;return<div key={l} className="flex justify-between"><span className="text-xs font-bold text-slate-700">{l}</span><span className={`text-xs font-bold ${ok?"text-green-600":"text-amber-600"}`}>{n} img{n!==1?"s":""} {ok?"✓":`— need ${3-n} more`}</span></div>;})}
-                        {cls.length===0&&<p className="text-xs italic text-slate-300">Nothing staged yet</p>}
+
+                    {/* Step 3 — staged summary + trigger */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`step-ring ${canTrigger?"active":"idle"}`}>3</div>
+                        <div><p className="text-sm font-bold text-slate-800">Start Retraining</p><p className="text-[11px] text-slate-400">Need ≥{RT_MIN} images in at least 1 class</p></div>
                       </div>
-                      <div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Step 3 — Start Training</p>
-                      <button onClick={triggerRetrain} disabled={!canTrigger} className="btn-s w-full py-4 rounded-full text-white font-bold disabled:opacity-40" style={{backgroundColor:"#7C3AED",boxShadow:"0 8px 24px rgba(124,58,237,.35)"}}>
-                        {canTrigger?" Trigger Retraining":notReady.length>0?`Need more (${notReady.join(", ")})`:"Upload to 2+ classes first"}
-                      </button></div>
-                    </>);})()}
+
+                      {/* Staged breakdown — all using brand palette */}
+                      <div className="rounded-2xl p-4 space-y-2" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Staged Summary</p>
+                        {(["Normal","Pneumonia","Tuberculosis","Unknown"] as const).map(l=>{
+                          const n=stagedC[l]||0;
+                          const ready=n>=RT_MIN;
+                          return(
+                            <div key={l} className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-slate-600">{l}</span>
+                              {n===0
+                                ?<span className="text-[10px] italic text-slate-300">Not uploaded</span>
+                                :<div className="flex items-center gap-2">
+                                  <div className="h-1.5 w-20 rounded-full overflow-hidden bg-slate-200"><div className="h-full rounded-full" style={{width:`${Math.min((n/RT_MIN)*100,100)}%`,backgroundColor:ready?"#38A169":"#F59E0B"}}/></div>
+                                  <span className={`text-[10px] font-bold ${ready?"text-emerald-600":"text-amber-600"}`}>{n} {ready?"✓":`/ ${RT_MIN}`}</span>
+                                </div>}
+                            </div>
+                          );
+                        })}
+                        {stagedClasses.length===0&&<p className="text-xs italic text-slate-400 text-center py-1">Upload images to see progress</p>}
+                      </div>
+
+                      <button onClick={triggerRetrain} disabled={!canTrigger}
+                        className="btn-s w-full py-4 rounded-full text-white font-bold text-sm disabled:opacity-40"
+                        style={{backgroundColor:canTrigger?"#1C5438":"#94A3B8",boxShadow:canTrigger?`0 8px 24px ${DARK_GREEN}44`:"none"}}>
+                        {canTrigger
+                          ?`⚡ Trigger Retraining (${readyClasses.length} class${readyClasses.length!==1?"es":""})`
+                          :`Upload ≥${RT_MIN} images to 1+ class first`}
+                      </button>
+                    </div>
+
                     {rtMsg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${rtOk?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{rtMsg}</div>}
                   </Panel>
+
+                  {/* Right: job history */}
                   <Panel className="p-8 space-y-4">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Retrain Jobs</p>
-                    {retrainJobs.length===0?<div className="h-40 flex items-center justify-center text-sm text-slate-400 float-it">No retrain jobs yet</div>:(
-                      <div className="space-y-3">{retrainJobs.map(j=>{const c=CLS_META[j.status==="completed"?"Normal":j.status==="failed"?"Tuberculosis":"Unknown"];return(
-                        <div key={j.id} className="p-5 rounded-2xl" style={{backgroundColor:c.bg,border:`1.5px solid ${c.border}`}}>
-                          <div className="flex items-center justify-between mb-2"><span className="text-base font-bold" style={{color:c.text}}>Job #{j.id}</span><StatusBadge status={j.status}/></div>
-                          {j.final_val_acc&&<p className="text-sm text-slate-600 mb-1">Accuracy: <strong className="text-green-600">{(j.final_val_acc*100).toFixed(1)}%</strong></p>}
-                          {j.error_message&&<div className="mt-2 p-2.5 rounded-xl text-xs font-semibold bg-red-100 text-red-700">{j.error_message}</div>}
-                          <p className="text-[9px] mt-2 text-slate-400">{fmt(j.created_at)}</p>
-                        </div>
-                      );})}
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Retrain Job History</p>
+                      <button onClick={loadAll} className="text-[11px] text-slate-400 hover:text-slate-700 font-semibold">Refresh</button>
                     </div>
-                    )}
+                    {retrainJobs.length===0
+                      ?<div className="h-40 flex flex-col items-center justify-center text-slate-300 gap-2 float-it"><svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg><p className="text-sm">No retrain jobs yet</p></div>
+                      :<div className="space-y-3 overflow-y-auto max-h-[500px]">{retrainJobs.map(j=>{
+                        const isOk=j.status==="completed"; const isFail=j.status==="failed"; const isRun=j.status==="processing"||j.status==="pending";
+                        const borderCol=isOk?"#86EFAC":isFail?"#FCA5A5":"#BFDBFE";
+                        const bgCol=isOk?"#F0FDF4":isFail?"#FEF2F2":"#EFF6FF";
+                        const textCol=isOk?"#14532D":isFail?"#7F1D1D":"#1E40AF";
+                        return(
+                          <div key={j.id} className="p-5 rounded-2xl" style={{backgroundColor:bgCol,border:`1.5px solid ${borderCol}`}}>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                {isRun&&<div className="w-3 h-3 rounded-full pdot" style={{backgroundColor:"#60A5FA"}}/>}
+                                <span className="text-base font-bold" style={{color:textCol}}>Job #{j.id}</span>
+                              </div>
+                              <StatusBadge status={j.status}/>
+                            </div>
+                            {j.final_val_acc&&<p className="text-sm mb-1" style={{color:textCol}}>Validation accuracy: <strong>{(j.final_val_acc*100).toFixed(1)}%</strong></p>}
+                            {j.error_message&&<div className="mt-2 p-2.5 rounded-xl text-xs font-semibold bg-red-100 text-red-700 break-words">{j.error_message}</div>}
+                            <p className="text-[9px] mt-2 text-slate-400">{fmt(j.created_at)}</p>
+                          </div>
+                        );
+                      })}</div>}
                   </Panel>
                 </div>
               </div>
             )}
 
-            {/* ══════════════════════════════════
-                MODEL
-            ══════════════════════════════════ */}
+            {/* ══ MODEL ══ */}
             {tab==="model"&&(
               <div className="space-y-5 max-w-[900px] anim-in">
                 <PageHead title="AI Model" sub="ResNet-50 production model"/>
@@ -821,20 +919,18 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* ══════════════════════════════════
-                PASSWORDS
-            ══════════════════════════════════ */}
+            {/* ══ PASSWORDS ══ */}
             {tab==="passwords"&&(
               <div className="space-y-5 max-w-[1100px] anim-in">
-                <PageHead title="Password Management" sub="Set or generate passwords for approved users"/>
+                <PageHead title="Password Management" sub="Set or generate passwords for approved radiologists"/>
                 <Tbl heads={["User","Email","Status","Last Action","Actions"]} empty={apiUsers.filter(u=>u.status==="approved").length===0?"No approved users yet":undefined}>
                   {apiUsers.filter(u=>u.status==="approved").map(u=>{const last=pwLogs.filter(l=>l.entity_id===u.id).sort((a,b)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime())[0];return(
                     <TR key={u.id}>
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
                       <TD mono>{u.email}</TD>
                       <TD><StatusBadge status="approved"/></TD>
-                      <TD mono>{last?`${last.action==="admin_generate_password"?"Generated":" Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
-                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">Manage</button></TD>
+                      <TD mono>{last?`${last.action==="admin_generate_password"?"🔑 Generated":"✏️ Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
+                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Manage</button></TD>
                     </TR>);
                   })}
                 </Tbl>
@@ -844,7 +940,7 @@ export default function AdminDashboard() {
                     <Tbl heads={["Action","Target","Admin","When"]}>
                       {pwLogs.map(l=>{const target=apiUsers.find(u=>u.id===l.entity_id);return(
                         <TR key={l.id}>
-                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"Auto":" Manual"}</span></TD>
+                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"🔑 Auto":"✏️ Manual"}</span></TD>
                           <TD>{target?.full_name??"—"}</TD>
                           <TD>{apiUsers.find(u=>u.id===l.user_id)?.full_name??"Admin"}</TD>
                           <TD mono>{fmt(l.timestamp)}</TD>
@@ -856,9 +952,7 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* ══════════════════════════════════
-                AUDIT
-            ══════════════════════════════════ */}
+            {/* ══ AUDIT ══ */}
             {tab==="audit"&&(
               <div className="space-y-5 max-w-[1100px] anim-in">
                 <PageHead title="Audit Log" sub={`Last ${auditLogs.length} system events`}/>
