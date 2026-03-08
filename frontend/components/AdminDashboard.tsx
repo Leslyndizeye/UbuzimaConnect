@@ -195,7 +195,7 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
               <div className="flex items-center gap-2"><code className="flex-1 text-sm font-bold font-mono px-3 py-2 rounded-xl" style={{background:"#DCFCE7",color:"#14532D"}}>{gen}</code><button onClick={()=>{navigator.clipboard.writeText(gen);setCopied(true);setTimeout(()=>setCopied(false),2000);}} className="btn-s px-4 py-2 rounded-full text-white text-xs font-bold" style={{backgroundColor:DARK_GREEN}}>{copied?"✓":"Copy"}</button></div>
             </div>}
           </div>
-          <div className="p-5 rounded-3xl space-y-3" style={{background:"#EFF6FF",border:"1px solid #BFDBFE"}}>
+          <div className="p-5 rounded-3xl space-y-3" style={{background:"#EFF6FF",border:"1px solid #86EFAC"}}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Set Custom</p>
             <div className="relative"><input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 characters" className={INP_RECT+" pr-16"}/><button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold px-2 py-1 rounded-xl bg-slate-200 text-slate-500">{show?"Hide":"Show"}</button></div>
             <button onClick={setManual} disabled={loading||!hasAuth||!pw} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:"#2563EB"}}>Set Password</button>
