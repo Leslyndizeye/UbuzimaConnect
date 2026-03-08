@@ -739,7 +739,7 @@ export default function AdminDashboard() {
                             <div key={r.l}><div className="flex justify-between text-[12px] font-bold mb-1.5"><span className="text-slate-500">{r.l}</span><span style={{color:r.c}}>{(r.v*100).toFixed(1)}%</span></div><div className="h-2.5 rounded-full overflow-hidden" style={{backgroundColor:`${r.c}20`}}><div className="bar-in h-full rounded-full" style={{"--w":`${r.v*100}%`,width:`${r.v*100}%`,backgroundColor:r.c} as any}/></div></div>
                           ))}
                         </div>
-                        {savedDx&&<div className="p-4 rounded-2xl text-sm font-bold" style={{backgroundColor:CLS_META["Normal"].bg,border:`1px solid ${CLS_META["Normal"].bar}`,color:CLS_META["Normal"].text}}>✅ Diagnosis #{savedDx.id} saved — recorded as Admin diagnosis</div>}
+                        {savedDx&&<div className="p-4 rounded-2xl text-sm font-bold" style={{backgroundColor:CLS_META["Normal"].bg,border:`1px solid ${CLS_META["Normal"].bar}`,color:CLS_META["Normal"].text}}>Diagnosis #{savedDx.id} saved — recorded as Admin diagnosis</div>}
                         <button onClick={()=>{setPred(null);setSavedDx(null);setSavedPt(null);setXFile(null);setXPrev(null);setSelectedPtId("");setPtSearch("");setPredErr("");setPredInfo("");}} className="w-full py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors">New Scan</button>
                       </div>
                     );})()}
