@@ -324,7 +324,7 @@ export default function AdminDashboard() {
   return (
     <>
       <style>{CSS}</style>
-      <div className="min-h-[90vh] flex text-slate-800" style={{backgroundColor:BG_APP}}>
+      <div className="min-h-[80vh] flex text-slate-800" style={{backgroundColor:BG_APP}}>
 
         {/* ── MODALS ── */}
         {pwUser&&<PwModal user={pwUser} onClose={()=>setPwUser(null)}/>}
