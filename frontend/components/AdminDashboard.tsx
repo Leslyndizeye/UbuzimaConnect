@@ -381,7 +381,7 @@ export default function AdminDashboard() {
           </nav>
 
           {/* Rwanda time + status card */}
-          <div className="p-4 mt-auto">
+          {/* <div className="p-4 mt-auto">
             <div className="wavy-bg rounded-[24px] p-5 text-white shadow-xl relative overflow-hidden">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-2 h-2 rounded-full pdot" style={{backgroundColor:"#4ADE80"}}/>
@@ -392,7 +392,7 @@ export default function AdminDashboard() {
                 Refresh Data
               </button>
             </div>
-          </div>
+          </div> */}
 
           {/* Sign out */}
           <button onClick={()=>supabase.auth.signOut()} className="mx-4 mb-4 flex items-center gap-3 px-5 py-3 rounded-2xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors text-[13px] font-semibold">
