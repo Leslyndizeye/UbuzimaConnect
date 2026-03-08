@@ -722,7 +722,7 @@ export default function AdminDashboard() {
                       </div>
                       <div onClick={()=>selectedPtId&&fileRef.current?.click()} className="border-2 border-dashed rounded-3xl p-7 text-center cursor-pointer transition-colors" style={{borderColor:xPrev?"#38A169":"#E2E8F0",backgroundColor:xPrev?"#F0FDF4":"#FAFAFA"}}>
                         {xPrev?<img src={xPrev} alt="X-ray" className="max-h-48 mx-auto rounded-2xl shadow-md object-contain"/>
-                          :<div className="space-y-2 float-it"><div className="text-4xl">🩻</div><div className="text-sm font-bold text-slate-500">Click to upload X-ray</div></div>}
+                          :<div className="space-y-2 float-it"><div className="text-4xl"></div><div className="text-sm font-bold text-slate-500">Click to upload X-ray</div></div>}
                         <input ref={fileRef} type="file" accept="image/jpeg,image/png" onChange={handleFile} className="hidden"/>
                       </div>
                     </div>
