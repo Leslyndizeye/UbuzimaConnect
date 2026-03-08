@@ -1,63 +1,113 @@
 // components/AuthPage.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { gsap } from 'gsap';
 import { supabase } from './supabaseConfig';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 
-async function registerWithBackend(token: string, profile: any) {
-  const res = await fetch(`${API_BASE}/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(profile),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'Registration failed');
+type Mode = 'login' | 'register' | 'forgot' | 'reset';
+type Language = 'En' | 'Fr';
+
+const T = {
+  En: {
+    brand: 'Ubuzima Connect',
+    loginTitle: 'Clinical Sign In',
+    loginDesc: 'Access the sovereign diagnostic network.',
+    registerTitle: 'Request Access',
+    registerDesc: 'Join Rwanda\'s clinical AI infrastructure.',
+    forgotTitle: 'Reset Access',
+    forgotDesc: 'We\'ll send a link to your institutional email.',
+    resetTitle: 'Set Your Password',
+    resetDesc: 'Your account has been approved. Choose a strong password.',
+    signIn: 'Sign In',
+    submitApp: 'Submit Application',
+    sendReset: 'Send Reset Link',
+    setPassword: 'Set Password & Continue',
+    signingIn: 'Signing in…',
+    submitting: 'Submitting…',
+    sending: 'Sending…',
+    setting: 'Setting password…',
+    forgotLink: 'Reset password?',
+    backToLogin: '← Back to Sign In',
+    switchToRegister: 'New here? Request Access',
+    switchToLogin: 'Already a member? Sign In',
+    howItWorks: 'How it works:',
+    howItWorksDesc: 'Submit your details. Once an admin approves you, you\'ll receive an email to set your password.',
+    noPasswordNote: 'No password needed now — you\'ll set it after approval.',
+    insightTitle: 'Clinical Sovereignty',
+    insightDesc: 'High-precision diagnostic protocol calibrated for Rwanda\'s infrastructure. Free for all verified clinicians in 2026.',
+    rights: '© 2026 Ubuzima Connect',
+  },
+  Fr: {
+    brand: 'Ubuzima Connect',
+    loginTitle: 'Connexion Clinique',
+    loginDesc: 'Accédez au réseau de diagnostic souverain.',
+    registerTitle: 'Demander l\'Accès',
+    registerDesc: 'Rejoignez l\'infrastructure IA clinique du Rwanda.',
+    forgotTitle: 'Réinitialiser',
+    forgotDesc: 'Un lien sera envoyé à votre email institutionnel.',
+    resetTitle: 'Définir votre Mot de Passe',
+    resetDesc: 'Votre compte a été approuvé. Choisissez un mot de passe.',
+    signIn: 'Connexion',
+    submitApp: 'Soumettre la Demande',
+    sendReset: 'Envoyer le Lien',
+    setPassword: 'Définir le Mot de Passe',
+    signingIn: 'Connexion…',
+    submitting: 'Envoi…',
+    sending: 'Envoi…',
+    setting: 'Enregistrement…',
+    forgotLink: 'Réinitialiser?',
+    backToLogin: '← Retour à la connexion',
+    switchToRegister: 'Nouveau? Rejoindre',
+    switchToLogin: 'Déjà membre? Connexion',
+    howItWorks: 'Comment ça marche:',
+    howItWorksDesc: 'Soumettez vos détails. Une fois approuvé par l\'admin, vous recevrez un email pour définir votre mot de passe.',
+    noPasswordNote: 'Pas de mot de passe maintenant — vous le définirez après approbation.',
+    insightTitle: 'Souveraineté Clinique',
+    insightDesc: 'Protocole de diagnostic calibré pour le Rwanda. Gratuit pour les cliniciens vérifiés en 2026.',
+    rights: '© 2026 Ubuzima Connect | Médical Souverain',
   }
-  return res.json();
-}
+};
 
-function EyeBtn({ show, onToggle }: { show: boolean; onToggle: () => void }) {
-  return (
-    <button type="button" onClick={onToggle}
-      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors focus:outline-none">
-      {show ? (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-        </svg>
-      ) : (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-        </svg>
-      )}
-    </button>
-  );
-}
-
-function Field({ label, type = 'text', value, onChange, placeholder, required = true }: any) {
+function InputField({ label, type = 'text', value, onChange, placeholder, required = true }: {
+  label: string; type?: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; required?: boolean;
+}) {
   const [show, setShow] = useState(false);
   const isPw = type === 'password';
   return (
-    <div className="space-y-1">
-      <label className="block text-xs font-bold uppercase tracking-widest text-gray-400">{label}</label>
+    <div className="space-y-1 auth-fade">
+      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">{label}</label>
       <div className="relative">
         <input
           type={isPw ? (show ? 'text' : 'password') : type}
           value={value} onChange={e => onChange(e.target.value)}
           placeholder={placeholder} required={required}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition-all pr-10"
+          className="w-full px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-gray-900 text-xs font-medium outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 transition-all placeholder:text-gray-300 pr-10"
         />
-        {isPw && <EyeBtn show={show} onToggle={() => setShow(s => !s)} />}
+        {isPw && (
+          <button type="button" onClick={() => setShow(s => !s)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-600 transition-colors focus:outline-none">
+            {show ? (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+              </svg>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-type Mode = 'login' | 'register' | 'forgot' | 'reset';
-
 export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
   const [mode, setMode] = useState<Mode>('login');
+  const [lang, setLang] = useState<Language>('En');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [registered, setRegistered] = useState(false);
@@ -65,48 +115,53 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetUserName, setResetUserName] = useState('');
 
-  // Login
+  // Login fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // Register — NO password fields, admin approves first
+  // Register fields
   const [fullName, setFullName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
   const [hospital, setHospital] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
   const [phone, setPhone] = useState('');
   const [specialization, setSpecialization] = useState('');
   const [yearsExp, setYearsExp] = useState('');
-  const [regEmail, setRegEmail] = useState('');
 
   // Forgot
   const [forgotEmail, setForgotEmail] = useState('');
 
-  // Reset (set password from email link)
+  // Reset password
   const [newPassword, setNewPassword] = useState('');
   const [confirmNew, setConfirmNew] = useState('');
 
-  // Detect invite / recovery link — show password form immediately
+  const t = T[lang];
+
+  const clear = useCallback(() => { setError(''); setRegistered(false); setForgotSent(false); }, []);
+  const switchMode = useCallback((m: Mode) => { clear(); setMode(m); }, [clear]);
+
+  // GSAP animations on mode change
+  useEffect(() => {
+    gsap.fromTo('.auth-form-container',
+      { opacity: 0 },
+      { opacity: 1, duration: 0.35, ease: 'power2.out', clearProps: 'opacity' }
+    );
+    gsap.fromTo('.auth-fade',
+      { opacity: 0, y: 8 },
+      { opacity: 1, y: 0, stagger: 0.04, duration: 0.4, ease: 'power2.out', clearProps: 'transform,opacity' }
+    );
+  }, [mode, registered, forgotSent]);
+
+  // Detect recovery/invite link
   useEffect(() => {
     const hash = window.location.hash;
-    const isPasswordSetup = hash.includes('type=recovery') || hash.includes('type=invite');
-
-    if (isPasswordSetup) {
-      setMode('reset');
-    }
-
+    if (hash.includes('type=recovery') || hash.includes('type=invite')) setMode('reset');
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // All these events mean "user arrived from email link, needs to set password"
-      if (
-        event === 'PASSWORD_RECOVERY' ||
-        event === 'USER_UPDATED' ||
-        (event === 'SIGNED_IN' && isPasswordSetup)
-      ) {
+      if (event === 'PASSWORD_RECOVERY' || event === 'USER_UPDATED' ||
+        (event === 'SIGNED_IN' && (hash.includes('type=recovery') || hash.includes('type=invite')))) {
         setMode('reset');
-        // Fetch their name to personalize the welcome screen
         if (session?.access_token) {
-          fetch(`${API_BASE}/auth/me`, {
-            headers: { Authorization: `Bearer ${session.access_token}` },
-          })
+          fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${session.access_token}` } })
             .then(r => r.ok ? r.json() : null)
             .then(u => { if (u?.full_name) setResetUserName(u.full_name); })
             .catch(() => {});
@@ -115,8 +170,6 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
     });
     return () => subscription.unsubscribe();
   }, []);
-
-  const clear = () => { setError(''); setRegistered(false); setForgotSent(false); };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('');
@@ -128,34 +181,23 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
     finally { setLoading(false); }
   };
 
-  // Registration: no password — just collect info and save to backend as pending
-  // Admin approves → user receives email to set their password
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault(); setError('');
-    if (!licenseNumber.trim()) { setError('License number is required'); return; }
     if (!fullName.trim()) { setError('Full name is required'); return; }
+    if (!licenseNumber.trim()) { setError('License number is required'); return; }
     setLoading(true);
     try {
-      // Register in backend only — no Supabase Auth account yet
-      // Supabase Auth account is created when admin approves and sends invite email
       const res = await fetch(`${API_BASE}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           firebase_uid: `pending_${regEmail.replace('@', '_').replace('.', '_')}_${Date.now()}`,
-          email: regEmail,
-          full_name: fullName,
-          hospital,
-          license_number: licenseNumber,
-          phone_number: phone,
-          specialization,
-          years_experience: yearsExp ? parseInt(yearsExp) : null,
+          email: regEmail, full_name: fullName, hospital,
+          license_number: licenseNumber, phone_number: phone,
+          specialization, years_experience: yearsExp ? parseInt(yearsExp) : null,
         }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Registration failed');
-      }
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Registration failed'); }
       setRegistered(true);
     } catch (e: any) { setError(e.message || 'Registration failed'); }
     finally { setLoading(false); }
@@ -183,221 +225,236 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
       if (error) throw error;
       setResetSuccess(true);
       window.history.replaceState(null, '', window.location.pathname);
-      setTimeout(() => {
-        setMode('login');
-        setResetSuccess(false);
-        setNewPassword('');
-        setConfirmNew('');
-        clear();
-      }, 3000);
+      setTimeout(() => { switchMode('login'); setResetSuccess(false); setNewPassword(''); setConfirmNew(''); }, 3000);
     } catch (e: any) { setError(e.message || 'Failed to set password'); }
     finally { setLoading(false); }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen w-full bg-white flex flex-col lg:flex-row overflow-hidden" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-emerald-900 rounded-2xl mb-4 shadow-lg">
-            <svg className="w-7 h-7 text-emerald-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
-            </svg>
+      {/* ── LEFT: Form Panel ── */}
+      <div className="w-full lg:w-[45%] p-5 md:p-8 flex flex-col justify-between z-10 bg-white border-r border-gray-50 min-h-screen">
+
+        {/* Header */}
+        <header className="flex justify-between items-center auth-fade">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-emerald-900 rounded-md flex items-center justify-center">
+              <svg className="w-4 h-4 text-emerald-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+              </svg>
+            </div>
+            <span className="text-sm font-bold text-gray-900 uppercase tracking-tight">{t.brand}</span>
           </div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight">Ubuzima Connect</h1>
-          <p className="text-sm text-gray-400 mt-1">AI-powered chest X-ray diagnostics</p>
-        </div>
+          <div className="flex items-center gap-0.5 bg-gray-50 p-1 rounded-lg">
+            {(['En', 'Fr'] as Language[]).map(l => (
+              <button key={l} onClick={() => setLang(l)}
+                className={`px-2.5 py-1.5 text-[9px] font-bold rounded-md transition-all ${lang === l ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400'}`}>
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </header>
 
-        <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
+        {/* Form body */}
+        <div className="max-w-[340px] mx-auto w-full py-6 auth-form-container">
 
-          {/* ── SET PASSWORD (from approval email link) ── */}
-          {mode === 'reset' && (
-            <div className="p-8">
-              {resetSuccess ? (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                    <svg className="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <h3 className="text-xl font-black text-gray-900 mb-2">Password Set!</h3>
-                  <p className="text-sm text-gray-400 mb-1">Your account is ready.</p>
-                  <p className="text-xs text-gray-400">Redirecting to sign in…</p>
-                </div>
-              ) : (
-                <form onSubmit={handleSetPassword} className="space-y-5">
-                  {/* Personalized header */}
-                  <div className="text-center pb-2">
-                    <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-7 h-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-xl font-black text-gray-900">
-                      {resetUserName ? `Welcome, ${resetUserName.split(' ')[0]}!` : 'Welcome to Ubuzima Connect!'}
-                    </h3>
-                    <p className="text-sm text-gray-400 mt-1.5 leading-relaxed">
-                      Your account has been approved.<br />
-                      Please set a password to access the diagnostic tools.
-                    </p>
-                  </div>
-
-                  {error && (
-                    <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-xs font-semibold">{error}</div>
-                  )}
-
-                  <Field label="Set Your Password" type="password" value={newPassword} onChange={setNewPassword} placeholder="At least 8 characters" />
-                  <Field label="Confirm Password" type="password" value={confirmNew} onChange={setConfirmNew} placeholder="Re-enter your password" />
-
-                  <button type="submit" disabled={loading}
-                    className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all disabled:opacity-50 text-sm">
-                    {loading ? 'Setting password…' : 'Set Password & Continue'}
-                  </button>
-
-                  <p className="text-[10px] text-center text-gray-400">
-                    You only need to do this once. Use this password to sign in from now on.
-                  </p>
-                </form>
-              )}
+          {/* Title */}
+          {!registered && !forgotSent && (
+            <div className="mb-6 auth-fade">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-1.5 tracking-tight">
+                {mode === 'login' ? t.loginTitle : mode === 'register' ? t.registerTitle : mode === 'forgot' ? t.forgotTitle : t.resetTitle}
+              </h1>
+              <p className="text-gray-400 text-[9px] font-bold uppercase tracking-[0.15em]">
+                {mode === 'login' ? t.loginDesc : mode === 'register' ? t.registerDesc : mode === 'forgot' ? t.forgotDesc : t.resetDesc}
+              </p>
             </div>
           )}
 
-          {/* ── REGISTRATION SUCCESS ── */}
-          {registered && mode !== 'reset' && (
-            <div className="p-10 text-center">
-              <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+          {/* Error */}
+          {error && (
+            <div className="p-3 rounded-xl mb-4 text-[9px] font-bold uppercase tracking-widest border auth-fade flex items-center gap-3 bg-red-50 text-red-600 border-red-100">
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 bg-red-100 text-xs font-black">!</div>
+              <span className="flex-1 leading-relaxed normal-case">{error}</span>
+              <button type="button" onClick={() => setError('')} className="shrink-0 text-red-400 hover:text-red-600">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+          )}
+
+          {/* ── RESET PASSWORD ── */}
+          {mode === 'reset' && (
+            resetSuccess ? (
+              <div className="text-center py-8 auth-fade">
+                <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-7 h-7 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">Password Set!</h3>
+                <p className="text-xs text-gray-400">Redirecting to sign in…</p>
               </div>
-              <h2 className="text-xl font-black text-gray-900 mb-3">Application Submitted!</h2>
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 mb-6 text-left space-y-2">
-                <p className="text-sm font-bold text-emerald-800">What happens next:</p>
+            ) : (
+              <form onSubmit={handleSetPassword} className="space-y-4">
+                {resetUserName && (
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs font-semibold auth-fade">
+                    Welcome, {resetUserName.split(' ')[0]}! Your account has been approved.
+                  </div>
+                )}
+                <InputField label="New Password" type="password" value={newPassword} onChange={setNewPassword} placeholder="At least 8 characters" />
+                <InputField label="Confirm Password" type="password" value={confirmNew} onChange={setConfirmNew} placeholder="Re-enter password" />
+                <button type="submit" disabled={loading}
+                  className="w-full py-3 bg-gray-900 text-white font-bold uppercase tracking-[0.2em] text-[10px] rounded-xl hover:bg-black transition-all disabled:opacity-60 auth-fade flex items-center justify-center gap-2">
+                  {loading ? <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : t.setPassword}
+                </button>
+              </form>
+            )
+          )}
+
+          {/* ── REGISTERED SUCCESS ── */}
+          {registered && mode !== 'reset' && (
+            <div className="text-center py-6 auth-fade">
+              <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-7 h-7 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 mb-2">Application Submitted!</h2>
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100 mb-4 text-left">
+                <p className="text-[10px] font-bold text-emerald-800 uppercase tracking-widest mb-1">What happens next:</p>
                 <p className="text-xs text-emerald-700 leading-relaxed">
-                  1. An administrator reviews your credentials<br />
-                  2. Once approved, you'll receive an email from Ubuzima Connect<br />
-                  3. Click the link in that email to set your password<br />
-                  4. You can then sign in and start diagnosing
+                  1. Admin reviews your credentials<br />
+                  2. Once approved, you'll receive an email<br />
+                  3. Click the link to set your password<br />
+                  4. Sign in and start diagnosing
                 </p>
               </div>
-              <p className="text-gray-400 text-xs mb-6">
-                <strong className="text-gray-600">This usually takes less than 24 hours.</strong><br />
-                Check your spam folder if you don't see the email.
-              </p>
-              <button onClick={() => { setRegistered(false); setMode('login'); clear(); }}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm">
-                Back to Sign In
+              <p className="text-[10px] text-gray-400 mb-4">Usually takes less than 24 hours.</p>
+              <button onClick={() => { setRegistered(false); switchMode('login'); }}
+                className="w-full py-3 bg-gray-900 text-white font-bold uppercase tracking-[0.2em] text-[10px] rounded-xl hover:bg-black transition-all">
+                {t.switchToLogin}
               </button>
             </div>
           )}
 
           {/* ── FORGOT SENT ── */}
           {forgotSent && !registered && mode !== 'reset' && (
-            <div className="p-10 text-center">
-              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                <svg className="w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
+            <div className="text-center py-6 auth-fade">
+              <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-7 h-7 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
               </div>
-              <h2 className="text-xl font-black text-gray-900 mb-2">Check Your Email</h2>
-              <p className="text-gray-500 text-sm mb-2">Password reset link sent to <strong className="text-gray-800">{forgotEmail}</strong>.</p>
-              <p className="text-gray-400 text-xs mb-8 leading-relaxed">
-                Click the link in the email to set a new password.<br />
-                Check your spam folder if you don't see it.
-              </p>
-              <button onClick={() => { setForgotSent(false); setMode('login'); clear(); }}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm">
-                Back to Sign In
+              <h2 className="text-lg font-bold text-gray-900 mb-2">Check Your Email</h2>
+              <p className="text-xs text-gray-500 mb-1">Reset link sent to <strong>{forgotEmail}</strong></p>
+              <p className="text-[10px] text-gray-400 mb-6">Check your spam folder if you don't see it.</p>
+              <button onClick={() => { setForgotSent(false); switchMode('login'); }}
+                className="w-full py-3 bg-gray-900 text-white font-bold uppercase tracking-[0.2em] text-[10px] rounded-xl hover:bg-black transition-all">
+                {t.backToLogin}
               </button>
             </div>
           )}
 
           {/* ── MAIN FORMS ── */}
           {!registered && !forgotSent && mode !== 'reset' && (
-            <>
-              {mode !== 'forgot' && (
-                <div className="flex border-b border-gray-100">
-                  {(['login', 'register'] as const).map(m => (
-                    <button key={m} onClick={() => { setMode(m); clear(); }}
-                      className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-all ${mode === m ? 'text-emerald-600 border-b-2 border-emerald-500 bg-emerald-50/50' : 'text-gray-400 hover:text-gray-600'}`}>
-                      {m === 'login' ? 'Sign In' : 'Request Access'}
+            <div className="space-y-4">
+
+              {/* LOGIN */}
+              {mode === 'login' && (
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <InputField label="Work Email" type="email" value={email} onChange={setEmail} placeholder="clinical@institutional.rw" />
+                  <InputField label="Password" type="password" value={password} onChange={setPassword} placeholder="Enter password" />
+                  <div className="flex justify-end auth-fade">
+                    <button type="button" onClick={() => switchMode('forgot')}
+                      className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 uppercase tracking-widest">{t.forgotLink}</button>
+                  </div>
+                  <button type="submit" disabled={loading}
+                    className="w-full py-3 bg-gray-900 text-white font-bold uppercase tracking-[0.2em] text-[10px] rounded-xl hover:bg-black transition-all shadow-lg shadow-gray-200 auth-fade flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-60">
+                    {loading ? <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : t.signIn}
+                  </button>
+                  <div className="text-center pt-4 auth-fade">
+                    <button type="button" onClick={() => switchMode('register')}
+                      className="text-[10px] font-bold text-gray-300 hover:text-gray-900 transition-all uppercase tracking-[0.2em] underline underline-offset-4 decoration-gray-100">
+                      {t.switchToRegister}
                     </button>
-                  ))}
-                </div>
+                  </div>
+                </form>
               )}
 
-              <div className="p-8">
-                {error && (
-                  <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-xs font-semibold">{error}</div>
-                )}
-
-                {/* LOGIN */}
-                {mode === 'login' && (
-                  <form onSubmit={handleLogin} className="space-y-4">
-                    <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="doctor@hospital.rw" />
-                    <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
-                    <button type="submit" disabled={loading}
-                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all disabled:opacity-50 text-sm">
-                      {loading ? 'Signing in…' : 'Sign In'}
-                    </button>
-                    <button type="button" onClick={() => { setMode('forgot'); clear(); }}
-                      className="w-full text-center text-xs text-gray-400 hover:text-emerald-600 transition-colors mt-1">
-                      Forgot password?
-                    </button>
-                  </form>
-                )}
-
-                {/* REGISTER — no password, just details */}
-                {mode === 'register' && (
-                  <form onSubmit={handleRegister} className="space-y-3">
-                    <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 text-xs leading-relaxed mb-2">
-                      <strong>How it works:</strong> Submit your details below. Once an administrator approves your application, you'll receive an email with a link to set your password and access the system.
+              {/* REGISTER */}
+              {mode === 'register' && (
+                <form onSubmit={handleRegister} className="space-y-3">
+                  <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-100 auth-fade">
+                    <p className="text-[9px] font-bold text-emerald-800 uppercase tracking-widest mb-0.5">{t.howItWorks}</p>
+                    <p className="text-[9px] text-emerald-700 leading-relaxed">{t.howItWorksDesc}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <InputField label="Full Name" value={fullName} onChange={setFullName} placeholder="Dr. Jean Uwimana" />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="col-span-2">
-                        <Field label="Full Name" value={fullName} onChange={setFullName} placeholder="Dr. Jean Uwimana" />
-                      </div>
-                      <Field label="Email" type="email" value={regEmail} onChange={setRegEmail} placeholder="doctor@hospital.rw" />
-                      <Field label="Hospital / Clinic" value={hospital} onChange={setHospital} placeholder="CHUK" />
-                      <Field label="License Number" value={licenseNumber} onChange={setLicenseNumber} placeholder="MC/2026/001" />
-                      <Field label="Phone" type="tel" value={phone} onChange={setPhone} placeholder="+250 7XX XXX XXX" required={false} />
-                      <Field label="Specialization" value={specialization} onChange={setSpecialization} placeholder="Radiology" required={false} />
-                      <Field label="Years Experience" type="number" value={yearsExp} onChange={setYearsExp} placeholder="5" required={false} />
-                    </div>
-                    <button type="submit" disabled={loading}
-                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all disabled:opacity-50 text-sm mt-2">
-                      {loading ? 'Submitting…' : 'Submit Application'}
+                    <InputField label="Work Email" type="email" value={regEmail} onChange={setRegEmail} placeholder="doctor@hospital.rw" />
+                    <InputField label="Hospital / Clinic" value={hospital} onChange={setHospital} placeholder="CHUK" />
+                    <InputField label="RBC License ID" value={licenseNumber} onChange={setLicenseNumber} placeholder="MC/2026/001" />
+                    <InputField label="Phone" type="tel" value={phone} onChange={setPhone} placeholder="+250 7XX XXX XXX" required={false} />
+                    <InputField label="Specialization" value={specialization} onChange={setSpecialization} placeholder="Radiology" required={false} />
+                    <InputField label="Years Experience" type="number" value={yearsExp} onChange={setYearsExp} placeholder="5" required={false} />
+                  </div>
+                  <button type="submit" disabled={loading}
+                    className="w-full py-3 bg-gray-900 text-white font-bold uppercase tracking-[0.2em] text-[10px] rounded-xl hover:bg-black transition-all shadow-lg shadow-gray-200 auth-fade mt-2 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-60">
+                    {loading ? <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : t.submitApp}
+                  </button>
+                  <p className="text-[9px] text-center text-gray-300 uppercase tracking-widest auth-fade">{t.noPasswordNote}</p>
+                  <div className="text-center pt-2 auth-fade">
+                    <button type="button" onClick={() => switchMode('login')}
+                      className="text-[10px] font-bold text-gray-300 hover:text-gray-900 transition-all uppercase tracking-[0.2em] underline underline-offset-4 decoration-gray-100">
+                      {t.switchToLogin}
                     </button>
-                    <p className="text-[10px] text-center text-gray-400">
-                      No password needed now — you'll set it after approval.
-                    </p>
-                  </form>
-                )}
+                  </div>
+                </form>
+              )}
 
-                {/* FORGOT PASSWORD */}
-                {mode === 'forgot' && (
-                  <form onSubmit={handleForgot} className="space-y-4">
-                    <div className="mb-2">
-                      <h3 className="text-lg font-black text-gray-900">Reset Password</h3>
-                      <p className="text-xs text-gray-400 mt-1">Enter your email and we'll send a reset link.</p>
-                    </div>
-                    <Field label="Email" type="email" value={forgotEmail} onChange={setForgotEmail} placeholder="doctor@hospital.rw" />
-                    <button type="submit" disabled={loading}
-                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all disabled:opacity-50 text-sm">
-                      {loading ? 'Sending…' : 'Send Reset Link'}
-                    </button>
-                    <button type="button" onClick={() => { setMode('login'); clear(); }}
-                      className="w-full text-center text-xs text-gray-400 hover:text-emerald-600 transition-colors">
-                      ← Back to Sign In
-                    </button>
-                  </form>
-                )}
-              </div>
-            </>
+              {/* FORGOT */}
+              {mode === 'forgot' && (
+                <form onSubmit={handleForgot} className="space-y-4">
+                  <InputField label="Work Email" type="email" value={forgotEmail} onChange={setForgotEmail} placeholder="clinical@institutional.rw" />
+                  <button type="submit" disabled={loading}
+                    className="w-full py-3 bg-gray-900 text-white font-bold uppercase tracking-[0.2em] text-[10px] rounded-xl hover:bg-black transition-all auth-fade flex items-center justify-center gap-2 disabled:opacity-60">
+                    {loading ? <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : t.sendReset}
+                  </button>
+                  <button type="button" onClick={() => switchMode('login')}
+                    className="w-full text-[10px] font-bold text-gray-300 hover:text-gray-900 transition-all uppercase tracking-[0.2em] auth-fade">
+                    {t.backToLogin}
+                  </button>
+                </form>
+              )}
+            </div>
           )}
         </div>
+
+        <footer className="text-[8px] font-bold text-gray-300 uppercase tracking-[0.4em] auth-fade text-center lg:text-left">
+          {t.rights}
+        </footer>
       </div>
+
+      {/* ── RIGHT: Visual Panel ── */}
+      <div className="hidden lg:flex w-[55%] relative p-8 bg-gray-50 items-center justify-center overflow-hidden">
+        <div className="w-full h-full rounded-[3rem] overflow-hidden relative shadow-xl border border-white bg-white">
+          <img
+            src="https://images.unsplash.com/photo-1551076805-e1869033e561?auto=format&fit=crop&q=80&w=2000"
+            className="w-full h-full object-cover grayscale opacity-[0.08]"
+            alt="Clinical Background"
+            crossOrigin="anonymous"
+          />
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-12">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-8 shadow-inner border border-emerald-100">
+              <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 tracking-tighter leading-tight uppercase">
+              {t.insightTitle}
+            </h2>
+            <p className="text-gray-400 text-sm leading-relaxed font-normal max-w-sm mx-auto">
+              {t.insightDesc}
+            </p>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }
