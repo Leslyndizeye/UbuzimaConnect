@@ -1,6 +1,6 @@
 # Ubuzima Connect — AI-Powered Chest X-Ray Diagnosis System
 
-> A web-based clinical decision support tool that helps radiologists in Rwanda detect Tuberculosis, Pneumonia, and Normal chest conditions from X-ray images using deep learning.
+ A web-based clinical decision support tool that helps radiologists in Rwanda detect Tuberculosis, Pneumonia, and Normal chest conditions from X-ray images using deep learning.
 
 
 ## Demo Video
