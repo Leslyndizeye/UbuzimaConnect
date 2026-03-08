@@ -570,7 +570,7 @@ export default function AdminDashboard() {
                       <TD mono>{fmt(u.created_at)}</TD>
                       <TD><div className="flex gap-1.5 flex-wrap">
                         {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200">Reject</button></>}
-                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Password</button>}
+                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">Password</button>}
                         <button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">Delete</button>
                       </div></TD>
                     </TR>
@@ -843,8 +843,8 @@ export default function AdminDashboard() {
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
                       <TD mono>{u.email}</TD>
                       <TD><StatusBadge status="approved"/></TD>
-                      <TD mono>{last?`${last.action==="admin_generate_password"?"🔑 Generated":"✏️ Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
-                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Manage</button></TD>
+                      <TD mono>{last?`${last.action==="admin_generate_password"?"Generated":"✏️ Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
+                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">Manage</button></TD>
                     </TR>);
                   })}
                 </Tbl>
@@ -854,7 +854,7 @@ export default function AdminDashboard() {
                     <Tbl heads={["Action","Target","Admin","When"]}>
                       {pwLogs.map(l=>{const target=apiUsers.find(u=>u.id===l.entity_id);return(
                         <TR key={l.id}>
-                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"🔑 Auto":"✏️ Manual"}</span></TD>
+                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"Auto":"✏️ Manual"}</span></TD>
                           <TD>{target?.full_name??"—"}</TD>
                           <TD>{apiUsers.find(u=>u.id===l.user_id)?.full_name??"Admin"}</TD>
                           <TD mono>{fmt(l.timestamp)}</TD>
