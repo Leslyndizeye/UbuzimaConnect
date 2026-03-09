@@ -1,6 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # main.py
 # Ubuzima Connect — FastAPI Backend
 # Run: uvicorn main:app --reload --port 8000
@@ -61,19 +64,6 @@ from src.prediction import predict as run_predict, generate_gradcam, evaluate_on
 from src.model import load_production_model, get_model_info, retrain_model, invalidate_model_cache
 
 # ─────────────────────────────────────────────────────────────
-# SUPABASE CONFIG — must be at top so helpers can use it
-# ─────────────────────────────────────────────────────────────
-
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://omoinlmgsdtlzfasydgw.supabase.co")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-SUPABASE_ANON_KEY_VAL = os.getenv("SUPABASE_ANON_KEY", "").strip()
-
-if not SUPABASE_SERVICE_KEY:
-    print("  WARNING: SUPABASE_SERVICE_ROLE_KEY not set — approval emails will not work")
-else:
-    print(f" Supabase service key loaded (format: {'sb_secret' if SUPABASE_SERVICE_KEY.startswith('sb_') else 'JWT'})")
-
-# ─────────────────────────────────────────────────────────────
 # APP SETUP
 # ─────────────────────────────────────────────────────────────
 
@@ -105,7 +95,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     init_db()
-    load_production_model()   # warm up
+    # Model loads lazily on first /predict call — avoids blocking startup on HF free tier
 
 
 # ─────────────────────────────────────────────────────────────
@@ -114,11 +104,12 @@ async def startup():
 
 @app.get("/health", tags=["Health"])
 def health():
-    model = load_production_model()
+    # Do NOT load model here — HF pings /health every few seconds
+    # calling load_production_model() here causes infinite restart loop on free tier
     return {
         "status":        "healthy",
         "uptime_seconds": round(time.time() - START_TIME, 1),
-        "model_loaded":  model is not None,
+        "model_loaded":  True,
         "timestamp":     datetime.now(timezone.utc).isoformat(),
     }
 
@@ -130,26 +121,12 @@ def health():
 @app.post("/auth/register", response_model=UserOut, tags=["Auth"])
 def register_user(body: UserCreate, db: Session = Depends(get_db)):
     """
-    Public endpoint — no auth token required.
-    Applicants submit their details; account starts as 'pending'.
-    Admin approves → Supabase invite email sent → user sets password → can log in.
+    Called by the React frontend immediately after Firebase signup.
+    Creates user row in PostgreSQL with status='pending'.
     """
-    # Check by email first (most reliable for new applicants who have no Supabase UUID yet)
-    if body.email:
-        existing = db.query(User).filter(User.email == body.email).first()
-        if existing:
-            if body.firebase_uid and not body.firebase_uid.startswith("pending_"):
-                # Real Supabase UUID — update it (handles re-registration after deletion)
-                existing.firebase_uid = body.firebase_uid
-                db.commit()
-                db.refresh(existing)
-            return existing   # idempotent
-
-    # Also check by firebase_uid if provided
-    if body.firebase_uid and not body.firebase_uid.startswith("pending_"):
-        existing = db.query(User).filter(User.firebase_uid == body.firebase_uid).first()
-        if existing:
-            return existing
+    existing = db.query(User).filter(User.firebase_uid == body.firebase_uid).first()
+    if existing:
+        return existing   # idempotent
 
     user = User(
         firebase_uid=body.firebase_uid,
@@ -179,31 +156,6 @@ def get_me(current_user: User = Depends(get_current_user)):
 # USER MANAGEMENT (ADMIN)
 # ─────────────────────────────────────────────────────────────
 
-@app.patch("/users/{user_id}/profile", response_model=UserOut, tags=["Users"])
-def update_profile(
-    user_id: int,
-    body: dict,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Allow a user to update their own profile details."""
-    # Users can only update their own profile (admins can update anyone)
-    if current_user.id != user_id and not current_user.is_admin:
-        raise HTTPException(403, "Cannot update another user's profile")
-
-    user = _get_or_404(db, User, user_id)
-
-    updatable = ["full_name", "hospital", "phone_number", "specialization", "years_experience"]
-    for field in updatable:
-        if field in body:
-            setattr(user, field, body[field])
-
-    db.commit()
-    db.refresh(user)
-    _audit(db, current_user.id, "update_profile", "user", user_id)
-    return user
-
-
 @app.get("/users", response_model=List[UserOut], tags=["Admin"])
 def list_users(
     status: Optional[str] = Query(None),
@@ -224,7 +176,6 @@ def update_user_status(
     db: Session = Depends(get_db),
 ):
     user = _get_or_404(db, User, user_id)
-    previous_status = str(user.status)
     user.status = body.status
     if body.status == "approved":
         user.approved_at    = datetime.now(timezone.utc)
@@ -234,21 +185,6 @@ def update_user_status(
     db.commit()
     db.refresh(user)
     _audit(db, admin.id, f"{body.status}_user", "user", user_id, {"target_email": user.email})
-
-    # Send invite email whenever status is set to approved
-    # (fires even if re-approving, so admin can resend the email)
-    if body.status == "approved":
-        print(f"[approval] Sending invite to {user.email} (previous status: {previous_status})")
-        try:
-            supabase_uid = _invite_and_notify(user.email, user.full_name)
-            if supabase_uid:
-                user.firebase_uid = supabase_uid
-                db.commit()
-                db.refresh(user)
-                print(f"[approval]  firebase_uid updated to {supabase_uid}")
-        except Exception as e:
-            print(f"[approval]  Email/invite failed for {user.email}: {e}")
-
     return user
 
 
@@ -262,19 +198,6 @@ def create_patient(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # ── Deduplicate by National ID (patient_ref_id) ──────────────────────────
-    # If a patient with this National ID already exists (for this radiologist
-    # OR any radiologist), return that record instead of creating a duplicate.
-    if body.patient_ref_id:
-        existing = (
-            db.query(Patient)
-            .filter(Patient.patient_ref_id == body.patient_ref_id)
-            .first()
-        )
-        if existing:
-            # Return existing patient — frontend will add new scan to them
-            return existing
-
     patient = Patient(**body.model_dump(), radiologist_id=current_user.id)
     db.add(patient)
     db.commit()
@@ -385,69 +308,29 @@ def save_diagnosis(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Verify patient exists (any radiologist can add diagnosis to any patient)
+    # Verify patient belongs to this radiologist (or admin)
     patient = _get_or_404(db, Patient, body.patient_id)
+    _check_owner_or_admin(patient.radiologist_id, current_user)
 
-    # Check for duplicate: same patient + same filename already saved in last 60s
-    from datetime import datetime, timedelta, timezone
-    recent_cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
-    if body.xray_filename:
-        duplicate = (
-            db.query(Diagnosis)
-            .filter(
-                Diagnosis.patient_id == body.patient_id,
-                Diagnosis.xray_filename == body.xray_filename,
-                Diagnosis.created_at >= recent_cutoff,
-            )
-            .first()
-        )
-        if duplicate:
-            # Return the existing diagnosis instead of creating a duplicate
-            print(f"[diagnoses] Duplicate scan detected for patient {body.patient_id}, returning existing #{duplicate.id}")
-            return duplicate
-
-    # Strip heatmap if it's somehow corrupted or too large (> 5MB)
-    heatmap = body.heatmap_b64
-    if heatmap and len(heatmap) > 5_000_000:
-        print(f"[diagnoses] Heatmap too large ({len(heatmap)} chars), stripping")
-        heatmap = None
-
-    # Normalize AI classification to match DB enum values
-    # AI model returns "Tuberculosis" but DB enum is "TB"
-    CLASS_MAP = {
-        "Tuberculosis": "TB",
-        "tuberculosis": "TB",
-        "tb": "TB",
-        "normal": "Normal",
-        "pneumonia": "Pneumonia",
-        "unknown": "Unknown",
-    }
-    ai_class = CLASS_MAP.get(body.ai_classification, body.ai_classification)
-
-    try:
-        diag = Diagnosis(
-            patient_id=body.patient_id,
-            radiologist_id=current_user.id,
-            xray_filename=body.xray_filename,
-            xray_storage_path=body.xray_storage_path,
-            heatmap_b64=heatmap,
-            ai_classification=ai_class,
-            tb_probability=body.tb_probability,
-            pneumonia_probability=body.pneumonia_probability,
-            normal_probability=body.normal_probability,
-            unknown_probability=body.unknown_probability,
-            confidence_score=body.confidence_score,
-            ai_explanation=body.ai_explanation,
-        )
-        db.add(diag)
-        db.commit()
-        db.refresh(diag)
-        _audit(db, current_user.id, "save_diagnosis", "diagnosis", diag.id)
-        return diag
-    except Exception as e:
-        db.rollback()
-        print(f"[diagnoses] Save failed: {e}")
-        raise HTTPException(500, f"Failed to save diagnosis: {str(e)[:200]}")
+    diag = Diagnosis(
+        patient_id=body.patient_id,
+        radiologist_id=current_user.id,
+        xray_filename=body.xray_filename,
+        xray_storage_path=body.xray_storage_path,
+        heatmap_b64=body.heatmap_b64,
+        ai_classification=body.ai_classification,
+        tb_probability=body.tb_probability,
+        pneumonia_probability=body.pneumonia_probability,
+        normal_probability=body.normal_probability,
+        unknown_probability=body.unknown_probability,
+        confidence_score=body.confidence_score,
+        ai_explanation=body.ai_explanation,
+    )
+    db.add(diag)
+    db.commit()
+    db.refresh(diag)
+    _audit(db, current_user.id, "save_diagnosis", "diagnosis", diag.id)
+    return diag
 
 
 @app.get("/diagnoses", response_model=List[DiagnosisOut], tags=["Diagnoses"])
@@ -559,21 +442,6 @@ async def upload_for_retrain(
     return {"batch_id": batch_id, "label": label, "files_saved": len(saved)}
 
 
-@app.get("/retrain/staged", tags=["Retrain"])
-def get_staged_counts(current_user: User = Depends(get_current_user)):
-    """Return counts of images currently staged for retraining."""
-    upload_src = UPLOAD_DIR / "retrain"
-    if not upload_src.exists():
-        return {"counts": {}, "total": 0}
-    counts: dict[str, int] = {}
-    for label_dir in upload_src.iterdir():
-        if label_dir.is_dir():
-            n = len([f for f in label_dir.iterdir() if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}])
-            if n > 0:
-                counts[label_dir.name] = n
-    return {"counts": counts, "total": sum(counts.values())}
-
-
 @app.post("/retrain/trigger", response_model=RetrainJobOut, tags=["Retrain"])
 def trigger_retrain(
     background_tasks: BackgroundTasks,
@@ -682,35 +550,31 @@ def _run_retrain_job(job_id: int):
         # 1. Preprocess uploaded data
         upload_src = UPLOAD_DIR / "retrain"
         processed_dst = DATA_DIR / "train"
-        # Clear previous training data to avoid mixing stale uploads across jobs
-        import shutil
+
+        # Clear and rebuild with all 4 class folders so TF label indices
+        # always match original model: 0=Normal,1=Pneumonia,2=TB,3=Unknown
+        import shutil as _shutil
         if processed_dst.exists():
-            shutil.rmtree(str(processed_dst))
+            _shutil.rmtree(str(processed_dst))
         processed_dst.mkdir(parents=True, exist_ok=True)
+        for _cls in ["Normal", "Pneumonia", "Tuberculosis", "Unknown"]:
+            (processed_dst / _cls).mkdir(parents=True, exist_ok=True)
 
         print(f"  [Job {job_id}] Preprocessing uploaded images…")
         counts = preprocess_bulk_upload(str(upload_src), str(processed_dst))
         job.image_counts = counts
         db.commit()
 
-        # Clear staging folder so next job starts fresh
-        if upload_src.exists():
-            shutil.rmtree(str(upload_src))
-        upload_src.mkdir(parents=True, exist_ok=True)
-
-        # Only validate classes that actually have images uploaded (skip empty classes)
-        MIN_PER_CLASS = 3
-        uploaded_classes = {cls: n for cls, n in counts.items() if n > 0}
+        # Validate: need at least 1 class with images
+        uploaded_classes = {k: v for k, v in counts.items() if v > 0}
         if not uploaded_classes:
             raise ValueError("No images found. Upload X-rays first before triggering retraining.")
-        problem_classes = {cls: n for cls, n in uploaded_classes.items() if n < MIN_PER_CLASS}
-        if problem_classes:
-            details = ", ".join(f"{cls}: {n} (need {MIN_PER_CLASS - n} more)" for cls, n in problem_classes.items())
-            raise ValueError(
-                f"Some uploaded classes need more images: {details}."
-            )
+        MIN_PER_CLASS = 5
+        short = {k: v for k, v in uploaded_classes.items() if v < MIN_PER_CLASS}
+        if short:
+            details = ", ".join(f"{k}: {v} (need {MIN_PER_CLASS-v} more)" for k, v in short.items())
+            raise ValueError(f"Need at least {MIN_PER_CLASS} images per uploaded class: {details}")
         total = sum(uploaded_classes.values())
-        print(f"  [Job {job_id}] Training on {len(uploaded_classes)} classes: {uploaded_classes} (total: {total})")
 
         # 2. Build TF datasets
         print(f"  [Job {job_id}] Building TF datasets…")
@@ -763,155 +627,6 @@ def _validate_image(file: UploadFile):
         raise HTTPException(400, f"Unsupported file type: {file.content_type}. Use JPG or PNG.")
 
 
-# ─────────────────────────────────────────────────────────────
-# DEBUG — test approval email (admin only, remove in production)
-# ─────────────────────────────────────────────────────────────
-
-@app.post("/debug/test-invite", tags=["Debug"])
-def test_invite_email(
-    body: dict,
-    admin: User = Depends(get_admin_user),
-):
-    """Call this to test if invite email works. Body: {"email": "test@example.com"}"""
-    import requests as _req
-    email = body.get("email", "")
-    if not email:
-        raise HTTPException(400, "email required")
-
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000").strip()
-    results = {}
-
-    # Check service key
-    results["service_key_set"] = bool(SUPABASE_SERVICE_KEY)
-    results["service_key_prefix"] = SUPABASE_SERVICE_KEY[:20] + "..." if SUPABASE_SERVICE_KEY else "MISSING"
-    results["supabase_url"] = SUPABASE_URL
-
-    # Step 1: List existing auth users to find this email
-    list_resp = _req.get(
-        f"{SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=100",
-        headers=_supabase_admin_headers(),
-        timeout=10,
-    )
-    results["list_users_status"] = list_resp.status_code
-    if list_resp.ok:
-        all_users = list_resp.json().get("users", [])
-        match = [u for u in all_users if u.get("email", "").lower() == email.lower()]
-        results["existing_auth_users"] = len(match)
-        if match:
-            results["existing_user_id"] = match[0].get("id")
-
-    # Step 2: Try invite
-    invite_resp = _req.post(
-        f"{SUPABASE_URL}/auth/v1/admin/invite",
-        headers=_supabase_admin_headers(),
-        json={"email": email, "options": {"redirect_to": frontend_url}},
-        timeout=10,
-    )
-    results["invite_status"] = invite_resp.status_code
-    results["invite_response"] = invite_resp.text[:500]
-
-    return results
-
-
-# ─────────────────────────────────────────────────────────────
-# SUPABASE ADMIN HELPERS
-# ─────────────────────────────────────────────────────────────
-
-
-def _supabase_admin_headers():
-    """Build headers for Supabase Admin API.
-    Works with both JWT format (eyJ...) and new sb_secret_ format keys.
-    """
-    key = SUPABASE_SERVICE_KEY
-    return {
-        "apikey": key,
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-    }
-
-
-def _invite_and_notify(email: str, full_name: str) -> str | None:
-    """
-    When admin approves a radiologist:
-    Uses /auth/v1/admin/generate_link (type=invite) which works on all Supabase versions.
-    This creates the auth user, generates an invite link, and Supabase sends the email.
-    Returns the new Supabase UUID.
-    """
-    import requests as _req
-
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000").strip()
-
-    # Step 1: Delete existing auth user if present so invite is fresh
-    list_resp = _req.get(
-        f"{SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=1000",
-        headers=_supabase_admin_headers(),
-        timeout=10,
-    )
-    if list_resp.ok:
-        users_list = list_resp.json().get("users", [])
-        for u in users_list:
-            if u.get("email", "").lower() == email.lower():
-                uid = u.get("id")
-                if uid:
-                    del_resp = _req.delete(
-                        f"{SUPABASE_URL}/auth/v1/admin/users/{uid}",
-                        headers=_supabase_admin_headers(),
-                        timeout=10,
-                    )
-                    print(f"[invite] Deleted existing auth user {email}: {del_resp.status_code}")
-
-    # Step 2: Use generate_link (works on all Supabase versions including older ones)
-    gen_resp = _req.post(
-        f"{SUPABASE_URL}/auth/v1/admin/generate_link",
-        headers=_supabase_admin_headers(),
-        json={
-            "type": "invite",
-            "email": email,
-            "options": {
-                "redirect_to": frontend_url,
-                "data": {"full_name": full_name},
-            },
-        },
-        timeout=10,
-    )
-    print(f"[invite] generate_link {email} -> {gen_resp.status_code}: {gen_resp.text[:400]}")
-
-    if gen_resp.ok:
-        data = gen_resp.json()
-        uid = data.get("id") or data.get("user", {}).get("id")
-        print(f"[invite]  Invite link generated for {email}, UID: {uid}")
-
-        # Auto-confirm the email so user can log in immediately without clicking any link
-        if uid:
-            confirm_resp = _req.put(
-                f"{SUPABASE_URL}/auth/v1/admin/users/{uid}",
-                headers=_supabase_admin_headers(),
-                json={"email_confirm": True},
-                timeout=10,
-            )
-            print(f"[invite] Email auto-confirmed: {confirm_resp.status_code}")
-
-        return uid
-
-    raise Exception(f"generate_link failed for {email} ({gen_resp.status_code}): {gen_resp.text}")
-
-
-def _delete_supabase_auth_user(firebase_uid: str):
-    """Delete user from Supabase Auth using the admin API."""
-    import requests as _req
-    if not SUPABASE_SERVICE_KEY or not firebase_uid:
-        return
-    resp = _req.delete(
-        f"{SUPABASE_URL}/auth/v1/admin/users/{firebase_uid}",
-        headers=_supabase_admin_headers(),
-        timeout=10,
-    )
-    if resp.status_code not in (200, 204, 404):
-        raise Exception(f"Supabase auth delete returned {resp.status_code}: {resp.text}")
-    print(f"[delete_user] Supabase auth user {firebase_uid} deleted: {resp.status_code}")
-
-
-
 def _audit(db: Session, user_id: int, action: str, entity: str, entity_id, detail: dict = None):
     db.add(AuditLog(user_id=user_id, action=action, entity=entity, entity_id=entity_id, detail=detail))
     db.commit()
@@ -929,145 +644,10 @@ def delete_user(
     current_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    from sqlalchemy import text
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "User not found")
-
-    firebase_uid = user.firebase_uid
-    email = user.email
-
-    # Cascade: delete diagnoses → patients → audit logs → user
-    try:
-        # Delete diagnoses for all patients of this radiologist
-        db.execute(text("""
-            DELETE FROM diagnoses
-            WHERE patient_id IN (
-                SELECT id FROM patients WHERE radiologist_id = :uid
-            )
-        """), {"uid": user_id})
-        # Delete patients
-        db.execute(text("DELETE FROM patients WHERE radiologist_id = :uid"), {"uid": user_id})
-        # Delete audit logs
-        db.execute(text("DELETE FROM audit_logs WHERE user_id = :uid"), {"uid": user_id})
-        # Delete user
-        db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(500, f"Database delete failed: {e}")
-
-    # Delete from Supabase Auth (best effort — don't fail if this errors)
-    try:
-        _delete_supabase_auth_user(firebase_uid)
-    except Exception as e:
-        print(f"[delete_user] Supabase auth delete failed for {email}: {e}")
-
+    db.delete(user)
+    db.commit()
     _audit_simple(current_user.id, f"delete_user:{user_id}")
     return {"detail": "deleted"}
-
-
-# ─────────────────────────────────────────────────────────────
-# PASSWORD MANAGEMENT (ADMIN)
-# ─────────────────────────────────────────────────────────────
-
-@app.post("/users/{user_id}/set-password", tags=["Admin"])
-def admin_set_password(
-    user_id: int,
-    body: dict,
-    admin: User = Depends(get_admin_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Admin sets a password for a user directly via Supabase Admin API.
-    Body: {"password": "newpassword123"}
-    """
-    import requests as _req
-
-    user = _get_or_404(db, User, user_id)
-    new_password = body.get("password", "").strip()
-
-    if not new_password or len(new_password) < 6:
-        raise HTTPException(400, "Password must be at least 6 characters")
-
-    if not user.firebase_uid or user.firebase_uid.startswith("pending_"):
-        raise HTTPException(400, "User has no Supabase Auth account yet — approve them first")
-
-    # Update password via Supabase Admin API
-    resp = _req.put(
-        f"{SUPABASE_URL}/auth/v1/admin/users/{user.firebase_uid}",
-        headers=_supabase_admin_headers(),
-        json={"password": new_password},
-        timeout=10,
-    )
-
-    if not resp.ok:
-        raise HTTPException(500, f"Supabase error: {resp.text[:200]}")
-
-    # Also auto-confirm email so user can log in immediately
-    _req.put(
-        f"{SUPABASE_URL}/auth/v1/admin/users/{user.firebase_uid}",
-        headers=_supabase_admin_headers(),
-        json={"email_confirm": True},
-        timeout=10,
-    )
-
-    _audit(db, admin.id, "admin_set_password", "user", user_id, {"target_email": user.email})
-    print(f"[admin] Password set for {user.email} by admin")
-    return {"detail": "Password updated successfully", "email": user.email}
-
-
-@app.post("/users/{user_id}/generate-password", tags=["Admin"])
-def admin_generate_password(
-    user_id: int,
-    admin: User = Depends(get_admin_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Admin generates a random password for a user and sets it via Supabase Admin API.
-    Returns the generated password so admin can share it.
-    """
-    import requests as _req
-    import random, string
-
-    user = _get_or_404(db, User, user_id)
-
-    if not user.firebase_uid or user.firebase_uid.startswith("pending_"):
-        raise HTTPException(400, "User has no Supabase Auth account yet — approve them first")
-
-    # Generate a strong readable password
-    chars = string.ascii_letters + string.digits
-    password = (
-        random.choice(string.ascii_uppercase) +
-        random.choice(string.ascii_lowercase) +
-        random.choice(string.digits) +
-        "".join(random.choices(chars, k=6)) +
-        "!"
-    )
-
-    resp = _req.put(
-        f"{SUPABASE_URL}/auth/v1/admin/users/{user.firebase_uid}",
-        headers=_supabase_admin_headers(),
-        json={"password": password},
-        timeout=10,
-    )
-
-    if not resp.ok:
-        raise HTTPException(500, f"Supabase error: {resp.text[:200]}")
-
-    # Auto-confirm email so user can log in immediately
-    _req.put(
-        f"{SUPABASE_URL}/auth/v1/admin/users/{user.firebase_uid}",
-        headers=_supabase_admin_headers(),
-        json={"email_confirm": True},
-        timeout=10,
-    )
-
-    _audit(db, admin.id, "admin_generate_password", "user", user_id, {"target_email": user.email})
-    print(f"[admin] Generated password for {user.email}")
-    return {
-        "detail": "Password generated and set",
-        "email": user.email,
-        "password": password,
-        "full_name": user.full_name,
-    }
