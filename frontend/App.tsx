@@ -108,7 +108,7 @@ function ResetPasswordPage() {
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password });
     if (error) { setMsg(error.message); setLoading(false); return; }
-    setMsg('✅ Password updated! Redirecting to login…');
+    setMsg('86EFAC Password updated! Redirecting to login…');
     setTimeout(async () => {
       await supabase.auth.signOut();
       window.location.href = '/auth';
@@ -136,11 +136,11 @@ function ResetPasswordPage() {
         {ready && (
           <>
             {msg && (
-              <div className={`mb-4 p-3 rounded-xl text-xs font-semibold ${msg.startsWith('✅') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
+              <div className={`mb-4 p-3 rounded-xl text-xs font-semibold ${msg.startsWith('86EFAC') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
                 {msg}
               </div>
             )}
-            {!msg.startsWith('✅') && (
+            {!msg.startsWith('86EFAC') && (
               <form onSubmit={handleReset} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-widest text-gray-400 mb-1.5">New Password</label>
