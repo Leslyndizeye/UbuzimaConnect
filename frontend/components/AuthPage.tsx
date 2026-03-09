@@ -207,7 +207,7 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
     e.preventDefault(); setLoading(true); setError('');
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-        redirectTo: window.location.origin + window.location.pathname,
+        redirectTo: window.location.origin + '/reset-password',
       });
       if (error) throw error;
       setForgotSent(true);
