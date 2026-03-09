@@ -326,6 +326,17 @@ export default function AdminDashboard() {
     }catch(e:any){setRtMsg(e.message);setRtOk(false);}finally{setUploading(false);}
   };
 
+  // ── Retrain: clear all staged images ──
+  const [clearing,setClearing]=useState(false);
+  const clearStaged=async()=>{
+    if(!window.confirm("Clear ALL staged images? This cannot be undone."))return;
+    setClearing(true);setRtMsg("");
+    try{
+      await adminFetch("/retrain/staged",{method:"DELETE"});
+      setStagedC({});setRtMsg("All staged images cleared.");setRtOk(true);
+    }catch(e:any){setRtMsg(e.message);setRtOk(false);}finally{setClearing(false);}
+  };
+
   // ── Retrain: trigger — only needs 1 class with RT_MIN images ──
   const triggerRetrain=async()=>{
     const cls=Object.keys(stagedC).filter(k=>stagedC[k]>=RT_MIN);
@@ -549,7 +560,7 @@ export default function AdminDashboard() {
                       <TD mono>{fmt(u.created_at)}</TD>
                       <TD><div className="flex gap-1.5 flex-wrap">
                         {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200">Reject</button></>}
-                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s bg-[86EFAC] text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">Password</button>}
+                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Password</button>}
                         <button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">Delete</button>
                       </div></TD>
                     </TR>
@@ -722,7 +733,7 @@ export default function AdminDashboard() {
                       </div>
                       <div onClick={()=>selectedPtId&&fileRef.current?.click()} className="border-2 border-dashed rounded-3xl p-7 text-center cursor-pointer transition-colors" style={{borderColor:xPrev?"#38A169":"#E2E8F0",backgroundColor:xPrev?"#F0FDF4":"#FAFAFA"}}>
                         {xPrev?<img src={xPrev} alt="X-ray" className="max-h-48 mx-auto rounded-2xl shadow-md object-contain"/>
-                          :<div className="space-y-2 float-it"><div className="text-4xl"></div><div className="text-sm font-bold text-slate-500">Click to upload X-ray</div></div>}
+                          :<div className="space-y-2 float-it"><div className="text-4xl">🩻</div><div className="text-sm font-bold text-slate-500">Click to upload X-ray</div></div>}
                         <input ref={fileRef} type="file" accept="image/jpeg,image/png" onChange={handleFile} className="hidden"/>
                       </div>
                     </div>
@@ -857,13 +868,22 @@ export default function AdminDashboard() {
                         {stagedClasses.length===0&&<p className="text-xs italic text-slate-400 text-center py-1">Upload images to see progress</p>}
                       </div>
 
-                      <button onClick={triggerRetrain} disabled={!canTrigger}
-                        className="btn-s w-full py-4 rounded-full text-white font-bold text-sm disabled:opacity-40"
-                        style={{backgroundColor:canTrigger?"#1C5438":"#94A3B8",boxShadow:canTrigger?`0 8px 24px ${DARK_GREEN}44`:"none"}}>
-                        {canTrigger
-                          ?`⚡ Trigger Retraining (${readyClasses.length} class${readyClasses.length!==1?"es":""})`
-                          :`Upload ≥${RT_MIN} images to 1+ class first`}
-                      </button>
+                      <div className="flex gap-2">
+                        <button onClick={triggerRetrain} disabled={!canTrigger}
+                          className="btn-s flex-1 py-4 rounded-full text-white font-bold text-sm disabled:opacity-40"
+                          style={{backgroundColor:canTrigger?"#1C5438":"#94A3B8",boxShadow:canTrigger?`0 8px 24px ${DARK_GREEN}44`:"none"}}>
+                          {canTrigger
+                            ?`⚡ Trigger Retraining (${readyClasses.length} class${readyClasses.length!==1?"es":""})`
+                            :`Upload ≥${RT_MIN} images first`}
+                        </button>
+                        {stagedClasses.length>0&&(
+                          <button onClick={clearStaged} disabled={clearing}
+                            className="btn-s px-5 py-4 rounded-full font-bold text-sm border-2 border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-40 whitespace-nowrap"
+                            title="Clear all staged images">
+                            {clearing?"…":"🗑 Clear"}
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {rtMsg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${rtOk?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{rtMsg}</div>}
@@ -929,8 +949,8 @@ export default function AdminDashboard() {
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
                       <TD mono>{u.email}</TD>
                       <TD><StatusBadge status="approved"/></TD>
-                      <TD mono>{last?`${last.action==="admin_generate_password"?"86EFAC Generated":"86EFAC Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
-                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">86EFAC Manage</button></TD>
+                      <TD mono>{last?`${last.action==="admin_generate_password"?"🔑 Generated":"✏️ Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
+                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Manage</button></TD>
                     </TR>);
                   })}
                 </Tbl>
@@ -940,7 +960,7 @@ export default function AdminDashboard() {
                     <Tbl heads={["Action","Target","Admin","When"]}>
                       {pwLogs.map(l=>{const target=apiUsers.find(u=>u.id===l.entity_id);return(
                         <TR key={l.id}>
-                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"86EFAC Auto":"86EFAC Manual"}</span></TD>
+                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"🔑 Auto":"✏️ Manual"}</span></TD>
                           <TD>{target?.full_name??"—"}</TD>
                           <TD>{apiUsers.find(u=>u.id===l.user_id)?.full_name??"Admin"}</TD>
                           <TD mono>{fmt(l.timestamp)}</TD>
