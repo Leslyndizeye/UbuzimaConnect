@@ -10,18 +10,19 @@
 
 ## Github Link
 
-> **[ Github Link ](https://your-youtube-or-drive-link-here)**
+> **[ Github Link ](https://github.com/Leslyndizeye/UbuzimaConnect)**
 ---
 
 ## Live Deployment
 
 | Service | URL |
 |---|---|
-| Web App | https://ubuzimaconnect.vercel.app |
+| Web App | https://ubuzimaconnect.vercel.app (Admin link: https://ubuzimaconnect.vercel.app/admin (password: Admin123)) 
+(Radiologist page: https://ubuzimaconnect.vercel.app/dashboard (password: user123 )|
 | Backend API | https://leslylezoo-ubuzima-backend.hf.space |
 | AI Model | https://huggingface.co/leslylezoo/ubuzima-model/tree/main |
 | Notebook(Path) |frontend/notebooks |
-| API Docs (Swagger) | https://leslylezoo-ubuzima-backend.hf.space/docs (use this key to be authorized: eyJhbGciOiJFUzI1NiIsImtpZCI6Ijc2N2FhYzRhLTAwZDItNDNkNS04Yzg5LWU3ZjA2MzZhNGEyMSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL29tb2lubG1nc2R0bHpmYXN5ZGd3LnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiJjYmExNzA2Zi0xMjNjLTQ3NjQtOWJlZC01NzYyZTkzZTk0MjYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzcyOTM5NTAwLCJpYXQiOjE3NzI5MzU5MDAsImVtYWlsIjoibGVzbHluZGl6NkBnbWFpbC5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsX3ZlcmlmaWVkIjp0cnVlfSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJvdHAiLCJ0aW1lc3RhbXAiOjE3NzI5MjY4Njh9XSwic2Vzc2lvbl9pZCI6ImVlYTIwNzM3LWNlOTctNDY3ZS04ZGI2LTc5ODE2Y2NmNzY2YyIsImlzX2Fub255bW91cyI6ZmFsc2V9.uMHmI86IK0GwyOT98FLXvYgxLxjQut1Ng6tiGcI0TDi5IU6pvEND5fiZyjLbbfLZ-h2Pj15u1Wv983fLR0Oi1A) |
+| API Docs (Swagger) | https://leslylezoo-ubuzima-backend.hf.space/docs (use this key to be authorized: eyJhbGciOiJFUzI1NiIsImtpZCI6Ijc2N2FhYzRhLTAwZDItNDNkNS04Yzg5LWU3ZjA2MzZhNGEyMSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL29tb2lubG1nc2R0bHpmYXN5ZGd3LnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiJjYmExNzA2Zi0xMjNjLTQ3NjQtOWJlZC01NzYyZTkzZTk0MjYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzczMDQzNjc5LCJpYXQiOjE3NzMwNDAwNzksImVtYWlsIjoibGVzbHluZGl6NkBnbWFpbC5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsX3ZlcmlmaWVkIjp0cnVlfSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3MzA0MDA3OX1dLCJzZXNzaW9uX2lkIjoiMDU4ZTM4ZDYtZWI5Yi00NWE0LTg5NzYtYmU3OThhZTkyNGQxIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.VknbjzRJNaOhdCFivm2UVY-kgXGgqqtst1lDi1nHZc1nKyj5DclDo5KbiAmN_MeTu2xEH12M5JqnYOialvpdtg) |
 
 
 
