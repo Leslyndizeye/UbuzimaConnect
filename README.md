@@ -2,55 +2,61 @@
 
 > A web-based clinical decision support tool that helps radiologists in Rwanda detect Tuberculosis, Pneumonia, and Normal chest conditions from X-ray images using deep learning.
 
-
+---
 
 ## Demo Video
 
-<!-- Replace the link below with your actual YouTube or Google Drive video link -->
-> **[▶ Watch the 5-minute Demo Video here](https://your-youtube-or-drive-link-here)**
+> **[Drive link](https://drive.google.com/file/d/1KzNtKyCCEJNmEpDiOJ9ZXd85Scu_sxwW/view?usp=sharing)**
 
 ## Github Link
 
-> **[Link to github ](https://your-youtube-or-drive-link-here)**
+> **[ Github Link ](https://your-youtube-or-drive-link-here)**
+---
 
 ## Live Deployment
 
 | Service | URL |
-|||
+|---|---|
 | Web App | https://ubuzimaconnect.vercel.app |
 | Backend API | https://leslylezoo-ubuzima-backend.hf.space |
-| API Docs (Swagger) | https://leslylezoo-ubuzima-backend.hf.space/docs |
 | AI Model | https://huggingface.co/leslylezoo/ubuzima-model/tree/main |
-| Notebook(Path) | frontend/notebooks |
+| Notebook(Path) |frontend/notebooks |
+| API Docs (Swagger) | https://leslylezoo-ubuzima-backend.hf.space/docs (use this key to be authorized: eyJhbGciOiJFUzI1NiIsImtpZCI6Ijc2N2FhYzRhLTAwZDItNDNkNS04Yzg5LWU3ZjA2MzZhNGEyMSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL29tb2lubG1nc2R0bHpmYXN5ZGd3LnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiJjYmExNzA2Zi0xMjNjLTQ3NjQtOWJlZC01NzYyZTkzZTk0MjYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzcyOTM5NTAwLCJpYXQiOjE3NzI5MzU5MDAsImVtYWlsIjoibGVzbHluZGl6NkBnbWFpbC5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsX3ZlcmlmaWVkIjp0cnVlfSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJvdHAiLCJ0aW1lc3RhbXAiOjE3NzI5MjY4Njh9XSwic2Vzc2lvbl9pZCI6ImVlYTIwNzM3LWNlOTctNDY3ZS04ZGI2LTc5ODE2Y2NmNzY2YyIsImlzX2Fub255bW91cyI6ZmFsc2V9.uMHmI86IK0GwyOT98FLXvYgxLxjQut1Ng6tiGcI0TDi5IU6pvEND5fiZyjLbbfLZ-h2Pj15u1Wv983fLR0Oi1A) |
 
-## Screenshots
 
-> All screenshots are in the [`screenshots/`](./screenshots/) folder.
+
+---
+
+## Screenshoots
+
+> All screenshoots are in the [`screenshoots/`](./screenshoots/) folder.
 
 ### Landing Page
-![Landing Page](screenshots/landing.png)
+![Landing Page](frontend/screenshoots/landing.png)
 
 ### Radiologist Registration
-![Registration Form](screenshots/registration.png)
+![Registration Form](frontend/screenshoots/registration.png)
 
 ### Admin — Pending Approvals
-![Admin Approvals](screenshots/admin_approvals.png)
+![Admin Approvals](frontend/screenshoots/admin_approvals.png)
 
 ### Radiologist Dashboard
-![Radiologist Dashboard](screenshots/dashboard.png)
+![Radiologist Dashboard](frontend/screenshoots/dashboard.png)
 
 ### Patient Diagnosis Form
-![Diagnosis Form](screenshots/diagnosis_form.png)
+![Diagnosis Form](frontend/screenshoots/diagnosis_form.png)
 
 ### AI Diagnosis Result with Grad-CAM Heatmap
-![Diagnosis Result](screenshots/diagnosis_result.png)
+![Diagnosis Result](frontend/screenshoots/diagnosis_result.png)
 
 ### Admin — Patient Records
-![Admin Patients](screenshots/admin_patients.png)
+![Admin Patients](frontend/screenshoots/admin_patients.png)
 
 ## Admin - Retraining more X- rays images
-![Admin Patients](screenshots/retrain.png)
+![Admin Patients](frontend/screenshoots/retrain.png)
 
+
+---
 
 ## Testing Results
 
@@ -59,24 +65,24 @@
 The following core workflows were tested end-to-end on the live deployed system:
 
 | Test Case | Input | Expected Result | Actual Result | Status |
-||||||
-| Radiologist registration | Valid name, email, hospital, license | Account created, status = pending | Account created, visible in admin panel | ✅ Pass |
-| Admin approval | Admin clicks Approve on pending user | Status → approved, user can log in | User received email and logged in | ✅ Pass |
-| Patient registration | Name + 16-digit Rwanda National ID | Patient saved, linked to radiologist | Patient appears in dashboard and admin panel | ✅ Pass |
-| Invalid National ID | 15-digit number | Validation error shown | Red border + "Must be 16 digits" error | ✅ Pass |
-| Duplicate National ID | Same NID as existing patient | System detects duplicate, links to existing patient | Existing patient record reused | ✅ Pass |
-| AI diagnosis — Normal X-ray | Normal chest X-ray image | Classification: Normal, high confidence | Normal, ~94% confidence | ✅ Pass |
-| AI diagnosis — TB X-ray | TB-positive X-ray | Classification: Tuberculosis | Tuberculosis, ~87% confidence | ✅ Pass |
-| AI diagnosis — Pneumonia X-ray | Pneumonia X-ray | Classification: Pneumonia | Pneumonia, ~91% confidence | ✅ Pass |
-| Radiologist verification | Radiologist overrides AI result | Updated classification saved | Verified badge appears, audit log updated | ✅ Pass |
-| Admin password management | Admin generates password for radiologist | Secure password generated and displayed | Password set, user can log in immediately | ✅ Pass |
-| Model retraining | Upload ≥5 images per class, trigger | Retraining job created, status polling begins | Job created, completed with validation accuracy shown | ✅ Pass |
-| Audit log | Any admin/radiologist action | Action recorded with timestamp and user | All actions appear in audit log tab | ✅ Pass |
+|---|---|---|---|---|
+| Radiologist registration | Valid name, email, hospital, license | Account created, status = pending | Account created, visible in admin panel | Pass |
+| Admin approval | Admin clicks Approve on pending user | Status → approved, user can log in | User received email and logged in | Pass |
+| Patient registration | Name + 16-digit Rwanda National ID | Patient saved, linked to radiologist | Patient appears in dashboard and admin panel | Pass |
+| Invalid National ID | 15-digit number | Validation error shown | Red border + "Must be 16 digits" error | Pass |
+| Duplicate National ID | Same NID as existing patient | System detects duplicate, links to existing patient | Existing patient record reused | Pass |
+| AI diagnosis — Normal X-ray | Normal chest X-ray image | Classification: Normal, high confidence | Normal, ~94% confidence | Pass |
+| AI diagnosis — TB X-ray | TB-positive X-ray | Classification: Tuberculosis | Tuberculosis, ~87% confidence | Pass |
+| AI diagnosis — Pneumonia X-ray | Pneumonia X-ray | Classification: Pneumonia | Pneumonia, ~91% confidence | Pass |
+| Radiologist verification | Radiologist overrides AI result | Updated classification saved | Verified badge appears, audit log updated | Pass |
+| Admin password management | Admin generates password for radiologist | Secure password generated and displayed | Password set, user can log in immediately | Pass |
+| Model retraining | Upload ≥5 images per class, trigger | Retraining job created, status polling begins | Job created, completed with validation accuracy shown | Pass |
+| Audit log | Any admin/radiologist action | Action recorded with timestamp and user | All actions appear in audit log tab | Pass |
 
 ### Testing with Different Data Values
 
 | Scenario | Data Used | Outcome |
-||||
+|---|---|---|
 | X-ray with very low confidence | Ambiguous / unclear image | Classified as "Unknown" with correct uncertainty flags |
 | Patient with no hospital assigned | Empty hospital field | Saved correctly, displays "—" in UI |
 | Large X-ray file (>3MB) | High-resolution scan | Processed successfully, resized internally before inference |
@@ -87,7 +93,7 @@ The following core workflows were tested end-to-end on the live deployed system:
 ### Performance Testing — Hardware & Software
 
 | Environment | Browser / OS | Result |
-||||
+|---|---|---|
 | Desktop (Windows 11, Chrome 122) | Chrome | Full functionality, dashboard loads in <2s |
 | Desktop (macOS Sonoma, Safari 17) | Safari | Full functionality, animations smooth |
 | MacBook M1 | Chrome | Dashboard loads in ~1.8s, no degradation |
@@ -95,7 +101,7 @@ The following core workflows were tested end-to-end on the live deployed system:
 | Slow network (throttled to 3G) | Chrome DevTools | X-ray upload ~8s, prediction ~5s — functional but slower |
 | Hugging Face Spaces cold start | Any browser | First request after inactivity takes ~15–20s (free tier sleep mode) |
 
-
+---
 
 ## Analysis
 
@@ -121,7 +127,7 @@ Ubuzima Connect successfully delivered all core objectives defined in the projec
 
 **Model Accuracy at Scale:** The model performs well on benchmark X-ray datasets but has not been validated against Rwanda-specific clinical data. Real-world accuracy in production would require ongoing feedback from verified radiologists.
 
-
+---
 
 ## Discussion
 
@@ -139,7 +145,7 @@ The results validate the central hypothesis of the project: that AI-assisted che
 
 The Grad-CAM heatmaps are particularly significant. They transform the AI from a black-box classifier into an explainable tool that radiologists can critically evaluate — which is essential for clinical trust and eventual regulatory approval in a medical context.
 
-
+---
 
 ## Recommendations
 
@@ -163,7 +169,7 @@ The Grad-CAM heatmaps are particularly significant. They transform the AI from a
 - **Senior radiologist review queue** — flagged low-confidence diagnoses routed for secondary review
 - **Batch processing** — upload and analyze multiple X-rays in a single session
 
-
+---
 
 ## What It Does
 
@@ -176,12 +182,12 @@ Ubuzima Connect allows hospital radiologists to upload chest X-ray images and re
 
 Each prediction includes a confidence score, probability breakdown across all four classes, and a Grad-CAM heatmap highlighting the lung regions that most influenced the diagnosis. Radiologists can verify or override the AI result, add clinical notes, and save to the patient record.
 
-
+---
 
 ## Features
 
 | Feature | Description |
-|||
+|---|---|
 | AI Diagnosis | ResNet-50 model classifies chest X-rays into 4 classes |
 | Grad-CAM Heatmaps | Visual explanation showing which lung regions drove the AI decision |
 | Radiologist Verification | Doctors confirm, override, or annotate AI results |
@@ -193,12 +199,12 @@ Each prediction includes a confidence score, probability breakdown across all fo
 | Rwanda-aware | CAT timezone display, Rwanda National ID (16-digit) validation |
 | Secure Auth | Supabase JWT authentication with role-based access control |
 
-
+---
 
 ## Tech Stack
 
 | Layer | Technology |
-|||
+|---|---|
 | Frontend | React + TypeScript + Vite + Tailwind CSS |
 | Backend | FastAPI (Python) |
 | AI Model | TensorFlow 2.x / Keras — ResNet-50 fine-tuned |
@@ -208,7 +214,7 @@ Each prediction includes a confidence score, probability breakdown across all fo
 | Backend Hosting | Hugging Face Spaces (Docker container) |
 | Model Storage | Hugging Face Hub |
 
-
+---
 
 ## Project Structure
 
@@ -235,11 +241,11 @@ ubuzima/
 │   │   └── supabaseConfig.ts              # Supabase client
 │   └── notebooks/
 │       └── Ubuzima_Connect_notebook.ipynb  # Model training (Google Colab)
-├── screenshots/                            # Demo screenshots
+├── screenshoots/                            # Demo screenshoots
 └── README.md
 ```
 
-
+---
 
 ## How to Run Locally
 
@@ -319,7 +325,7 @@ npm run dev
 
 Open **http://localhost:5173** in your browser.
 
-
+---
 
 ## How to Use
 
@@ -349,7 +355,7 @@ Open **http://localhost:5173** in your browser.
 6. **Retrain AI** — upload labelled X-ray images by class and trigger model retraining
 7. **Audit Log** — every system action with timestamp and user
 
-
+---
 
 ## Deployment
 
@@ -364,7 +370,7 @@ git push hf main
 Set these in HF Space → **Settings → Variables and secrets**:
 
 | Variable | Description |
-|||
+|---|---|
 | `DATABASE_URL` | Full Supabase PostgreSQL connection string |
 | `SUPABASE_URL` | Your Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (Supabase → API) |
@@ -381,17 +387,17 @@ git push origin main   # Vercel auto-deploys on every push to main
 Set these in Vercel → **Project Settings → Environment Variables**:
 
 | Variable | Value |
-|||
+|---|---|
 | `VITE_API_URL` | `https://leslylezoo-ubuzima-backend.hf.space` |
 | `VITE_SUPABASE_URL` | `https://<your-project-ref>.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | Your anon key |
 
-
+---
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
-||||
+|---|---|---|
 | POST | `/predict` | Run AI diagnosis on uploaded X-ray |
 | GET | `/patients` | List all patients |
 | POST | `/patients` | Create new patient |
@@ -416,7 +422,7 @@ Set these in Vercel → **Project Settings → Environment Variables**:
 
 Full interactive docs: **https://leslylezoo-ubuzima-backend.hf.space/docs**
 
-
+---
 
 ## Training Notebook
 
@@ -426,11 +432,12 @@ frontend/notebooks/Ubuzima_Connect_notebook.ipynb
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Leslyndizeye/UbuzimaConnect/blob/main/frontend/notebooks/Ubuzima_Connect_notebook.ipynb)
 
+---
 
 ## AI Model
 
 | Property | Value |
-|||
+|---|---|
 | Architecture | ResNet-50 (fine-tuned) |
 | Framework | TensorFlow 2.x / Keras |
 | Input | 224 × 224 RGB chest X-ray |
@@ -439,4 +446,4 @@ frontend/notebooks/Ubuzima_Connect_notebook.ipynb
 | Size | ~215 MB `.keras` format |
 | Repository | https://huggingface.co/leslylezoo/ubuzima-model |
 
-
+---
