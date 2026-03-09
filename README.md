@@ -18,7 +18,7 @@
 | Service | URL |
 |---|---|
 | Web App | https://ubuzimaconnect.vercel.app (Admin link: https://ubuzimaconnect.vercel.app/admin (password: Admin123)) 
-(Radiologist page: https://ubuzimaconnect.vercel.app/dashboard (password: user123 )|
+| Web App (passwords) |Radiologist page: https://ubuzimaconnect.vercel.app/dashboard (password: user123 )|
 | Backend API | https://leslylezoo-ubuzima-backend.hf.space |
 | AI Model | https://huggingface.co/leslylezoo/ubuzima-model/tree/main |
 | Notebook(Path) |frontend/notebooks |
