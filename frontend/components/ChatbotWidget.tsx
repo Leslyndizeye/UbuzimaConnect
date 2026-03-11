@@ -22,29 +22,6 @@ const SUGGESTIONS = [
 ];
 
 async function askBot(userMessage: string): Promise<string> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-
-  const res = await fetch(`${API_BASE}/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ message: userMessage }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    if (res.status === 503) throw new Error("Model is warming up (~30 seconds). Please try again.");
-    throw new Error(err.detail || `Error ${res.status}`);
-  }
-
-  const data2 = await res.json();
-  return data2.reply || "Sorry, I could not generate a response.";
-}
-
-async function askBot(userMessage: string): Promise<string> {
   // Try supabase client first, fall back to localStorage
   let token: string | undefined;
   try {
