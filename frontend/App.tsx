@@ -13,6 +13,7 @@ import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { supabase } from './components/supabaseConfig';
 import IntroSequence from './components/IntroSequence';
+import ChatbotWidget from './components/ChatbotWidget';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 
@@ -244,6 +245,12 @@ function AuthRoute() {
   return <AuthPage onAuth={() => { window.location.href = '/'; }} />;
 }
 
+function ChatbotGate() {
+  const role = useContext(AuthContext);
+  if (role === 'admin' || role === 'approved') return <ChatbotWidget />;
+  return null;
+}
+
 // ─── App — shows IntroSequence on every page load ─────────────────────────────
 const App: React.FC = () => {
   const [introFinished, setIntroFinished] = useState(false);
@@ -254,7 +261,7 @@ const App: React.FC = () => {
 
   return (
     <>
-      {!introFinished && <IntroSequence onFinish={handleIntroFinish} />}
+      {!introFinished && <IntroSequence onFinish={() => setIntroFinished(true)} />}
       <BrowserRouter>
         <AuthProvider>
           <Routes>
@@ -266,10 +273,13 @@ const App: React.FC = () => {
             <Route path="/admin" element={<ProtectedRoute allow="admin"><AdminDashboard /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <ChatbotGate />  {/* inside AuthProvider so it can read role */}
         </AuthProvider>
       </BrowserRouter>
     </>
   );
 };
+
+
 
 export default App;
