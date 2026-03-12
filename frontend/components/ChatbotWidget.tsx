@@ -21,40 +21,61 @@ const SUGGESTIONS = [
   "Normal chest X-ray features?",
 ];
 
-async function askBot(userMessage: string): Promise<string> {
-  // Try supabase client first, fall back to localStorage
-  let token: string | undefined;
-  try {
-    const { data } = await supabase.auth.getSession();
-    token = data.session?.access_token;
-  } catch {}
+// async function askBot(userMessage: string): Promise<string> {
+//   // Try supabase client first, fall back to localStorage
+//   let token: string | undefined;
+//   try {
+//     const { data } = await supabase.auth.getSession();
+//     token = data.session?.access_token;
+//   } catch {}
   
-  // Fallback: read directly from localStorage
-  if (!token) {
-    const key = Object.keys(localStorage).find(k => k.includes('supabase') && k.includes('auth'));
-    if (key) {
-      const val = JSON.parse(localStorage.getItem(key) || '{}');
-      token = val?.access_token;
-    }
-  }
+//   // Fallback: read directly from localStorage
+//   if (!token) {
+//     const key = Object.keys(localStorage).find(k => k.includes('supabase') && k.includes('auth'));
+//     if (key) {
+//       const val = JSON.parse(localStorage.getItem(key) || '{}');
+//       token = val?.access_token;
+//     }
+//   }
 
-  const res = await fetch(`${API_BASE}/api/chat`, {
+//   const res = await fetch(`${API_BASE}/api/chat`, {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/json",
+//       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+//     },
+//     body: JSON.stringify({ message: userMessage }),
+//   });
+
+//   if (!res.ok) {
+//     const err = await res.json().catch(() => ({}));
+//     if (res.status === 503) throw new Error("Model is warming up (~30 seconds). Please try again.");
+//     throw new Error(err.detail || `Error ${res.status}`);
+//   }
+
+//   const data2 = await res.json();
+//   return data2.reply || "Sorry, I could not generate a response.";
+// }
+async function askBot(userMessage: string): Promise<string> {
+  const payload = {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message: userMessage }),
-  });
+  };
+
+  let res = await fetch(`${API_BASE}/api/chat`, payload);
+
+  if (res.status === 404) {
+    res = await fetch(`${API_BASE}/chat`, payload);
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    if (res.status === 503) throw new Error("Model is warming up (~30 seconds). Please try again.");
     throw new Error(err.detail || `Error ${res.status}`);
   }
 
-  const data2 = await res.json();
-  return data2.reply || "Sorry, I could not generate a response.";
+  const data = await res.json();
+  return data.reply || "Sorry, I could not generate a response.";
 }
 
 export default function ChatbotWidget() {
