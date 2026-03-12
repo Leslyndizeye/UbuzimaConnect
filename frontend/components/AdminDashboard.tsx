@@ -190,7 +190,7 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
           {!hasAuth&&<div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium">⚠ Approve user first before setting a password.</div>}
           <div className="p-5 rounded-3xl space-y-3" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-green-700">Auto-Generate</p>
-            <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating…":"⚡ Generate & Set Password"}</button>
+            <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating…":" Generate & Set Password"}</button>
             {gen&&<div className="rounded-2xl p-4 bg-white border border-green-200">
               <p className="text-[9px] font-bold uppercase text-slate-400 mb-2">Share with user</p>
               <div className="flex items-center gap-2"><code className="flex-1 text-sm font-bold font-mono px-3 py-2 rounded-xl" style={{background:"#DCFCE7",color:"#14532D"}}>{gen}</code><button onClick={()=>{navigator.clipboard.writeText(gen);setCopied(true);setTimeout(()=>setCopied(false),2000);}} className="btn-s px-4 py-2 rounded-full text-white text-xs font-bold" style={{backgroundColor:DARK_GREEN}}>{copied?"✓ Copied":"Copy"}</button></div>
@@ -560,7 +560,7 @@ export default function AdminDashboard() {
                       <TD mono>{fmt(u.created_at)}</TD>
                       <TD><div className="flex gap-1.5 flex-wrap">
                         {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200">Reject</button></>}
-                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Password</button>}
+                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200"> Password</button>}
                         <button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">Delete</button>
                       </div></TD>
                     </TR>
@@ -873,7 +873,7 @@ export default function AdminDashboard() {
                           className="btn-s flex-1 py-4 rounded-full text-white font-bold text-sm disabled:opacity-40"
                           style={{backgroundColor:canTrigger?"#1C5438":"#94A3B8",boxShadow:canTrigger?`0 8px 24px ${DARK_GREEN}44`:"none"}}>
                           {canTrigger
-                            ?`⚡ Trigger Retraining (${readyClasses.length} class${readyClasses.length!==1?"es":""})`
+                            ?` Trigger Retraining (${readyClasses.length} class${readyClasses.length!==1?"es":""})`
                             :`Upload ≥${RT_MIN} images first`}
                         </button>
                         {stagedClasses.length>0&&(
@@ -949,8 +949,8 @@ export default function AdminDashboard() {
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
                       <TD mono>{u.email}</TD>
                       <TD><StatusBadge status="approved"/></TD>
-                      <TD mono>{last?`${last.action==="admin_generate_password"?"🔑 Generated":"✏️ Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
-                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Manage</button></TD>
+                      <TD mono>{last?`${last.action==="admin_generate_password"?" Generated":" Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
+                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200"> Manage</button></TD>
                     </TR>);
                   })}
                 </Tbl>
@@ -960,7 +960,7 @@ export default function AdminDashboard() {
                     <Tbl heads={["Action","Target","Admin","When"]}>
                       {pwLogs.map(l=>{const target=apiUsers.find(u=>u.id===l.entity_id);return(
                         <TR key={l.id}>
-                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"🔑 Auto":"✏️ Manual"}</span></TD>
+                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?" Auto":" Manual"}</span></TD>
                           <TD>{target?.full_name??"—"}</TD>
                           <TD>{apiUsers.find(u=>u.id===l.user_id)?.full_name??"Admin"}</TD>
                           <TD mono>{fmt(l.timestamp)}</TD>
