@@ -57,20 +57,17 @@ const SUGGESTIONS = [
 //   return data2.reply || "Sorry, I could not generate a response.";
 // }
 async function askBot(userMessage: string): Promise<string> {
-  const payload = {
+  const res = await fetch(`${API_BASE}/api/radiology-chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ message: userMessage }),
-  };
-
-  let res = await fetch(`${API_BASE}/api/chat`, payload);
-
-  if (res.status === 404) {
-    res = await fetch(`${API_BASE}/chat`, payload);
-  }
+  });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
+    if (res.status === 503) throw new Error("Model is warming up (~30 seconds). Please try again.");
     throw new Error(err.detail || `Error ${res.status}`);
   }
 
