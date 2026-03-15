@@ -13,13 +13,16 @@ import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { supabase } from './components/supabaseConfig';
 import IntroSequence from './components/IntroSequence';
+import HospitalLanding        from './components/HospitalLanding';
+import HospitalApply          from './components/HospitalApply';
+import HospitalAdminDashboard from './components/HospitalAdminDashboard';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// Types 
 type UserRole = 'loading' | 'guest' | 'pending' | 'approved' | 'admin' | 'reset';
 
-// ─── Auth Context — single source of truth, no repeated API calls ─────────────
+// Auth Context — single source of truth, no repeated API calls 
 const AuthContext = createContext<UserRole>('loading');
 
 function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -74,14 +77,14 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   return <AuthContext.Provider value={role}>{children}</AuthContext.Provider>;
 }
 
-// ─── Spinner ──────────────────────────────────────────────────────────────────
+// Spinner─────
 const Spinner = () => (
   <div className="min-h-screen bg-white flex items-center justify-center">
     <div className="w-10 h-10 border-4 border-emerald-200 border-t-emerald-500 rounded-full animate-spin" />
   </div>
 );
 
-// ─── Reset Password Page ───────────────────────────────────────────────────────
+// Reset Password Page──────────
 function ResetPasswordPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -165,7 +168,7 @@ function ResetPasswordPage() {
   );
 }
 
-// ─── Pending Page ─────────────────────────────────────────────────────────────
+// Pending Page
 function PendingPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -191,7 +194,7 @@ function PendingPage() {
   );
 }
 
-// ─── Landing Page ─────────────────────────────────────────────────────────────
+// Landing Page
 function LandingPage() {
   const navigate = useNavigate();
   const goAuth = () => navigate('/auth');
@@ -211,7 +214,7 @@ function LandingPage() {
   );
 }
 
-// ─── Root — redirects logged-in users, shows landing to guests ────────────────
+// Root — redirects logged-in users, shows landing to guests
 function RootPage() {
   const role = useContext(AuthContext);
   if (role === 'loading') return <Spinner />;
@@ -222,7 +225,7 @@ function RootPage() {
   return <LandingPage />;
 }
 
-// ─── Protected Route ──────────────────────────────────────────────────────────
+// Protected Route 
 function ProtectedRoute({ children, allow }: { children: React.ReactNode; allow: UserRole }) {
   const role = useContext(AuthContext);
   if (role === 'loading') return <Spinner />;
@@ -234,7 +237,7 @@ function ProtectedRoute({ children, allow }: { children: React.ReactNode; allow:
   return <Navigate to="/auth" replace />;
 }
 
-// ─── Auth Route — redirect if already logged in ───────────────────────────────
+// Auth Route — redirect if already logged in ──
 function AuthRoute() {
   const role = useContext(AuthContext);
   if (role === 'loading') return <Spinner />;
@@ -244,7 +247,7 @@ function AuthRoute() {
   return <AuthPage onAuth={() => { window.location.href = '/'; }} />;
 }
 
-// ─── App — shows IntroSequence on every page load ─────────────────────────────
+// App — shows IntroSequence on every page load 
 const App: React.FC = () => {
   const [introFinished, setIntroFinished] = useState(false);
 
@@ -265,6 +268,9 @@ const App: React.FC = () => {
             <Route path="/dashboard" element={<ProtectedRoute allow="approved"><Dashboard /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute allow="admin"><AdminDashboard /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/"               element={<HospitalLanding />} />
+            <Route path="/hospital/apply" element={<HospitalApply />} />
+            <Route path="/hospital/admin" element={<HospitalAdminDashboard />} />
           </Routes>
         </AuthProvider>
       </BrowserRouter>

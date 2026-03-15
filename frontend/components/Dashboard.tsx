@@ -3,13 +3,15 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from './supabaseConfig';
 import AuthPage from './AuthPage';
 import AdminDashboard from './AdminDashboard';
+import { useHospitalBranding } from '../hooks/useHospitalBranding';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 // Admin status is determined by is_admin field from database only
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// Types 
 interface BUser {
   id: number; email: string; full_name: string; hospital?: string;
+  hospital_id?: number;
   license_number?: string; specialization?: string; phone_number?: string;
   years_experience?: number; role: string; status: string; is_admin: boolean; created_at: string;
 }
@@ -32,7 +34,7 @@ interface Prediction {
 type Tab = 'diagnose' | 'history' | 'profile';
 type AppState = 'loading' | 'unauthenticated' | 'pending' | 'rejected' | 'approved' | 'admin';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+//  Helpers 
 async function getToken(): Promise<string> {
   const { data } = await supabase.auth.getSession();
   const session = data.session;
@@ -89,13 +91,14 @@ function EyeBtn({ show, onToggle }: { show: boolean; onToggle: () => void }) {
   );
 }
 
-// ─── Radiologist Dashboard ────────────────────────────────────────────────────
+//  Radiologist Dashboard ─
 function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>('diagnose');
   const [user, setUser] = useState(init);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
   const [busy, setBusy] = useState(false);
+  const branding = useHospitalBranding(user.hospital_id);
 
   // Diagnose state
   const [pName, setPName] = useState('');
@@ -163,7 +166,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ── Diagnose ────────────────────────────────────────────────────────────────
+  // ── Diagnose ─
   const onNid = (v: string) => {
     const d = v.replace(/\D/g, '').slice(0, 16);
     setPNid(d);
@@ -323,7 +326,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  // ── Patient edit ────────────────────────────────────────────────────────────
+  // ── Patient edit 
   const saveEdit = async () => {
     if (!editPat?.name?.trim()) { setEditErr('Name is required'); return; }
     if (editPat.patient_ref_id && !validId(editPat.patient_ref_id)) { setEditErr('National ID must be exactly 16 digits'); return; }
@@ -343,7 +346,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     finally { setEditSaving(false); }
   };
 
-  // ── Verify diagnosis ────────────────────────────────────────────────────────
+  // ── Verify diagnosis ──
   const saveVerify = async () => {
     if (!verifyDiag) return;
     setVerSaving(true);
@@ -357,7 +360,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     finally { setVerSaving(false); }
   };
 
-  // ── Profile ─────────────────────────────────────────────────────────────────
+  // ── Profile ──
   const saveProfile = async () => {
     if (!pFullName.trim()) { setProfMsg('Full name is required'); return; }
     setProfSaving(true); setProfMsg('');
@@ -520,6 +523,26 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
           </div>
         </div>
       </header>
+
+      {/* Hospital branding banner — only shows if radiologist belongs to an approved hospital */}
+      {branding && (
+        <div className="flex items-center gap-3 px-6 py-2.5 bg-emerald-50 border-b border-emerald-100">
+          {branding.logo_base64 ? (
+            <img
+              src={branding.logo_base64}
+              alt={branding.name}
+              className="h-7 w-auto object-contain rounded"
+            />
+          ) : (
+            <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center text-sm">🏥</div>
+          )}
+          <span className="font-semibold text-emerald-900 text-sm">{branding.name}</span>
+          <span className="text-emerald-600 text-xs">· {branding.district}, {branding.province}</span>
+          <span className="ml-auto text-xs text-emerald-500 bg-emerald-100 px-2.5 py-1 rounded-full">
+            Powered by Ubuzima Connect
+          </span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-100 bg-white sticky top-14 z-20">
@@ -1022,7 +1045,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   );
 }
 
-// ─── Shell screens ────────────────────────────────────────────────────────────
+//  Shell screens 
 const Loading = () => (
   <div className="min-h-screen bg-gray-50 flex items-center justify-center">
     <div className="text-center space-y-4">
@@ -1066,7 +1089,7 @@ const RejectedScreen = ({ onSignOut }: { onSignOut: () => void }) => (
   </div>
 );
 
-// ─── Main App Shell ───────────────────────────────────────────────────────────
+//  Main App Shell ──
 export default function Dashboard() {
   const [appState, setAppState] = useState<AppState>('loading');
   const [bUser, setBUser] = useState<BUser | null>(null);
