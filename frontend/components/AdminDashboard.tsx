@@ -15,7 +15,8 @@ async function adminFetch(path: string, options: RequestInit = {}) {
   return res.json();
 }
 
-interface ApiUser { id:number; email:string; full_name:string; hospital?:string; license_number?:string; role:string; status:string; created_at:string; firebase_uid?:string; }
+interface ApiUser { id:number; email:string; full_name:string; hospital?:string; hospital_id?:number; is_admin?:boolean; license_number?:string; role:string; status:string; created_at:string; firebase_uid?:string; }
+interface HospitalOption { id:number; name:string; }
 interface Diagnosis { id:number; patient_id:number; radiologist_id?:number; ai_classification:string; confidence_score:number; tb_probability:number; pneumonia_probability:number; normal_probability:number; unknown_probability?:number; radiologist_verified:boolean; created_at:string; }
 interface Patient { id:number; name:string; patient_ref_id?:string; age?:number; sex?:string; hospital?:string; clinical_notes?:string; radiologist_id?:number; created_at:string; }
 interface Stats { total_radiologists:number; pending_requests:number; total_patients:number; total_diagnoses:number; model_status:string; uptime_seconds:number; }
@@ -190,7 +191,7 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
           {!hasAuth&&<div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium">⚠ Approve user first before setting a password.</div>}
           <div className="p-5 rounded-3xl space-y-3" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-green-700">Auto-Generate</p>
-            <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating…":" Generate & Set Password"}</button>
+            <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating…":"⚡ Generate & Set Password"}</button>
             {gen&&<div className="rounded-2xl p-4 bg-white border border-green-200">
               <p className="text-[9px] font-bold uppercase text-slate-400 mb-2">Share with user</p>
               <div className="flex items-center gap-2"><code className="flex-1 text-sm font-bold font-mono px-3 py-2 rounded-xl" style={{background:"#DCFCE7",color:"#14532D"}}>{gen}</code><button onClick={()=>{navigator.clipboard.writeText(gen);setCopied(true);setTimeout(()=>setCopied(false),2000);}} className="btn-s px-4 py-2 rounded-full text-white text-xs font-bold" style={{backgroundColor:DARK_GREEN}}>{copied?"✓ Copied":"Copy"}</button></div>
@@ -230,6 +231,12 @@ export default function AdminDashboard() {
   const [editPatient,setEditPatient]=useState<EditPatient|null>(null);
   const [editError,setEditError]=useState(""); const [editSaving,setEditSaving]=useState(false);
   const [expandedPt,setExpandedPt]=useState<number|null>(null);
+  // Hospital assignment for middle admin
+  const [hospitals,setHospitals]=useState<HospitalOption[]>([]);
+  const [assignUser,setAssignUser]=useState<ApiUser|null>(null);
+  const [assignHospId,setAssignHospId]=useState<number|"">("");
+  const [assignLoading,setAssignLoading]=useState(false);
+  const [assignMsg,setAssignMsg]=useState("");
 
   // ── Diagnose state ──
   const [dxRadiologist,setDxRadiologist]=useState<number|"">("");
@@ -260,6 +267,7 @@ export default function AdminDashboard() {
       if(a.status==="fulfilled"){setAuditLogs(a.value);setPwLogs(a.value.filter((l:AuditLog)=>l.action.includes("password")||l.action.includes("Password")));}
       if(j.status==="fulfilled")setRetrainJobs(j.value);
       adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
+      adminFetch("/hospitals").then(r=>setHospitals(r.map((h:any)=>({id:h.id,name:h.name})))).catch(()=>{});
     }catch(e:any){setError(e.message);}
   },[]);
 
@@ -273,6 +281,17 @@ export default function AdminDashboard() {
   const approveUser=async(id:number)=>{await adminFetch(`/users/${id}/status`,{method:"PATCH",body:JSON.stringify({status:"approved"})});loadAll();};
   const rejectUser=async(id:number)=>{const r=prompt("Reason:")??"";await adminFetch(`/users/${id}/status`,{method:"PATCH",body:JSON.stringify({status:"rejected",rejection_reason:r})});loadAll();};
   const deleteUser=async(id:number,name:string)=>{if(!confirm(`Delete ${name}?`))return;try{await adminFetch(`/users/${id}`,{method:"DELETE"});loadAll();}catch(e:any){setError(e.message);}};
+  const assignHospital=async()=>{
+    if(!assignUser||!assignHospId){setAssignMsg("Select a hospital");return;}
+    setAssignLoading(true);setAssignMsg("");
+    try{
+      await adminFetch(`/users/${assignUser.id}/assign-hospital`,{method:"PATCH",body:JSON.stringify({hospital_id:assignHospId,make_admin:true})});
+      setAssignMsg("✅ Middle admin assigned!");
+      setTimeout(()=>{setAssignUser(null);setAssignHospId("");setAssignMsg("");loadAll();},1500);
+    }catch(e:any){setAssignMsg("Error: "+e.message);}
+    finally{setAssignLoading(false);}
+  };
+
   const openEdit=(p:Patient)=>{setEditPatient({id:p.id,name:p.name,patient_ref_id:p.patient_ref_id||"",hospital:p.hospital||"",clinical_notes:p.clinical_notes||""});setEditError("");};
   const saveEdit=async()=>{
     if(!editPatient)return; if(!editPatient.name.trim()){setEditError("Name required");return;}
@@ -386,6 +405,46 @@ export default function AdminDashboard() {
                 <div className="flex gap-3 pt-1">
                   <button onClick={()=>setEditPatient(null)} className="flex-1 py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors">Cancel</button>
                   <button onClick={saveEdit} disabled={editSaving} className="btn-s flex-1 py-3 rounded-full text-white font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{editSaving?"Saving…":"Save Changes"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Assign Hospital Modal ── */}
+        {assignUser&&(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{backgroundColor:"rgba(0,0,0,.45)",backdropFilter:"blur(6px)"}}>
+            <div className="anim-pop w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden">
+              <div className="px-8 pt-7 pb-6 text-white" style={{background:"linear-gradient(135deg,#1C5438,#267347)"}}>
+                <div className="flex items-center justify-between">
+                  <div><h2 className="text-lg font-bold">Assign as Middle Admin</h2><p className="text-sm text-white/70 mt-0.5">{assignUser.full_name} · {assignUser.email}</p></div>
+                  <button onClick={()=>{setAssignUser(null);setAssignMsg("");}} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center font-bold">✕</button>
+                </div>
+              </div>
+              <div className="p-8 space-y-5">
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-sm">
+                  <strong>This will:</strong>
+                  <ul className="mt-2 space-y-1 text-xs list-disc list-inside">
+                    <li>Set this user as admin for the selected hospital</li>
+                    <li>Link them to the hospital so their radiologists see the hospital branding</li>
+                    <li>Allow them to upload the hospital logo from their Profile tab</li>
+                  </ul>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Select Hospital</label>
+                  <select value={assignHospId} onChange={e=>setAssignHospId(Number(e.target.value)||"")}
+                    className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 text-sm outline-none focus:border-[#86EFAC]">
+                    <option value="">Select an approved hospital…</option>
+                    {hospitals.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                  {hospitals.length===0&&<p className="text-xs text-amber-600 mt-1">⚠ No approved hospitals yet. Approve a hospital application first.</p>}
+                </div>
+                {assignMsg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${assignMsg.startsWith("✅")?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{assignMsg}</div>}
+                <div className="flex gap-3">
+                  <button onClick={()=>{setAssignUser(null);setAssignMsg("");}} className="flex-1 py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200">Cancel</button>
+                  <button onClick={assignHospital} disabled={assignLoading||!assignHospId} className="btn-s flex-1 py-3 rounded-full text-white font-bold disabled:opacity-40" style={{backgroundColor:"#1C5438"}}>
+                    {assignLoading?"Assigning…":"Assign as Admin"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -560,7 +619,7 @@ export default function AdminDashboard() {
                       <TD mono>{fmt(u.created_at)}</TD>
                       <TD><div className="flex gap-1.5 flex-wrap">
                         {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200">Reject</button></>}
-                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200"> Password</button>}
+                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Password</button>}
                         <button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">Delete</button>
                       </div></TD>
                     </TR>
@@ -873,7 +932,7 @@ export default function AdminDashboard() {
                           className="btn-s flex-1 py-4 rounded-full text-white font-bold text-sm disabled:opacity-40"
                           style={{backgroundColor:canTrigger?"#1C5438":"#94A3B8",boxShadow:canTrigger?`0 8px 24px ${DARK_GREEN}44`:"none"}}>
                           {canTrigger
-                            ?` Trigger Retraining (${readyClasses.length} class${readyClasses.length!==1?"es":""})`
+                            ?`⚡ Trigger Retraining (${readyClasses.length} class${readyClasses.length!==1?"es":""})`
                             :`Upload ≥${RT_MIN} images first`}
                         </button>
                         {stagedClasses.length>0&&(
@@ -949,8 +1008,8 @@ export default function AdminDashboard() {
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
                       <TD mono>{u.email}</TD>
                       <TD><StatusBadge status="approved"/></TD>
-                      <TD mono>{last?`${last.action==="admin_generate_password"?" Generated":" Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
-                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200"> Manage</button></TD>
+                      <TD mono>{last?`${last.action==="admin_generate_password"?"🔑 Generated":"✏️ Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
+                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Manage</button></TD>
                     </TR>);
                   })}
                 </Tbl>
@@ -960,7 +1019,7 @@ export default function AdminDashboard() {
                     <Tbl heads={["Action","Target","Admin","When"]}>
                       {pwLogs.map(l=>{const target=apiUsers.find(u=>u.id===l.entity_id);return(
                         <TR key={l.id}>
-                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?" Auto":" Manual"}</span></TD>
+                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"🔑 Auto":"✏️ Manual"}</span></TD>
                           <TD>{target?.full_name??"—"}</TD>
                           <TD>{apiUsers.find(u=>u.id===l.user_id)?.full_name??"Admin"}</TD>
                           <TD mono>{fmt(l.timestamp)}</TD>

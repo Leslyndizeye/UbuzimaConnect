@@ -8,7 +8,7 @@ import { useHospitalBranding } from '../hooks/useHospitalBranding';
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 // Admin status is determined by is_admin field from database only
 
-// Types 
+//  Types Email
 interface BUser {
   id: number; email: string; full_name: string; hospital?: string;
   hospital_id?: number;
@@ -88,6 +88,107 @@ function EyeBtn({ show, onToggle }: { show: boolean; onToggle: () => void }) {
         </svg>
       )}
     </button>
+  );
+}
+
+
+//  Hospital Logo Upload (for middle admins only) ─
+function HospitalLogoUpload({ hospitalId, currentLogo, onUploaded }: {
+  hospitalId: number;
+  currentLogo: string | null;
+  onUploaded: () => void;
+}) {
+  const [uploading, setUploading] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+  const [preview, setPreview] = React.useState<string | null>(currentLogo);
+  const fileRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type)) {
+      setMsg('Only JPG, PNG or WebP allowed'); return;
+    }
+    setUploading(true); setMsg('');
+    try {
+      const token = await getToken();
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_BASE}/hospitals/${hospitalId}/logo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
+      setMsg('✅ Logo uploaded and resized successfully!');
+      // Show local preview
+      const reader = new FileReader();
+      reader.onload = ev => setPreview(ev.target?.result as string);
+      reader.readAsDataURL(file);
+      setTimeout(onUploaded, 1500);
+    } catch (err: any) {
+      setMsg('Error: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeLogo = async () => {
+    if (!confirm('Remove hospital logo?')) return;
+    setUploading(true);
+    try {
+      const token = await getToken();
+      await fetch(`${API_BASE}/hospitals/${hospitalId}/logo`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setPreview(null);
+      setMsg('Logo removed.');
+      setTimeout(onUploaded, 1000);
+    } catch (err: any) {
+      setMsg('Error: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="font-bold text-sm">Hospital Logo</div>
+          <div className="text-xs text-gray-400 mt-0.5">Displayed on the radiologist dashboard for your hospital</div>
+        </div>
+        {preview && (
+          <img src={preview} alt="Hospital logo" className="h-10 w-auto object-contain rounded-lg border border-gray-100" />
+        )}
+      </div>
+      <div
+        onClick={() => !uploading && fileRef.current?.click()}
+        className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all
+          ${preview ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-100 hover:border-emerald-300 hover:bg-emerald-50/20'}`}>
+        {uploading
+          ? <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+              <div className="w-4 h-4 border-2 border-gray-200 border-t-emerald-500 rounded-full animate-spin" />
+              Uploading and resizing…
+            </div>
+          : preview
+            ? <p className="text-[10px] text-emerald-600 font-semibold">Click to change logo · Auto-resized to 400×400px</p>
+            : <p className="text-[10px] text-gray-400 font-medium">Click to upload hospital logo (JPG, PNG · max 5MB · auto-resized)</p>
+        }
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFile} />
+      </div>
+      {preview && !uploading && (
+        <button onClick={removeLogo} className="mt-2 text-[10px] font-bold text-red-400 hover:text-red-600 transition-colors">
+          Remove logo
+        </button>
+      )}
+      {msg && (
+        <div className={`mt-3 p-3 rounded-xl text-xs font-semibold ${msg.startsWith('✅') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : msg.startsWith('Error') ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-gray-50 text-gray-600'}`}>
+          {msg}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -972,6 +1073,15 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                 </div>
               )}
             </div>
+
+            {/* Hospital Logo Upload — only for hospital middle admins */}
+            {user.is_admin && user.hospital_id && (
+              <HospitalLogoUpload
+                hospitalId={user.hospital_id}
+                currentLogo={branding?.logo_base64 || null}
+                onUploaded={() => window.location.reload()}
+              />
+            )}
 
             {/* Change password */}
             <div className="bg-white rounded-2xl border border-gray-100 p-5">
