@@ -1,7 +1,6 @@
-// frontend/components/HospitalApply.tsx
-// 4-step hospital partnership application form at /hospital/apply
-
-import { useState, useRef } from 'react';
+// components/HospitalApply.tsx
+// Matches existing Ubuzima Connect design — emerald palette, same input style as AuthPage
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
@@ -15,28 +14,28 @@ const DISTRICTS: Record<string, string[]> = {
 };
 
 const TERMS = `1. SCOPE OF SERVICE
-Ubuzima Connect ("the Platform") provides AI-assisted chest X-ray diagnostic support to approved healthcare institutions in Rwanda. The Platform is intended to assist, not replace, qualified radiologists in clinical decision-making.
+Ubuzima Connect provides AI-assisted chest X-ray diagnostic support to approved healthcare institutions in Rwanda. The Platform is intended to assist, not replace, qualified radiologists in clinical decision-making.
 
 2. APPROVED USE
 The Platform may only be used by licensed healthcare professionals. Hospital administrators are responsible for ensuring only approved radiologists access the system. Credentials must not be shared outside approved personnel.
 
 3. CLINICAL RESPONSIBILITY
-All AI-generated diagnoses are decision-support tools only. Final clinical decisions remain the sole responsibility of the attending radiologist or physician. Ubuzima Connect does not assume liability for clinical outcomes arising from Platform use.
+All AI-generated diagnoses are decision-support tools only. Final clinical decisions remain the sole responsibility of the attending radiologist or physician. Ubuzima Connect does not assume liability for clinical outcomes.
 
 4. DATA PRIVACY & SECURITY
-Patient data uploaded to the Platform must comply with Rwanda's data protection regulations. Hospitals are responsible for obtaining patient consent for digital X-ray processing. Ubuzima Connect stores diagnostic data securely and does not share it with third parties without consent.
+Patient data must comply with Rwanda's data protection regulations. Hospitals are responsible for obtaining patient consent for digital X-ray processing. Data is stored securely and not shared with third parties without consent.
 
 5. HOSPITAL LOGO & BRANDING
-By uploading your hospital logo, you grant Ubuzima Connect permission to display it within the platform interface visible to your registered radiologists. The logo will not be used in external marketing without written consent.
+By uploading your hospital logo, you grant Ubuzima Connect permission to display it within the platform interface visible to your registered radiologists only.
 
 6. MODEL RETRAINING
-X-ray data submitted for model retraining may be used to improve the AI model. All data is anonymised before processing. Hospitals retain ownership of patient data and may request deletion at any time.
+X-ray data submitted for model retraining may be used to improve the AI model. All data is anonymised. Hospitals retain ownership and may request deletion at any time.
 
 7. GOOGLE MEET ONBOARDING CALL
-Prior to receiving credentials, approved applicants must attend a mandatory 30-minute onboarding call. Approval is conditional on completion of this call.
+Prior to receiving credentials, approved applicants must attend a mandatory 30-minute onboarding call.
 
 8. ACCESS REVOCATION
-Ubuzima Connect reserves the right to suspend or revoke hospital access in cases of misuse or breach of these terms. Hospitals may request deactivation at any time.
+Ubuzima Connect reserves the right to suspend or revoke hospital access in cases of misuse or breach of these terms.
 
 9. GOVERNING LAW
 This agreement is governed by the laws of the Republic of Rwanda.`;
@@ -50,44 +49,54 @@ interface FormData {
   current_system: string; primary_conditions: string; heard_from: string; notes: string;
 }
 
+const inp = "w-full px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-gray-900 text-xs font-medium outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 transition-all placeholder:text-gray-300";
+const sel = "w-full px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-gray-900 text-xs font-medium outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 transition-all";
+
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">{label}</label>
+      {children}
+      {error && <p className="text-[9px] text-red-500 ml-1">{error}</p>}
+    </div>
+  );
+}
+
 export default function HospitalApply() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [refNumber, setRefNumber] = useState('');
   const [submitted, setSubmitted] = useState(false);
-  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [refNumber, setRefNumber] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [termsChecked, setTermsChecked] = useState(false);
   const [dataChecked, setDataChecked] = useState(false);
-  const logoInputRef = useRef<HTMLInputElement>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<FormData>({
-    name:'', type:'', email:'', phone:'', moh_license:'', website:'', logo_base64:'',
-    province:'', district:'', sector:'', address:'', contact_name:'', contact_role:'',
-    num_radiologists:'', num_machines:'', monthly_volume:'',
-    current_system:'', primary_conditions:'', heard_from:'', notes:'',
+    name: '', type: '', email: '', phone: '', moh_license: '', website: '', logo_base64: '',
+    province: '', district: '', sector: '', address: '', contact_name: '', contact_role: '',
+    num_radiologists: '', num_machines: '', monthly_volume: '',
+    current_system: '', primary_conditions: '', heard_from: '', notes: '',
   });
 
   const set = (k: keyof FormData, v: string) => {
-    setForm(f => ({...f, [k]: v}));
-    setErrors(e => ({...e, [k]: ''}));
-    if (k === 'province') setForm(f => ({...f, province: v, district: ''}));
+    setForm(f => ({ ...f, [k]: v, ...(k === 'province' ? { district: '' } : {}) }));
+    setErrors(e => ({ ...e, [k]: '' }));
   };
 
   const validate = (s: number) => {
     const required: Record<number, (keyof FormData)[]> = {
-      1: ['name','type','email','phone','moh_license'],
-      2: ['province','district','address','contact_name','contact_role'],
-      3: ['num_radiologists','num_machines','monthly_volume'],
+      1: ['name', 'type', 'email', 'phone', 'moh_license'],
+      2: ['province', 'district', 'address', 'contact_name', 'contact_role'],
+      3: ['num_radiologists', 'num_machines', 'monthly_volume'],
       4: [],
     };
-    const errs: Record<string,string> = {};
+    const errs: Record<string, string> = {};
     for (const k of required[s]) {
-      if (!form[k].trim()) errs[k] = 'This field is required';
+      if (!form[k].trim()) errs[k] = 'Required';
     }
-    if (s === 4 && (!termsChecked || !dataChecked)) {
-      errs['terms'] = 'Please accept all agreements to continue';
-    }
+    if (s === 4 && (!termsChecked || !dataChecked)) errs['terms'] = 'Please accept all agreements';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -109,55 +118,43 @@ export default function HospitalApply() {
     try {
       const res = await fetch(`${API_BASE}/hospital/apply`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Submission failed');
-      }
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Submission failed'); }
       const data = await res.json();
       setRefNumber(data.ref_number);
       setSubmitted(true);
     } catch (err: any) {
-      setErrors({submit: err.message});
+      setErrors({ submit: err.message });
     } finally {
       setLoading(false);
     }
   };
 
-  const progress = (step / 4) * 100;
-  const stepLabels = ['Organisation','Location','Radiology Team','Terms'];
-
-  const inputCls = (k: string) =>
-    `w-full border rounded-xl px-4 py-3 text-sm outline-none transition-all font-sans
-     ${errors[k] ? 'border-red-400 bg-red-50' : 'border-green-100 bg-white focus:border-green-500 focus:ring-2 focus:ring-green-100'}`;
-
-  const selectCls = (k: string) =>
-    `w-full border rounded-xl px-4 py-3 text-sm outline-none transition-all bg-white font-sans
-     ${errors[k] ? 'border-red-400' : 'border-green-100 focus:border-green-500'}`;
+  const stepLabels = ['Organisation', 'Location', 'Radiology', 'Terms'];
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-[#f5f0e8] flex items-center justify-center px-4">
-        <div className="bg-white rounded-3xl p-12 max-w-lg w-full text-center shadow-xl">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-4xl mx-auto mb-6">✅</div>
-          <h2 className="text-3xl font-bold text-[#0d3320] mb-3" style={{fontFamily:'Georgia,serif'}}>Application Submitted!</h2>
-          <p className="text-green-700 leading-relaxed mb-2">
-            Thank you for applying to become a Ubuzima Connect hospital partner.
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-gray-100 p-8 text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-emerald-100 rounded-2xl mb-4">
+            <svg className="w-7 h-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-black text-gray-900 mb-2">Application Submitted</h2>
+          <p className="text-gray-500 text-xs leading-relaxed mb-3">
             Our team will review your application and get in touch within <strong>48 hours</strong>.
           </p>
-          <p className="text-green-600 text-sm leading-relaxed mb-6">
-            Check your email at <strong>{form.email}</strong> for a confirmation message.
-            If approved for the next stage, we will schedule a Google Meet onboarding call.
+          <p className="text-gray-400 text-xs mb-5 leading-relaxed">
+            Check <strong>{form.email}</strong> for a confirmation. If approved, we'll schedule a Google Meet onboarding call.
           </p>
-          <div className="inline-block bg-[#f5f0e8] border border-green-100 rounded-xl px-6 py-3 text-sm text-green-700 mb-8">
-            Your reference: <code className="font-bold text-[#0d3320] ml-1">{refNumber}</code>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 inline-block mb-6">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Reference</span>
+            <p className="text-sm font-black text-emerald-700 font-mono mt-0.5">{refNumber}</p>
           </div>
-          <button
-            onClick={() => navigate('/')}
-            className="w-full bg-[#0d3320] text-white py-3 rounded-xl font-bold hover:bg-green-800 transition-colors"
-          >
+          <button onClick={() => navigate('/')} className="w-full py-3 bg-emerald-900 hover:bg-emerald-800 text-white font-bold rounded-xl transition-all text-sm">
             Back to Home
           </button>
         </div>
@@ -166,242 +163,212 @@ export default function HospitalApply() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f0e8] py-12 px-4">
-      <div className="max-w-2xl mx-auto">
-
-        {/* Header */}
-        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-green-700 text-sm mb-8 hover:text-green-600">
-          ← Back to home
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-lg">
+        <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 hover:text-gray-600 mb-5 transition-colors uppercase tracking-widest">
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          Back to home
         </button>
-        <h1 className="text-3xl font-bold text-[#0d3320] mb-2" style={{fontFamily:'Georgia,serif'}}>Hospital Partnership Application</h1>
-        <p className="text-green-700 text-sm mb-8">Ubuzima Connect — AI Chest X-Ray Diagnostic Platform</p>
 
-        {/* Form card */}
-        <div className="bg-white rounded-3xl overflow-hidden shadow-lg border border-green-100">
-
-          {/* Form header */}
-          <div className="bg-gradient-to-r from-[#0d3320] to-[#1a5c38] px-8 py-8">
-            <div className="flex justify-between mb-3">
-              {stepLabels.map((l,i) => (
-                <span key={l} className={`text-xs font-semibold ${i+1===step?'text-yellow-300':i+1<step?'text-green-400':'text-white/40'}`}>{i+1}. {l}</span>
+        <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
+          {/* Header */}
+          <div className="px-8 pt-7 pb-6 bg-emerald-900">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-7 h-7 bg-emerald-900 border border-emerald-700 rounded-lg flex items-center justify-center">
+                <div className="w-3 h-[1.5px] rounded-full bg-emerald-100" />
+              </div>
+              <span className="text-xs font-bold text-white/80 uppercase tracking-widest">Ubuzima Connect</span>
+            </div>
+            <h1 className="text-xl font-black text-white mb-1">Hospital Partnership</h1>
+            <p className="text-xs text-emerald-300 mb-5">AI Chest X-Ray Diagnostic Platform · Rwanda</p>
+            {/* Progress */}
+            <div className="flex justify-between mb-2">
+              {stepLabels.map((l, i) => (
+                <span key={l} className={`text-[9px] font-bold uppercase tracking-wider ${i + 1 === step ? 'text-emerald-300' : i + 1 < step ? 'text-emerald-500' : 'text-emerald-800'}`}>
+                  {i + 1}. {l}
+                </span>
               ))}
             </div>
-            <div className="h-1 bg-white/20 rounded-full">
-              <div className="h-full bg-gradient-to-r from-yellow-400 to-yellow-300 rounded-full transition-all duration-500" style={{width:`${progress}%`}} />
+            <div className="h-1 bg-emerald-800 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-400 rounded-full transition-all duration-500" style={{ width: `${(step / 4) * 100}%` }} />
             </div>
           </div>
 
-          <div className="p-8">
+          <div className="px-8 py-6 space-y-4">
 
-            {/* STEP 1: Organisation */}
+            {/* STEP 1 */}
             {step === 1 && (
-              <div className="space-y-5">
-                <h3 className="font-bold text-[#0d3320] text-lg border-b border-green-50 pb-4">Organisation Information</h3>
-                <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 pb-2 border-b border-gray-50">Organisation Information</p>
+                <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Hospital / Facility Name <span className="text-red-400">*</span></label>
-                    <input className={inputCls('name')} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="e.g. King Faisal Hospital Kigali"/>
-                    {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                    <Field label="Hospital / Facility Name *" error={errors.name}>
+                      <input className={inp} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. King Faisal Hospital Kigali" />
+                    </Field>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Facility Type <span className="text-red-400">*</span></label>
-                    <select className={selectCls('type')} value={form.type} onChange={e=>set('type',e.target.value)}>
-                      <option value="">Select type...</option>
+                  <Field label="Facility Type *" error={errors.type}>
+                    <select className={sel} value={form.type} onChange={e => set('type', e.target.value)}>
+                      <option value="">Select…</option>
                       {['Public Hospital','Private Hospital','NGO / Mission Hospital','District Hospital','Referral Hospital','Health Centre'].map(t=><option key={t}>{t}</option>)}
                     </select>
-                    {errors.type && <p className="text-red-500 text-xs mt-1">{errors.type}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">MoH License Number <span className="text-red-400">*</span></label>
-                    <input className={inputCls('moh_license')} value={form.moh_license} onChange={e=>set('moh_license',e.target.value)} placeholder="e.g. MoH/RW/2021/0042"/>
-                    {errors.moh_license && <p className="text-red-500 text-xs mt-1">{errors.moh_license}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Official Email <span className="text-red-400">*</span></label>
-                    <input type="email" className={inputCls('email')} value={form.email} onChange={e=>set('email',e.target.value)} placeholder="admin@hospital.rw"/>
-                    {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Phone Number <span className="text-red-400">*</span></label>
-                    <input className={inputCls('phone')} value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="+250 7XX XXX XXX"/>
-                    {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Website (optional)</label>
-                    <input className={inputCls('website')} value={form.website} onChange={e=>set('website',e.target.value)} placeholder="https://yourhospital.rw"/>
+                  </Field>
+                  <Field label="MoH License Number *" error={errors.moh_license}>
+                    <input className={inp} value={form.moh_license} onChange={e => set('moh_license', e.target.value)} placeholder="MoH/RW/2021/0042" />
+                  </Field>
+                  <Field label="Official Email *" error={errors.email}>
+                    <input type="email" className={inp} value={form.email} onChange={e => set('email', e.target.value)} placeholder="admin@hospital.rw" />
+                  </Field>
+                  <Field label="Phone Number *" error={errors.phone}>
+                    <input className={inp} value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+250 7XX XXX XXX" />
+                  </Field>
+                  <div className="col-span-2">
+                    <Field label="Website (optional)">
+                      <input className={inp} value={form.website} onChange={e => set('website', e.target.value)} placeholder="https://yourhospital.rw" />
+                    </Field>
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Hospital Logo</label>
-                    <div
-                      onClick={() => logoInputRef.current?.click()}
-                      className="border-2 border-dashed border-green-100 rounded-2xl p-6 text-center cursor-pointer hover:border-green-400 hover:bg-green-50/50 transition-all"
-                    >
-                      {form.logo_base64 ? (
-                        <img src={form.logo_base64} alt="Logo" className="h-16 mx-auto mb-2 rounded-lg object-contain"/>
-                      ) : (
-                        <div className="text-3xl mb-2">🏥</div>
-                      )}
-                      <p className="text-sm text-green-700">{form.logo_base64 ? 'Click to change logo' : 'Click to upload hospital logo'}</p>
-                      <p className="text-xs text-green-500 mt-1">PNG or JPG — will appear on the platform for your radiologists</p>
-                    </div>
-                    <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogo}/>
+                    <Field label="Hospital Logo — shown to your radiologists">
+                      <div onClick={() => logoRef.current?.click()} className="border-2 border-dashed border-gray-100 rounded-xl p-4 text-center cursor-pointer hover:border-emerald-300 hover:bg-emerald-50/30 transition-all">
+                        {form.logo_base64
+                          ? <img src={form.logo_base64} alt="Logo" className="h-10 mx-auto object-contain rounded" />
+                          : <p className="text-[10px] text-gray-300 font-medium">Click to upload PNG or JPG</p>
+                        }
+                      </div>
+                      <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogo} />
+                    </Field>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* STEP 2: Location */}
+            {/* STEP 2 */}
             {step === 2 && (
-              <div className="space-y-5">
-                <h3 className="font-bold text-[#0d3320] text-lg border-b border-green-50 pb-4">Location in Rwanda</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Province <span className="text-red-400">*</span></label>
-                    <select className={selectCls('province')} value={form.province} onChange={e=>set('province',e.target.value)}>
-                      <option value="">Select province...</option>
+              <div className="space-y-3">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 pb-2 border-b border-gray-50">Location in Rwanda</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Province *" error={errors.province}>
+                    <select className={sel} value={form.province} onChange={e => set('province', e.target.value)}>
+                      <option value="">Select…</option>
                       {Object.keys(DISTRICTS).map(p=><option key={p}>{p}</option>)}
                     </select>
-                    {errors.province && <p className="text-red-500 text-xs mt-1">{errors.province}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">District <span className="text-red-400">*</span></label>
-                    <select className={selectCls('district')} value={form.district} onChange={e=>set('district',e.target.value)} disabled={!form.province}>
-                      <option value="">Select district...</option>
-                      {(DISTRICTS[form.province] || []).map(d=><option key={d}>{d}</option>)}
+                  </Field>
+                  <Field label="District *" error={errors.district}>
+                    <select className={sel} value={form.district} onChange={e => set('district', e.target.value)} disabled={!form.province}>
+                      <option value="">Select…</option>
+                      {(DISTRICTS[form.province]||[]).map(d=><option key={d}>{d}</option>)}
                     </select>
-                    {errors.district && <p className="text-red-500 text-xs mt-1">{errors.district}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Sector / Cell</label>
-                    <input className={inputCls('sector')} value={form.sector} onChange={e=>set('sector',e.target.value)} placeholder="e.g. Kacyiru Sector"/>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Contact Person <span className="text-red-400">*</span></label>
-                    <input className={inputCls('contact_name')} value={form.contact_name} onChange={e=>set('contact_name',e.target.value)} placeholder="Full name"/>
-                    {errors.contact_name && <p className="text-red-500 text-xs mt-1">{errors.contact_name}</p>}
+                  </Field>
+                  <Field label="Sector / Cell">
+                    <input className={inp} value={form.sector} onChange={e => set('sector', e.target.value)} placeholder="e.g. Kacyiru" />
+                  </Field>
+                  <Field label="Contact Person *" error={errors.contact_name}>
+                    <input className={inp} value={form.contact_name} onChange={e => set('contact_name', e.target.value)} placeholder="Full name" />
+                  </Field>
+                  <div className="col-span-2">
+                    <Field label="Contact Person Role *" error={errors.contact_role}>
+                      <input className={inp} value={form.contact_role} onChange={e => set('contact_role', e.target.value)} placeholder="e.g. Head of Radiology, IT Manager" />
+                    </Field>
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Contact Person Role <span className="text-red-400">*</span></label>
-                    <input className={inputCls('contact_role')} value={form.contact_role} onChange={e=>set('contact_role',e.target.value)} placeholder="e.g. Head of Radiology, IT Manager"/>
-                    {errors.contact_role && <p className="text-red-500 text-xs mt-1">{errors.contact_role}</p>}
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Full Physical Address <span className="text-red-400">*</span></label>
-                    <textarea rows={3} className={inputCls('address') + ' resize-none'} value={form.address} onChange={e=>set('address',e.target.value)} placeholder="Street address, building, landmarks..."/>
-                    {errors.address && <p className="text-red-500 text-xs mt-1">{errors.address}</p>}
+                    <Field label="Physical Address *" error={errors.address}>
+                      <textarea rows={2} className={inp + ' resize-none'} value={form.address} onChange={e => set('address', e.target.value)} placeholder="Street, building, landmarks…" />
+                    </Field>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* STEP 3: Radiology capacity */}
+            {/* STEP 3 */}
             {step === 3 && (
-              <div className="space-y-5">
-                <h3 className="font-bold text-[#0d3320] text-lg border-b border-green-50 pb-4">Radiology Capacity</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Number of Radiologists <span className="text-red-400">*</span></label>
-                    <select className={selectCls('num_radiologists')} value={form.num_radiologists} onChange={e=>set('num_radiologists',e.target.value)}>
-                      <option value="">Select...</option>
+              <div className="space-y-3">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 pb-2 border-b border-gray-50">Radiology Capacity</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Number of Radiologists *" error={errors.num_radiologists}>
+                    <select className={sel} value={form.num_radiologists} onChange={e => set('num_radiologists', e.target.value)}>
+                      <option value="">Select…</option>
                       {['1','2–3','4–6','7–10','More than 10'].map(v=><option key={v}>{v}</option>)}
                     </select>
-                    {errors.num_radiologists && <p className="text-red-500 text-xs mt-1">{errors.num_radiologists}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Number of X-Ray Machines <span className="text-red-400">*</span></label>
-                    <select className={selectCls('num_machines')} value={form.num_machines} onChange={e=>set('num_machines',e.target.value)}>
-                      <option value="">Select...</option>
+                  </Field>
+                  <Field label="X-Ray Machines *" error={errors.num_machines}>
+                    <select className={sel} value={form.num_machines} onChange={e => set('num_machines', e.target.value)}>
+                      <option value="">Select…</option>
                       {['1','2–3','4–6','7+'].map(v=><option key={v}>{v}</option>)}
                     </select>
-                    {errors.num_machines && <p className="text-red-500 text-xs mt-1">{errors.num_machines}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">X-Rays per Month <span className="text-red-400">*</span></label>
-                    <select className={selectCls('monthly_volume')} value={form.monthly_volume} onChange={e=>set('monthly_volume',e.target.value)}>
-                      <option value="">Select...</option>
+                  </Field>
+                  <Field label="X-Rays per Month *" error={errors.monthly_volume}>
+                    <select className={sel} value={form.monthly_volume} onChange={e => set('monthly_volume', e.target.value)}>
+                      <option value="">Select…</option>
                       {['Less than 50','50–200','200–500','500–1,000','More than 1,000'].map(v=><option key={v}>{v}</option>)}
                     </select>
-                    {errors.monthly_volume && <p className="text-red-500 text-xs mt-1">{errors.monthly_volume}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Current Diagnostic System</label>
-                    <select className={selectCls('current_system')} value={form.current_system} onChange={e=>set('current_system',e.target.value)}>
-                      <option value="">Select...</option>
-                      {['Manual / Paper-based only','Basic digital records','PACS system','Other hospital software'].map(v=><option key={v}>{v}</option>)}
+                  </Field>
+                  <Field label="Current Diagnostic System">
+                    <select className={sel} value={form.current_system} onChange={e => set('current_system', e.target.value)}>
+                      <option value="">Select…</option>
+                      {['Manual / Paper-based','Basic digital records','PACS system','Other software'].map(v=><option key={v}>{v}</option>)}
                     </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">How did you hear about us?</label>
-                    <select className={selectCls('heard_from')} value={form.heard_from} onChange={e=>set('heard_from',e.target.value)}>
-                      <option value="">Select...</option>
+                  </Field>
+                  <Field label="How did you hear about us?">
+                    <select className={sel} value={form.heard_from} onChange={e => set('heard_from', e.target.value)}>
+                      <option value="">Select…</option>
                       {['Rwanda Biomedical Centre','Ministry of Health','Colleague / Referral','Social media','ALU / Academic network','Other'].map(v=><option key={v}>{v}</option>)}
                     </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Primary Conditions Diagnosed</label>
-                    <input className={inputCls('primary_conditions')} value={form.primary_conditions} onChange={e=>set('primary_conditions',e.target.value)} placeholder="e.g. TB, Pneumonia, COVID-19"/>
-                  </div>
+                  </Field>
+                  <Field label="Primary Conditions Diagnosed">
+                    <input className={inp} value={form.primary_conditions} onChange={e => set('primary_conditions', e.target.value)} placeholder="e.g. TB, Pneumonia" />
+                  </Field>
                   <div className="col-span-2">
-                    <label className="block text-xs font-bold text-green-700 uppercase tracking-wider mb-1.5">Additional Notes</label>
-                    <textarea rows={3} className={inputCls('notes') + ' resize-none'} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Any other information, special requirements, or questions..."/>
+                    <Field label="Additional Notes">
+                      <textarea rows={2} className={inp + ' resize-none'} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Special requirements, questions…" />
+                    </Field>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* STEP 4: Terms */}
+            {/* STEP 4 */}
             {step === 4 && (
-              <div className="space-y-5">
-                <h3 className="font-bold text-[#0d3320] text-lg border-b border-green-50 pb-4">Terms & Conditions</h3>
-                <div className="bg-[#f5f0e8] border border-green-100 rounded-2xl p-5">
-                  <h4 className="font-bold text-[#0d3320] mb-3">Ubuzima Connect — Hospital Partner Agreement</h4>
-                  <div className="max-h-48 overflow-y-auto text-sm text-green-800 leading-relaxed pr-2 whitespace-pre-line mb-4"
-                    style={{scrollbarWidth:'thin'}}>
+              <div className="space-y-3">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 pb-2 border-b border-gray-50">Terms & Conditions</p>
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4">
+                  <p className="text-[10px] font-bold text-gray-700 mb-2">Ubuzima Connect — Hospital Partner Agreement</p>
+                  <div className="max-h-36 overflow-y-auto text-[10px] text-gray-400 leading-relaxed whitespace-pre-line pr-1 mb-3" style={{scrollbarWidth:'thin'}}>
                     {TERMS}
                   </div>
-                  <label className="flex items-start gap-3 cursor-pointer text-sm text-green-800">
-                    <input type="checkbox" checked={termsChecked} onChange={e=>setTermsChecked(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 accent-green-600 flex-shrink-0"/>
-                    I confirm that I am an authorised representative of the applying institution and agree to the Ubuzima Connect Hospital Partner Terms & Conditions.
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" checked={termsChecked} onChange={e=>setTermsChecked(e.target.checked)} className="mt-0.5 w-3.5 h-3.5 accent-emerald-600 flex-shrink-0"/>
+                    <span className="text-[10px] text-gray-500 leading-relaxed">I am an authorised representative and agree to the Hospital Partner Terms & Conditions.</span>
                   </label>
                 </div>
-                <div className="bg-[#f5f0e8] border border-green-100 rounded-2xl p-5">
-                  <h4 className="font-bold text-[#0d3320] mb-3">Data Processing Agreement</h4>
-                  <p className="text-sm text-green-800 leading-relaxed mb-4">
-                    By submitting this application, you acknowledge that Ubuzima Connect will process the information provided — including hospital name, contact details, and uploaded logo — for the purpose of evaluating your partnership application and, if approved, configuring your organisation's access to the Platform. This data is stored securely and will not be shared with third parties except as required by Rwandan law.
-                  </p>
-                  <label className="flex items-start gap-3 cursor-pointer text-sm text-green-800">
-                    <input type="checkbox" checked={dataChecked} onChange={e=>setDataChecked(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 accent-green-600 flex-shrink-0"/>
-                    I consent to the processing of my organisation's data as described above.
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4">
+                  <p className="text-[10px] font-bold text-gray-700 mb-2">Data Processing Agreement</p>
+                  <p className="text-[10px] text-gray-400 leading-relaxed mb-3">By submitting, you acknowledge that Ubuzima Connect will process your organisation's information to evaluate your application and configure system access. Data is stored securely and not shared with third parties except as required by Rwandan law.</p>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" checked={dataChecked} onChange={e=>setDataChecked(e.target.checked)} className="mt-0.5 w-3.5 h-3.5 accent-emerald-600 flex-shrink-0"/>
+                    <span className="text-[10px] text-gray-500">I consent to processing of my organisation's data as described above.</span>
                   </label>
                 </div>
-                {errors.terms && <p className="text-red-500 text-sm">{errors.terms}</p>}
-                {errors.submit && <p className="text-red-500 text-sm bg-red-50 p-3 rounded-xl">{errors.submit}</p>}
+                {errors.terms && <p className="text-[10px] text-red-500">{errors.terms}</p>}
+                {errors.submit && <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-[10px] text-red-600 font-semibold">{errors.submit}</div>}
               </div>
             )}
 
             {/* Navigation */}
-            <div className="flex justify-between items-center mt-8 pt-6 border-t border-green-50">
-              <button
-                onClick={back}
-                className={`border border-green-200 text-green-700 px-6 py-3 rounded-full text-sm font-semibold hover:border-green-400 transition-colors ${step===1?'invisible':''}`}
-              >
+            <div className="flex justify-between items-center pt-3 border-t border-gray-50">
+              <button onClick={back} className={`text-[9px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-600 transition-colors ${step===1?'invisible':''}`}>
                 ← Back
               </button>
               {step < 4 ? (
-                <button onClick={next}
-                  className="bg-[#0d3320] text-white px-8 py-3 rounded-full text-sm font-bold hover:bg-green-800 transition-colors">
+                <button onClick={next} className="py-2.5 px-7 bg-emerald-900 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs transition-all">
                   Continue →
                 </button>
               ) : (
-                <button onClick={submit} disabled={loading}
-                  className="bg-[#0d3320] text-white px-8 py-3 rounded-full text-sm font-bold hover:bg-green-800 transition-colors disabled:opacity-50 flex items-center gap-2">
-                  {loading ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Submitting...</> : 'Submit Application ✓'}
+                <button onClick={submit} disabled={loading} className="py-2.5 px-7 bg-emerald-900 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs transition-all disabled:opacity-50 flex items-center gap-2">
+                  {loading ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Submitting…</> : 'Submit Application'}
                 </button>
               )}
             </div>
           </div>
+          <p className="text-center text-[9px] text-gray-300 pb-5">© 2026 Ubuzima Connect · Rwanda</p>
         </div>
       </div>
     </div>
