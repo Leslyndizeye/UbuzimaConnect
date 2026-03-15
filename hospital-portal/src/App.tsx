@@ -1,5 +1,4 @@
 // hospital-portal/src/App.tsx
-import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import HospitalLanding from './pages/HospitalLanding';
 import HospitalApply   from './pages/HospitalApply';

@@ -1,7 +1,7 @@
 // pages/HospitalApply.tsx
 // Standalone hospital portal — application form at /apply
 // Design: same as AuthPage.tsx — emerald-900, Plus Jakarta Sans, gray-50 inputs
-import React, { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
@@ -248,17 +248,7 @@ export default function HospitalApply() {
                     <Label text="Website (optional)" />
                     <input className={inp} value={form.website} onChange={e => set('website', e.target.value)} placeholder="https://yourhospital.rw" />
                   </div>
-                  <div className="col-span-2">
-                    <Label text="Hospital Logo — displayed to your radiologists on the platform" />
-                    <div onClick={() => logoRef.current?.click()}
-                      className="border-2 border-dashed border-gray-100 rounded-xl p-5 text-center cursor-pointer hover:border-emerald-300 hover:bg-emerald-50/30 transition-all">
-                      {form.logo_base64
-                        ? <img src={form.logo_base64} alt="Logo" className="h-10 mx-auto object-contain rounded" />
-                        : <p className="text-[10px] text-gray-300 font-semibold">Click to upload PNG or JPG logo</p>
-                      }
-                    </div>
-                    <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogo} />
-                  </div>
+
                 </div>
               </div>
             )}
