@@ -7,9 +7,7 @@ from typing import Optional, List
 from pydantic import BaseModel, EmailStr, field_validator
 
 
-# ─────────────────────────────────────────────────────────────
 # USER / AUTH
-# ─────────────────────────────────────────────────────────────
 
 class UserCreate(BaseModel):
     firebase_uid:     str
@@ -21,13 +19,13 @@ class UserCreate(BaseModel):
     phone_number:     Optional[str] = None
     specialization:   Optional[str] = None
 
-
 class UserOut(BaseModel):
     id:               int
     firebase_uid:     str
     email:            str
     full_name:        str
     hospital:         Optional[str]
+    hospital_id:      Optional[int]       
     license_number:   Optional[str]
     years_experience: Optional[int]
     phone_number:     Optional[str]
@@ -38,7 +36,7 @@ class UserOut(BaseModel):
     created_at:       datetime
     approved_at:      Optional[datetime]
     rejection_reason: Optional[str]
-
+ 
     class Config:
         from_attributes = True
 
@@ -48,9 +46,8 @@ class UserStatusUpdate(BaseModel):
     rejection_reason: Optional[str] = None
 
 
-# ─────────────────────────────────────────────────────────────
 # PATIENT
-# ─────────────────────────────────────────────────────────────
+
 
 class PatientCreate(BaseModel):
     name:           str
@@ -76,9 +73,9 @@ class PatientOut(BaseModel):
         from_attributes = True
 
 
-# ─────────────────────────────────────────────────────────────
+
 # PREDICTION / DIAGNOSIS
-# ─────────────────────────────────────────────────────────────
+
 
 class PredictionResponse(BaseModel):
     """Returned immediately from POST /predict (not saved yet)."""
@@ -135,9 +132,7 @@ class DiagnosisOut(BaseModel):
         from_attributes = True
 
 
-# ─────────────────────────────────────────────────────────────
-# RETRAIN
-# ─────────────────────────────────────────────────────────────
+# RETRAINING
 
 class RetrainJobOut(BaseModel):
     id:             int
@@ -154,9 +149,8 @@ class RetrainJobOut(BaseModel):
         from_attributes = True
 
 
-# ─────────────────────────────────────────────────────────────
+
 # STATS / MONITORING
-# ─────────────────────────────────────────────────────────────
 
 class SystemStats(BaseModel):
     total_radiologists:  int
@@ -177,3 +171,90 @@ class ModelInfo(BaseModel):
     classes:       List[str]
     architecture:  str
     input_shape:   List[int]
+    
+# HOSPITAL SCHEMAS 
+
+
+class HospitalApplicationCreate(BaseModel):
+    # Organisation
+    name:        str
+    type:        Optional[str] = None
+    email:       EmailStr
+    phone:       str
+    moh_license: str
+    website:     Optional[str] = None
+    logo_base64: Optional[str] = None
+    # Location
+    province:     str
+    district:     str
+    sector:       Optional[str] = None
+    address:      str
+    contact_name: str
+    contact_role: str
+    # Capacity
+    num_radiologists:   str
+    num_machines:       str
+    monthly_volume:     str
+    current_system:     Optional[str] = None
+    primary_conditions: Optional[str] = None
+    heard_from:         Optional[str] = None
+    notes:              Optional[str] = None
+
+
+class HospitalApplicationOut(BaseModel):
+    id:           int
+    ref_number:   str
+    name:         str
+    type:         Optional[str]
+    email:        str
+    phone:        Optional[str]
+    moh_license:  Optional[str]
+    province:     Optional[str]
+    district:     Optional[str]
+    address:      Optional[str]
+    contact_name: Optional[str]
+    contact_role: Optional[str]
+    num_radiologists: Optional[str]
+    num_machines:     Optional[str]
+    monthly_volume:   Optional[str]
+    notes:            Optional[str]
+    status:           str
+    meet_link:        Optional[str]
+    rejection_reason: Optional[str]
+    logo_base64:      Optional[str]
+    created_at:       datetime
+    approved_at:      Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class HospitalAppStatusUpdate(BaseModel):
+    status: str
+    meet_link: Optional[str] = None
+    meet_notes: Optional[str] = None    
+    rejection_reason: Optional[str] = None
+
+class HospitalOut(BaseModel):
+    id:               int
+    name:             str
+    type:             Optional[str]
+    email:            str
+    phone:            Optional[str]
+    moh_license:      Optional[str]
+    website:          Optional[str]
+    province:         Optional[str]
+    district:         Optional[str]
+    address:          Optional[str]
+    contact_name:     Optional[str]
+    contact_role:     Optional[str]
+    logo_base64:      Optional[str]
+    num_radiologists: Optional[str]
+    num_machines:     Optional[str]
+    monthly_volume:   Optional[str]
+    is_active:        bool
+    created_at:       datetime
+    approved_at:      Optional[datetime]
+
+    class Config:
+        from_attributes = True

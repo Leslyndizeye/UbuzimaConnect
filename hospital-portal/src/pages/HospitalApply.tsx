@@ -1,8 +1,72 @@
 // pages/HospitalApply.tsx
-// Standalone hospital portal — application form at /apply
-// Design: same as AuthPage.tsx — emerald-900, Plus Jakarta Sans, gray-50 inputs
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+const FACILITY_TYPES = [
+  { value: 'Public Hospital',       icon: '🏛️', desc: 'Government-owned facility' },
+  { value: 'Private Hospital',      icon: '🏥', desc: 'Privately operated hospital' },
+  { value: 'NGO / Mission Hospital',icon: '🤝', desc: 'Non-profit or faith-based' },
+  { value: 'District Hospital',     icon: '📍', desc: 'District-level referral' },
+  { value: 'Referral Hospital',     icon: '⭐', desc: 'National referral centre' },
+  { value: 'Health Centre',         icon: '💊', desc: 'Community health facility' },
+];
+
+function FacilityDropdown({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selected = FACILITY_TYPES.find(f => f.value === value);
+
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border bg-gray-50 text-sm font-normal outline-none transition-all text-left ${
+          open ? 'border-med-emerald bg-white ring-2 ring-med-emerald/10' : 'border-gray-100'
+        } ${error ? 'border-red-300' : ''}`}>
+        {selected ? (
+          <span className="flex items-center gap-2.5">
+            <span className="text-base">{selected.icon}</span>
+            <span className="text-gray-900 font-medium">{selected.value}</span>
+          </span>
+        ) : (
+          <span className="text-gray-300">Select facility type…</span>
+        )}
+        <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 left-0 right-0 mt-2 bg-white rounded-2xl border border-gray-100 shadow-2xl shadow-gray-200/60 overflow-hidden">
+          {FACILITY_TYPES.map(f => (
+            <button key={f.value} type="button"
+              onClick={() => { onChange(f.value); setOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all hover:bg-gray-50 ${
+                value === f.value ? 'bg-med-emerald/5 border-l-2 border-med-emerald' : ''
+              }`}>
+              <span className="text-xl w-8 text-center">{f.icon}</span>
+              <div>
+                <div className={`text-sm font-medium ${value === f.value ? 'text-med-emerald' : 'text-gray-900'}`}>{f.value}</div>
+                <div className="text-[11px] text-gray-400">{f.desc}</div>
+              </div>
+              {value === f.value && (
+                <svg className="w-4 h-4 text-med-emerald ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 
@@ -49,11 +113,11 @@ interface FormData {
 }
 
 // ── exact same input style as AuthPage.tsx ──
-const inp = "w-full px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-gray-900 text-xs font-medium outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 transition-all placeholder:text-gray-300";
-const sel = "w-full px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-gray-900 text-xs font-medium outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 transition-all";
+const inp = "w-full px-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-gray-900 text-sm font-normal outline-none focus:border-med-emerald focus:bg-white focus:ring-2 focus:ring-med-emerald/10 transition-all placeholder:text-gray-300";
+const sel = "w-full px-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-gray-900 text-sm font-normal outline-none focus:border-med-emerald focus:bg-white focus:ring-2 focus:ring-med-emerald/10 transition-all";
 
 function Label({ text }: { text: string }) {
-  return <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5 block mb-1.5">{text}</label>;
+  return <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-0.5 block mb-2">{text}</label>;
 }
 
 function Err({ msg }: { msg?: string }) {
@@ -133,29 +197,27 @@ export default function HospitalApply() {
   // ── SUCCESS ──
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center p-4"
-        style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');`}</style>
-        <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-gray-100 p-8 text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-emerald-100 rounded-2xl mb-5">
-            <svg className="w-7 h-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <div className="min-h-screen bg-[#fafafa] medical-grid flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 p-10 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-med-emerald rounded-2xl mb-6">
+            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-xl font-black text-gray-900 mb-2">Application Submitted</h2>
-          <p className="text-xs text-gray-500 leading-relaxed mb-3">
+          <h2 className="font-display text-2xl font-bold text-gray-900 mb-3 tracking-tight">Application Submitted</h2>
+          <p className="text-sm text-gray-500 leading-relaxed mb-2">
             Our team will review your application and get in touch within <strong>48 hours</strong>.
           </p>
-          <p className="text-xs text-gray-400 leading-relaxed mb-6">
+          <p className="text-sm text-gray-400 leading-relaxed mb-8">
             Check <strong className="text-gray-600">{form.email}</strong> for a confirmation.
-            If approved, we will schedule a Google Meet onboarding call.
+            If approved, we'll schedule a Google Meet onboarding call.
           </p>
-          <div className="bg-gray-50 border border-gray-100 rounded-2xl px-5 py-3 inline-block mb-7">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">Your Reference</p>
-            <p className="text-base font-black text-emerald-700 font-mono">{refNumber}</p>
+          <div className="bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 inline-block mb-8">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Your Reference</p>
+            <p className="text-lg font-bold text-med-emerald font-mono">{refNumber}</p>
           </div>
           <button onClick={() => navigate('/')}
-            className="w-full py-3.5 bg-emerald-900 hover:bg-emerald-800 text-white font-bold rounded-xl transition-all text-sm">
+            className="w-full py-4 bg-med-emerald hover:bg-black text-white font-bold rounded-2xl transition-all text-sm tracking-wide">
             Back to Home
           </button>
         </div>
@@ -165,45 +227,43 @@ export default function HospitalApply() {
 
   // ── FORM ──
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center p-4"
-      style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');`}</style>
+    <div className="min-h-screen bg-[#fafafa] medical-grid flex items-center justify-center p-4">
 
       <div className="w-full max-w-lg">
         {/* Back */}
         <button onClick={() => navigate('/')}
-          className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-600 mb-5 transition-colors">
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-widest text-gray-400 hover:text-gray-700 mb-6 transition-colors">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/>
           </svg>
           Back to home
         </button>
 
-        <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 overflow-hidden">
 
-          {/* Header — same emerald-900 as AuthPage */}
-          <div className="px-8 pt-7 pb-6 bg-emerald-900">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-7 h-7 bg-emerald-900 border border-emerald-700 rounded-lg flex items-center justify-center">
-                <div className="w-3.5 h-[1.5px] rounded-full bg-emerald-100" />
+          {/* Header */}
+          <div className="px-8 pt-8 pb-7 bg-med-emerald">
+            <div className="flex items-center gap-2.5 mb-5">
+              <div className="w-8 h-8 bg-white/10 border border-white/20 rounded-xl flex items-center justify-center">
+                <div className="w-4 h-[1.5px] rounded-full bg-white" />
               </div>
-              <span className="text-[9px] font-black text-white/60 uppercase tracking-widest">Ubuzima Connect</span>
+              <span className="font-display text-[10px] font-bold text-white/60 uppercase tracking-widest">Ubuzima Connect</span>
             </div>
-            <h1 className="text-xl font-black text-white mb-1 tracking-tight">Hospital Partnership</h1>
-            <p className="text-[10px] text-emerald-300 uppercase tracking-widest mb-5">AI Chest X-Ray Diagnostic Platform · Rwanda</p>
+            <h1 className="font-display text-2xl font-bold text-white mb-1 tracking-tight">Hospital Partnership</h1>
+            <p className="text-[11px] text-white/50 uppercase tracking-widest mb-6">AI Chest X-Ray Diagnostic Platform · Rwanda</p>
 
             {/* Progress */}
-            <div className="flex justify-between mb-2">
+            <div className="flex justify-between mb-3">
               {stepLabels.map((l, i) => (
-                <span key={l} className={`text-[9px] font-bold uppercase tracking-wider transition-colors ${
-                  i + 1 === step ? 'text-emerald-300' : i + 1 < step ? 'text-emerald-500' : 'text-emerald-800'
+                <span key={l} className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                  i + 1 === step ? 'text-white' : i + 1 < step ? 'text-white/60' : 'text-white/25'
                 }`}>
                   {i + 1}. {l}
                 </span>
               ))}
             </div>
-            <div className="h-1 bg-emerald-800 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-400 rounded-full transition-all duration-500"
+            <div className="h-1 bg-white/15 rounded-full overflow-hidden">
+              <div className="h-full bg-white rounded-full transition-all duration-500"
                 style={{ width: `${(step / 4) * 100}%` }} />
             </div>
           </div>
@@ -223,10 +283,7 @@ export default function HospitalApply() {
                   </div>
                   <div>
                     <Label text="Facility Type *" />
-                    <select className={sel} value={form.type} onChange={e => set('type', e.target.value)}>
-                      <option value="">Select…</option>
-                      {['Public Hospital', 'Private Hospital', 'NGO / Mission Hospital', 'District Hospital', 'Referral Hospital', 'Health Centre'].map(t => <option key={t}>{t}</option>)}
-                    </select>
+                    <FacilityDropdown value={form.type} onChange={v => set('type', v)} error={errors.type} />
                     <Err msg={errors.type} />
                   </div>
                   <div>
@@ -403,21 +460,21 @@ export default function HospitalApply() {
             )}
 
             {/* Navigation */}
-            <div className="flex justify-between items-center mt-6 pt-5 border-t border-gray-50">
+            <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-100">
               <button onClick={back}
-                className={`text-[9px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-600 transition-colors ${step === 1 ? 'invisible' : ''}`}>
+                className={`text-[11px] font-medium uppercase tracking-widest text-gray-400 hover:text-gray-700 transition-colors ${step === 1 ? 'invisible' : ''}`}>
                 ← Back
               </button>
               {step < 4 ? (
                 <button onClick={next}
-                  className="py-2.5 px-7 bg-emerald-900 hover:bg-emerald-800 text-white font-bold rounded-xl transition-all text-xs">
+                  className="py-3 px-8 bg-med-emerald hover:bg-black text-white font-bold rounded-2xl transition-all text-sm">
                   Continue →
                 </button>
               ) : (
                 <button onClick={submit} disabled={loading}
-                  className="py-2.5 px-7 bg-emerald-900 hover:bg-emerald-800 text-white font-bold rounded-xl transition-all text-xs disabled:opacity-50 flex items-center gap-2">
+                  className="py-3 px-8 bg-med-emerald hover:bg-black text-white font-bold rounded-2xl transition-all text-sm disabled:opacity-50 flex items-center gap-2">
                   {loading
-                    ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Submitting…</>
+                    ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Submitting…</>
                     : 'Submit Application'
                   }
                 </button>
@@ -425,7 +482,7 @@ export default function HospitalApply() {
             </div>
           </div>
 
-          <p className="text-center text-[9px] text-gray-300 pb-5">© 2026 Ubuzima Connect · Rwanda</p>
+          <p className="text-center text-[10px] text-gray-300 pb-6 font-medium">© 2026 Ubuzima Connect · Rwanda</p>
         </div>
       </div>
     </div>

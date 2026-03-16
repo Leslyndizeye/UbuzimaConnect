@@ -112,10 +112,21 @@ export default function HospitalAdminDashboard() {
   const [selectedHosp, setSelectedHosp] = useState<Hospital | null>(null);
   const [loadingStats, setLoadingStats]  = useState<number | null>(null);
 
-  const [meetLink, setMeetLink]       = useState('');
+  const [meetLink, setMeetLink]         = useState('');
+  const [meetNotes, setMeetNotes]       = useState('');
+  const [meetLinkErr, setMeetLinkErr]   = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError]             = useState('');
+
+  // Create Admin modal
+  const [createAdminHosp, setCreateAdminHosp] = useState<Hospital | null>(null);
+  const [adminEmail, setAdminEmail]     = useState('');
+  const [adminName, setAdminName]       = useState('');
+  const [adminPass, setAdminPass]       = useState('');
+  const [adminErr, setAdminErr]         = useState('');
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminCreated, setAdminCreated] = useState<{ email: string; hospital_name: string } | null>(null);
 
   const hdr = useCallback((): Record<string, string> => ({
     Authorization: `Bearer ${token}`,
@@ -144,6 +155,17 @@ export default function HospitalAdminDashboard() {
     setForgotLoading(false);
     if (error) { setLoginErr(error.message); return; }
     setForgotSent(true);
+  };
+
+  const validateMeetLink = (link: string) => {
+    if (!link) { setMeetLinkErr('Meet link is required'); return false; }
+    const pattern = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
+    if (!pattern.test(link.trim())) {
+      setMeetLinkErr('Invalid format. Must be: https://meet.google.com/xxx-xxxx-xxx');
+      return false;
+    }
+    setMeetLinkErr('');
+    return true;
   };
 
   const fetchHospitalStats = async (hospitalId: number) => {
@@ -207,7 +229,7 @@ export default function HospitalAdminDashboard() {
         body: JSON.stringify({ status, ...extra }),
       });
       await fetchData(token);
-      setSelected(null); setMeetLink(''); setRejectReason('');
+      setSelected(null); setMeetLink(''); setMeetNotes(''); setMeetLinkErr(''); setRejectReason('');
     } catch (e: any) { setError(e.message); }
     finally { setActionLoading(false); }
   };
@@ -224,6 +246,35 @@ export default function HospitalAdminDashboard() {
       alert(`✅ ${hospital.name} is now active!\n\nSend admin credentials to: ${hospital.email}`);
       await fetchData(token);
       setSelected(null);
+    } catch (e: any) { setError(e.message); }
+    finally { setActionLoading(false); }
+  };
+
+  const createAdmin = async () => {
+    setAdminErr(''); setAdminLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/hospitals/${createAdminHosp!.id}/create-admin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...hdr() },
+        body: JSON.stringify({ email: adminEmail, full_name: adminName, password: adminPass }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAdminErr(data.detail || 'Failed'); return; }
+      setAdminCreated({ email: adminEmail, hospital_name: createAdminHosp!.name });
+      setAdminEmail(''); setAdminName(''); setAdminPass('');
+    } catch (e: any) { setAdminErr(e.message); }
+    finally { setAdminLoading(false); }
+  };
+
+  const deleteHospital = async (h: Hospital) => {
+    if (!confirm(`⚠️ Permanently delete "${h.name}" and unlink all radiologists?\n\nThis cannot be undone.`)) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/hospitals/${h.id}`, { method: 'DELETE', headers: hdr() });
+      const data = await res.json();
+      if (!res.ok) { setError(data.detail || 'Delete failed'); return; }
+      setSelectedHosp(null);
+      await fetchData(token);
     } catch (e: any) { setError(e.message); }
     finally { setActionLoading(false); }
   };
@@ -685,6 +736,22 @@ export default function HospitalAdminDashboard() {
                               Last diagnosis activity: <strong className="text-slate-600">{fmtFull(s.last_activity)}</strong>
                             </p>
                           )}
+
+                          {/* Admin actions */}
+                          <div className="flex gap-2 pt-2 border-t border-slate-100">
+                            <button
+                              onClick={() => { setCreateAdminHosp(h); setAdminCreated(null); setAdminErr(''); }}
+                              className="btn-s flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white"
+                              style={{ backgroundColor: DARK_GREEN }}>
+                              + Create Admin Account
+                            </button>
+                            <button
+                              onClick={() => deleteHospital(h)}
+                              disabled={actionLoading}
+                              className="btn-s flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-40">
+                              Delete Organization
+                            </button>
+                          </div>
                         </div>
                       )}
                     </Panel>
@@ -695,6 +762,71 @@ export default function HospitalAdminDashboard() {
 
           </main>
         </div>
+
+        {/* ── Create Admin modal ── */}
+        {createAdminHosp && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ backgroundColor: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)' }}
+            onClick={e => e.target === e.currentTarget && setCreateAdminHosp(null)}>
+            <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden">
+              <div className="px-8 pt-7 pb-6" style={{ background: `linear-gradient(135deg,${DARK_GREEN},#267347)` }}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-1">New Admin Account</p>
+                    <h2 className="text-lg font-bold text-white">{createAdminHosp.name}</h2>
+                  </div>
+                  <button onClick={() => setCreateAdminHosp(null)} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white font-bold">✕</button>
+                </div>
+              </div>
+              <div className="p-8 space-y-4">
+                {adminCreated ? (
+                  <div className="space-y-4">
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center space-y-2">
+                      <div className="text-2xl">✅</div>
+                      <p className="text-sm font-bold text-emerald-800">Admin account created!</p>
+                      <p className="text-xs text-emerald-600">Share these credentials with the hospital contact:</p>
+                      <div className="bg-white rounded-xl p-3 border border-emerald-100 text-left mt-2 space-y-1">
+                        <p className="text-[11px] text-slate-500">Email: <strong className="text-slate-800 font-mono">{adminCreated.email}</strong></p>
+                        <p className="text-[11px] text-slate-500">Login URL: <strong className="text-slate-800">hospital-portal/dashboard</strong></p>
+                      </div>
+                    </div>
+                    <button onClick={() => setCreateAdminHosp(null)} className="w-full py-3 rounded-full text-white font-bold text-sm" style={{ backgroundColor: DARK_GREEN }}>Done</button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-slate-500">Create login credentials for the middle admin of <strong>{createAdminHosp.name}</strong>. They will use these to access the hospital dashboard.</p>
+                    {adminErr && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 font-medium">{adminErr}</div>}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Full Name</label>
+                        <input value={adminName} onChange={e => setAdminName(e.target.value)}
+                          placeholder="e.g. Dr. Jean Bosco"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Email Address</label>
+                        <input value={adminEmail} onChange={e => setAdminEmail(e.target.value)}
+                          type="email" placeholder="admin@hospital.rw"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Password (min 8 characters)</label>
+                        <input value={adminPass} onChange={e => setAdminPass(e.target.value)}
+                          type="password" placeholder="••••••••"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10" />
+                      </div>
+                    </div>
+                    <button onClick={createAdmin} disabled={adminLoading || !adminEmail || !adminName || !adminPass}
+                      className="btn-s w-full py-3 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
+                      style={{ backgroundColor: DARK_GREEN }}>
+                      {adminLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Creating…</> : 'Create Admin Account'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Application detail modal ── */}
         {selected && (
@@ -751,17 +883,26 @@ export default function HospitalAdminDashboard() {
                 {/* Action area for pending */}
                 {!['approved', 'rejected'].includes(selected.status) && (
                   <div className="space-y-3 pt-3 border-t border-slate-100">
-                    <div>
-                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Schedule Google Meet Link</label>
-                      <div className="flex gap-2">
-                        <input value={meetLink} onChange={e => setMeetLink(e.target.value)}
-                          placeholder="https://meet.google.com/xxx-xxxx-xxx"
-                          className="flex-1 px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10" />
-                        <button onClick={() => updateStatus(selected.id, 'meeting', { meet_link: meetLink })} disabled={!meetLink || actionLoading}
-                          className="btn-s px-4 py-2.5 rounded-xl text-white text-xs font-bold disabled:opacity-40" style={{ backgroundColor: '#7C3AED' }}>
-                          Send Invite
-                        </button>
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Schedule Google Meet</label>
+                      <div className="relative">
+                        <input value={meetLink} onChange={e => { setMeetLink(e.target.value); setMeetLinkErr(''); }}
+                          placeholder="https://meet.google.com/abc-defg-hij"
+                          className={`w-full px-3.5 py-2.5 rounded-xl border bg-gray-50 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 transition-all ${meetLinkErr ? 'border-red-300 focus:border-red-400' : meetLink && !meetLinkErr ? 'border-emerald-300' : 'border-gray-100 focus:border-emerald-500'}`} />
+                        {meetLink && !meetLinkErr && /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(meetLink.trim()) && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 text-sm">✓</span>
+                        )}
                       </div>
+                      {meetLinkErr && <p className="text-[10px] text-red-500 font-semibold ml-0.5">{meetLinkErr}</p>}
+                      <p className="text-[9px] text-slate-300 ml-0.5">Format: https://meet.google.com/xxx-xxxx-xxx</p>
+                      <textarea value={meetNotes} onChange={e => setMeetNotes(e.target.value)} rows={3}
+                        placeholder="Add a message for the hospital team (optional) — e.g. Please bring your MoH license copy. We will review your partnership terms during the call."
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 resize-none" />
+                      <button onClick={() => { if (validateMeetLink(meetLink)) updateStatus(selected.id, 'meeting', { meet_link: meetLink.trim(), meet_notes: meetNotes }); }}
+                        disabled={actionLoading}
+                        className="btn-s w-full py-2.5 rounded-xl text-white text-xs font-bold disabled:opacity-40 flex items-center justify-center gap-2" style={{ backgroundColor: '#7C3AED' }}>
+                        {actionLoading ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Sending…</> : '📅 Send Meeting Invite by Email'}
+                      </button>
                     </div>
                     <input value={rejectReason} onChange={e => setRejectReason(e.target.value)}
                       placeholder="Rejection reason (optional — sent to applicant)"

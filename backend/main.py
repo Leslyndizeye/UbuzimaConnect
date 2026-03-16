@@ -4,33 +4,6 @@ load_dotenv()
 from dotenv import load_dotenv
 load_dotenv()
 
-# main.py
-# Ubuzima Connect — FastAPI Backend
-# Run: uvicorn main:app --reload --port 8000
-#
-# Endpoints:
-#  POST   /auth/register          – create user profile (called after Firebase signup)
-#  GET    /auth/me                 – get own profile
-#  GET    /users                   – [admin] list all users
-#  PATCH  /users/{id}/status       – [admin] approve / reject / revoke
-#  POST   /patients                – create patient record
-#  GET    /patients                – list own patients (or all for admin)
-#  DELETE /patients/{id}           – delete patient + diagnoses
-#  POST   /predict                 – run AI prediction (no DB save)
-#  POST   /diagnoses               – save a prediction to DB
-#  GET    /diagnoses               – list own diagnoses
-#  GET    /diagnoses/{id}          – single diagnosis
-#  PATCH  /diagnoses/{id}/verify   – radiologist verify / override
-#  DELETE /diagnoses/{id}          – delete diagnosis
-#  POST   /retrain/upload          – bulk upload labelled X-rays
-#  POST   /retrain/trigger         – trigger retraining job
-#  GET    /retrain/jobs            – list retrain jobs
-#  GET    /retrain/jobs/{id}       – job status
-#  GET    /model/info              – model metadata
-#  GET    /stats                   – system stats (admin)
-#  GET    /audit                   – audit logs (admin)
-#  GET    /health                  – uptime check
-
 import os
 import time
 import uuid
@@ -58,14 +31,19 @@ from schemas import (
     PredictionResponse, DiagnosisSave, DiagnosisVerify, DiagnosisOut,
     RetrainJobOut, SystemStats, ModelInfo,
 )
-from auth import get_current_user, get_admin_user
+from auth import get_current_user, get_admin_user, get_super_admin
 from src.preprocessing import preprocess_image_for_inference, preprocess_bulk_upload, build_tf_dataset
 from src.prediction import predict as run_predict, generate_gradcam, evaluate_on_dataset
 from src.model import load_production_model, get_model_info, retrain_model, invalidate_model_cache
-
-# ─────────────────────────────────────────────────────────────
+from fastapi import Body
+from database import Hospital, HospitalApplication, HospitalAppStatus
+from schemas import (
+    HospitalApplicationCreate, HospitalApplicationOut,
+    HospitalOut, HospitalAppStatusUpdate,
+)
+import random, string
+import httpx
 # APP SETUP
-# ─────────────────────────────────────────────────────────────
 
 START_TIME = time.time()
 UPLOAD_DIR = Path("uploads")
@@ -98,9 +76,8 @@ async def startup():
     # Model loads lazily on first /predict call — avoids blocking startup on HF free tier
 
 
-# ─────────────────────────────────────────────────────────────
 # HEALTH
-# ─────────────────────────────────────────────────────────────
+
 
 @app.get("/health", tags=["Health"])
 def health():
@@ -114,9 +91,9 @@ def health():
     }
 
 
-# ─────────────────────────────────────────────────────────────
+
 # AUTH / USER REGISTRATION
-# ─────────────────────────────────────────────────────────────
+
 
 @app.post("/auth/register", response_model=UserOut, tags=["Auth"])
 def register_user(body: UserCreate, db: Session = Depends(get_db)):
@@ -152,9 +129,9 @@ def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-# ─────────────────────────────────────────────────────────────
+
 # USER MANAGEMENT (ADMIN)
-# ─────────────────────────────────────────────────────────────
+
 
 @app.get("/users", response_model=List[UserOut], tags=["Admin"])
 def list_users(
@@ -188,9 +165,9 @@ def update_user_status(
     return user
 
 
-# ─────────────────────────────────────────────────────────────
+
 # PATIENTS
-# ─────────────────────────────────────────────────────────────
+
 
 @app.post("/patients", response_model=PatientOut, tags=["Patients"])
 def create_patient(
@@ -298,9 +275,9 @@ async def predict_endpoint(
     return PredictionResponse(**result, gradcam_b64=gradcam_b64)
 
 
-# ─────────────────────────────────────────────────────────────
+
 # DIAGNOSES (save + manage)
-# ─────────────────────────────────────────────────────────────
+
 
 @app.post("/diagnoses", response_model=DiagnosisOut, tags=["Diagnoses"])
 def save_diagnosis(
@@ -393,9 +370,9 @@ def delete_diagnosis(
     return {"detail": "deleted"}
 
 
-# ─────────────────────────────────────────────────────────────
+
 # RETRAIN — upload + trigger
-# ─────────────────────────────────────────────────────────────
+
 
 @app.post("/retrain/upload", tags=["Retrain"])
 async def upload_for_retrain(
@@ -480,9 +457,9 @@ def get_retrain_job(
     return _get_or_404(db, RetrainJob, job_id)
 
 
-# ─────────────────────────────────────────────────────────────
+
 # MODEL INFO + STATS
-# ─────────────────────────────────────────────────────────────
+
 
 @app.get("/model/info", response_model=ModelInfo, tags=["Model"])
 def model_info():
@@ -531,9 +508,9 @@ def get_audit_logs(
     ]
 
 
-# ─────────────────────────────────────────────────────────────
+
 # BACKGROUND RETRAIN TASK
-# ─────────────────────────────────────────────────────────────
+
 
 def _run_retrain_job(job_id: int):
     """Background task: preprocess uploaded data → retrain model → update job record."""
@@ -624,7 +601,7 @@ def _check_owner_or_admin(owner_id: int, user: User):
 def _validate_image(file: UploadFile):
     allowed = {"image/jpeg", "image/png", "image/webp"}
     if file.content_type not in allowed:
-        raise HTTPException(400, f"Unsupported file type: {file.content_type}. Use JPG or PNG.")
+        raise HTTPException(400, f"Unsupported file type: {file.content_type}. Use JPG or PNG images.")
 
 
 def _audit(db: Session, user_id: int, action: str, entity: str, entity_id, detail: dict = None):
@@ -651,3 +628,713 @@ def delete_user(
     db.commit()
     _audit_simple(current_user.id, f"delete_user:{user_id}")
     return {"detail": "deleted"}
+
+@app.get("/retrain/staged", tags=["Retrain"])
+def get_staged_counts(current_user: User = Depends(get_current_user)):
+    """Return counts of images currently staged for retraining."""
+    upload_src = UPLOAD_DIR / "retrain"
+    if not upload_src.exists():
+        return {"counts": {}, "total": 0}
+    counts: dict[str, int] = {}
+    for label_dir in upload_src.iterdir():
+        if label_dir.is_dir():
+            n = len([f for f in label_dir.iterdir() if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}])
+            if n > 0:
+                counts[label_dir.name] = n
+    return {"counts": counts, "total": sum(counts.values())}
+
+
+@app.delete("/retrain/staged", tags=["Retrain"])
+def clear_staged(current_user: User = Depends(get_current_user)):
+    """Clear all staged retrain images without triggering a job."""
+    upload_src = UPLOAD_DIR / "retrain"
+    if upload_src.exists():
+        import shutil
+        shutil.rmtree(str(upload_src))
+        upload_src.mkdir(parents=True, exist_ok=True)
+    return {"detail": "Staged images cleared"}
+
+
+def _generate_ref() -> str:
+    return "UBZ-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+# ── Public: submit hospital application (no auth required)
+@app.post("/hospital/apply", response_model=HospitalApplicationOut, tags=["Hospital"])
+def submit_hospital_application(
+    body: HospitalApplicationCreate,
+    db: Session = Depends(get_db),
+):
+    """Public endpoint — any hospital can submit an application."""
+    # Check for duplicate email
+    existing = db.query(HospitalApplication).filter(
+        HospitalApplication.email == body.email
+    ).first()
+    if existing:
+        raise HTTPException(400, "An application from this email already exists.")
+
+    ref = _generate_ref()
+    app_obj = HospitalApplication(
+        ref_number=ref,
+        **body.model_dump(),
+        status=HospitalAppStatus.pending,
+    )
+    db.add(app_obj)
+    db.commit()
+    db.refresh(app_obj)
+    return app_obj
+
+
+# ── Super admin: list all hospital applications
+@app.get("/hospital/applications", response_model=list[HospitalApplicationOut], tags=["Hospital"])
+def list_hospital_applications(
+    status: str = Query(None),
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    q = db.query(HospitalApplication)
+    if status:
+        q = q.filter(HospitalApplication.status == status)
+    return q.order_by(HospitalApplication.created_at.desc()).all()
+
+
+# ── Super admin: get single application
+@app.get("/hospital/applications/{app_id}", response_model=HospitalApplicationOut, tags=["Hospital"])
+def get_hospital_application(
+    app_id: int,
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    obj = db.query(HospitalApplication).filter(HospitalApplication.id == app_id).first()
+    if not obj:
+        raise HTTPException(404, "Application not found")
+    return obj
+# ─────────────────────────────────────────────────────────────
+# ADD THESE to main.py
+#
+# 1. Add this import at the top of main.py:
+#    import httpx
+#
+# 2. Add RESEND_API_KEY to HF Space secrets:
+#    RESEND_API_KEY = re_xxxxxxxxxxxx  (from resend.com)
+#    FROM_EMAIL = onboarding@resend.dev  (free tier) or your domain
+#
+# 3. Paste this entire block after the hospital endpoints
+# ─────────────────────────────────────────────────────────────
+
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+FROM_EMAIL     = os.getenv("FROM_EMAIL", "onboarding@resend.dev")
+FROM_NAME      = "Ubuzima Connect"
+
+
+async def send_email(to: str, subject: str, html: str) -> bool:
+    """Send email via Resend API. Returns True if sent successfully."""
+    if not RESEND_API_KEY:
+        print("[email] RESEND_API_KEY not set — skipping email")
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": f"{FROM_NAME} <{FROM_EMAIL}>",
+                    "to": [to],
+                    "subject": subject,
+                    "html": html,
+                },
+                timeout=10,
+            )
+        if res.status_code in (200, 201):
+            print(f"[email] Sent to {to} ✓")
+            return True
+        else:
+            print(f"[email] Failed: {res.status_code} {res.text}")
+            return False
+    except Exception as e:
+        print(f"[email] Error: {e}")
+        return False
+
+
+def meet_invite_html(hospital_name: str, contact_name: str, meet_link: str,
+                     meet_notes: str, ref_number: str) -> str:
+    notes_block = f"""
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:16px;margin:20px 0;">
+      <p style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">
+        Message from Ubuzima Connect
+      </p>
+      <p style="font-size:14px;color:#374151;line-height:1.6;margin:0;">{meet_notes}</p>
+    </div>
+    """ if meet_notes else ""
+
+    return f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:'Plus Jakarta Sans',Arial,sans-serif;">
+  <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#0a2415,#1C5438);padding:32px 40px;">
+      <p style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;">Ubuzima Connect</p>
+      <h1 style="font-size:22px;font-weight:900;color:#fff;margin:0;line-height:1.3;">
+        Your Onboarding Meeting<br/>is Scheduled 📅
+      </h1>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:32px 40px;">
+      <p style="font-size:15px;color:#374151;margin:0 0 16px;">
+        Dear <strong>{contact_name}</strong>,
+      </p>
+      <p style="font-size:14px;color:#6b7280;line-height:1.7;margin:0 0 20px;">
+        Thank you for applying to partner with Ubuzima Connect.
+        We have reviewed your application for <strong style="color:#0a2415;">{hospital_name}</strong>
+        and would like to schedule an onboarding call to discuss the terms of your access
+        and walk you through the platform.
+      </p>
+
+      {notes_block}
+
+      <!-- Meet link box -->
+      <div style="background:#f0fdf4;border:2px solid #34d399;border-radius:16px;padding:24px;text-align:center;margin:24px 0;">
+        <p style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">
+          Google Meet Link
+        </p>
+        <a href="{meet_link}"
+           style="display:inline-block;background:#1C5438;color:#fff;font-size:14px;font-weight:800;
+                  padding:14px 32px;border-radius:50px;text-decoration:none;letter-spacing:0.5px;">
+          Join Meeting →
+        </a>
+        <p style="font-size:11px;color:#6b7280;margin:12px 0 0;">
+          Or copy this link:<br/>
+          <span style="font-family:monospace;font-size:12px;color:#1C5438;">{meet_link}</span>
+        </p>
+      </div>
+
+      <p style="font-size:13px;color:#6b7280;line-height:1.7;margin:0 0 8px;">
+        During the call we will:
+      </p>
+      <ul style="font-size:13px;color:#6b7280;line-height:1.8;padding-left:20px;margin:0 0 24px;">
+        <li>Walk you through the Ubuzima Connect platform</li>
+        <li>Review and confirm your Hospital Partner Agreement</li>
+        <li>Answer any questions from your team</li>
+        <li>Set up your admin credentials after confirmation</li>
+      </ul>
+
+      <div style="background:#fefce8;border:1px solid #fde68a;border-radius:12px;padding:16px;margin-bottom:24px;">
+        <p style="font-size:12px;color:#92400e;margin:0;">
+          ⚠ Please ensure your Head of Radiology or IT Manager joins this call.
+          Credentials will only be issued after the meeting is completed.
+        </p>
+      </div>
+
+      <p style="font-size:13px;color:#6b7280;margin:0;">
+        Your application reference: <strong style="font-family:monospace;color:#1C5438;">{ref_number}</strong>
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:20px 40px;">
+      <p style="font-size:11px;color:#9ca3af;margin:0;line-height:1.6;">
+        Ubuzima Connect · AI-Powered Chest X-Ray Diagnostics · Rwanda<br/>
+        Questions? Reply to this email or contact
+        <a href="mailto:hospitals@ubuzimaconnect.rw" style="color:#1C5438;">hospitals@ubuzimaconnect.rw</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+def approval_html(hospital_name: str, contact_name: str, ref_number: str) -> str:
+    return f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:'Plus Jakarta Sans',Arial,sans-serif;">
+  <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+    <div style="background:linear-gradient(135deg,#0a2415,#1C5438);padding:32px 40px;">
+      <p style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;">Ubuzima Connect</p>
+      <h1 style="font-size:22px;font-weight:900;color:#fff;margin:0;">Your Hospital is Approved ✅</h1>
+    </div>
+    <div style="padding:32px 40px;">
+      <p style="font-size:15px;color:#374151;margin:0 0 16px;">Dear <strong>{contact_name}</strong>,</p>
+      <p style="font-size:14px;color:#6b7280;line-height:1.7;margin:0 0 20px;">
+        Congratulations! <strong style="color:#0a2415;">{hospital_name}</strong> has been approved as an
+        Ubuzima Connect hospital partner. Your admin credentials will be sent shortly by our team.
+      </p>
+      <div style="background:#f0fdf4;border:2px solid #34d399;border-radius:16px;padding:24px;margin:24px 0;">
+        <p style="font-size:13px;color:#166534;margin:0 0 8px;font-weight:700;">Next Steps</p>
+        <ol style="font-size:13px;color:#166534;line-height:1.8;padding-left:20px;margin:0;">
+          <li>Watch for an email with your admin credentials</li>
+          <li>Log in at <a href="https://ubuzimaconnect.vercel.app" style="color:#1C5438;">ubuzimaconnect.vercel.app</a></li>
+          <li>Upload your hospital logo from the Profile tab</li>
+          <li>Invite your radiologists to register</li>
+        </ol>
+      </div>
+      <p style="font-size:13px;color:#6b7280;">Reference: <strong style="font-family:monospace;color:#1C5438;">{ref_number}</strong></p>
+    </div>
+    <div style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:20px 40px;">
+      <p style="font-size:11px;color:#9ca3af;margin:0;">Ubuzima Connect · Rwanda · <a href="mailto:hospitals@ubuzimaconnect.rw" style="color:#1C5438;">hospitals@ubuzimaconnect.rw</a></p>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+def rejection_html(hospital_name: str, contact_name: str, reason: str, ref_number: str) -> str:
+    reason_block = f"""
+    <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:16px;margin:20px 0;">
+      <p style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">Reason</p>
+      <p style="font-size:14px;color:#374151;margin:0;">{reason}</p>
+    </div>
+    """ if reason else ""
+
+    return f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:'Plus Jakarta Sans',Arial,sans-serif;">
+  <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+    <div style="background:linear-gradient(135deg,#450a0a,#991b1b);padding:32px 40px;">
+      <p style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;">Ubuzima Connect</p>
+      <h1 style="font-size:22px;font-weight:900;color:#fff;margin:0;">Application Update</h1>
+    </div>
+    <div style="padding:32px 40px;">
+      <p style="font-size:15px;color:#374151;margin:0 0 16px;">Dear <strong>{contact_name}</strong>,</p>
+      <p style="font-size:14px;color:#6b7280;line-height:1.7;margin:0 0 20px;">
+        Thank you for your interest in partnering with Ubuzima Connect.
+        After reviewing your application for <strong style="color:#0a2415;">{hospital_name}</strong>,
+        we are unable to proceed at this time.
+      </p>
+      {reason_block}
+      <p style="font-size:13px;color:#6b7280;line-height:1.7;">
+        You are welcome to reapply in the future or contact us for more information.
+      </p>
+      <p style="font-size:13px;color:#6b7280;margin-top:16px;">Reference: <strong style="font-family:monospace;color:#991b1b;">{ref_number}</strong></p>
+    </div>
+    <div style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:20px 40px;">
+      <p style="font-size:11px;color:#9ca3af;margin:0;">Ubuzima Connect · Rwanda · <a href="mailto:hospitals@ubuzimaconnect.rw" style="color:#1C5438;">hospitals@ubuzimaconnect.rw</a></p>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+# ── REPLACE the existing update_hospital_application_status endpoint with this ──
+@app.patch("/hospital/applications/{app_id}/status", response_model=HospitalApplicationOut, tags=["Hospital"])
+async def update_hospital_application_status(
+    app_id: int,
+    body: HospitalAppStatusUpdate,
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    obj = db.query(HospitalApplication).filter(HospitalApplication.id == app_id).first()
+    if not obj:
+        raise HTTPException(404, "Application not found")
+
+    obj.status = body.status
+    obj.reviewed_by_id = admin.id
+
+    if body.meet_link:
+        obj.meet_link = body.meet_link
+        obj.meet_scheduled_at = datetime.now(timezone.utc)
+    if body.rejection_reason:
+        obj.rejection_reason = body.rejection_reason
+
+    db.commit()
+    db.refresh(obj)
+    _audit(db, admin.id, f"hospital_app_{body.status}", "hospital_application", app_id)
+
+    # ── Send email based on status ──
+    if body.status == "meeting" and body.meet_link:
+        html = meet_invite_html(
+            hospital_name=obj.name,
+            contact_name=obj.contact_name,
+            meet_link=body.meet_link,
+            meet_notes=getattr(body, "meet_notes", "") or "",
+            ref_number=obj.ref_number,
+        )
+        await send_email(obj.email, f"Your Onboarding Meeting — {obj.name}", html)
+
+    elif body.status == "rejected":
+        html = rejection_html(
+            hospital_name=obj.name,
+            contact_name=obj.contact_name,
+            reason=body.rejection_reason or "",
+            ref_number=obj.ref_number,
+        )
+        await send_email(obj.email, f"Your Application Update — {obj.name}", html)
+
+    return obj
+
+
+# ── REPLACE the existing approve_hospital_application endpoint with this ──
+@app.post("/hospital/applications/{app_id}/approve", response_model=HospitalOut, tags=["Hospital"])
+async def approve_hospital_application(
+    app_id: int,
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    obj = db.query(HospitalApplication).filter(HospitalApplication.id == app_id).first()
+    if not obj:
+        raise HTTPException(404, "Application not found")
+
+    # Idempotent: already fully approved — just return the hospital
+    if obj.status == HospitalAppStatus.approved and obj.hospital_id:
+        existing = db.query(Hospital).filter(Hospital.id == obj.hospital_id).first()
+        if existing:
+            return existing
+
+    is_new = True
+
+    # Hospital row might already exist (e.g. previous partial commit)
+    if obj.hospital_id:
+        hospital = db.query(Hospital).filter(Hospital.id == obj.hospital_id).first()
+        if not hospital:
+            raise HTTPException(500, "Hospital record missing — contact support")
+        is_new = False
+    else:
+        hospital = Hospital(
+            name=obj.name, type=obj.type, email=obj.email, phone=obj.phone,
+            moh_license=obj.moh_license, website=obj.website,
+            province=obj.province, district=obj.district, sector=obj.sector,
+            address=obj.address, contact_name=obj.contact_name, contact_role=obj.contact_role,
+            logo_base64=obj.logo_base64, num_radiologists=obj.num_radiologists,
+            num_machines=obj.num_machines, monthly_volume=obj.monthly_volume,
+            approved_at=datetime.now(timezone.utc), is_active=True,
+        )
+        db.add(hospital)
+        db.flush()
+
+    obj.status = HospitalAppStatus.approved
+    obj.hospital_id = hospital.id
+    obj.approved_at = obj.approved_at or datetime.now(timezone.utc)
+    obj.reviewed_by_id = admin.id
+    db.commit()
+    db.refresh(hospital)
+
+    if is_new:
+        _audit(db, admin.id, "approve_hospital", "hospital", hospital.id, {"name": hospital.name})
+        html = approval_html(
+            hospital_name=hospital.name,
+            contact_name=hospital.contact_name,
+            ref_number=obj.ref_number,
+        )
+        await send_email(hospital.email, f"Congratulations — {hospital.name} is Approved!", html)
+
+    return hospital
+
+# ── Shared auth helper: super admin OR hospital's own admin ──
+def _require_hospital_access(hospital_id: int, current_user: User):
+    from auth import SUPER_ADMIN
+    email = (current_user.email or "").lower()
+    if email == SUPER_ADMIN and current_user.is_admin:
+        return
+    if current_user.hospital_id == hospital_id and current_user.is_admin:
+        return
+    raise HTTPException(403, "Access denied to this hospital.")
+
+
+#  Super admin: list active hospitals
+@app.get("/hospitals", response_model=list[HospitalOut], tags=["Hospital"])
+def list_hospitals(
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    return db.query(Hospital).order_by(Hospital.created_at.desc()).all()
+
+# Super admin: hospital stats summary
+@app.get("/hospitals/stats/summary", tags=["Hospital"])
+def hospital_stats(
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    total_apps   = db.query(HospitalApplication).count()
+    pending      = db.query(HospitalApplication).filter(
+        HospitalApplication.status.in_(["pending","reviewing","meeting"])
+    ).count()
+    active       = db.query(Hospital).filter(Hospital.is_active == True).count()
+    total_rads   = db.query(User).filter(
+        User.hospital_id != None, User.status == "approved"
+    ).count()
+    return {
+        "total_applications": total_apps,
+        "pending_review": pending,
+        "active_hospitals": active,
+        "total_radiologists": total_rads,
+    }
+    
+# Public: get hospital branding by id (for radiologist dashboard)
+@app.get("/hospitals/{hospital_id}/branding", tags=["Hospital"])
+def get_hospital_branding(
+    hospital_id: int,
+    db: Session = Depends(get_db),
+):
+    h = db.query(Hospital).filter(Hospital.id == hospital_id, Hospital.is_active == True).first()
+    if not h:
+        raise HTTPException(404, "Hospital not found")
+    return {
+        "id": h.id,
+        "name": h.name,
+        "logo_base64": h.logo_base64,
+        "district": h.district,
+        "province": h.province,
+    }
+
+# Super admin OR hospital's own admin
+@app.get("/hospitals/{hospital_id}", response_model=HospitalOut, tags=["Hospital"])
+def get_hospital(
+    hospital_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_hospital_access(hospital_id, current_user)
+    h = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    if not h:
+        raise HTTPException(404, "Hospital not found")
+    return h
+
+
+@app.patch("/users/{user_id}/assign-hospital", response_model=UserOut, tags=["Admin"])
+def assign_hospital_admin(
+    user_id: int,
+    body: dict = Body(...),
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Assign an approved user as middle admin for a specific hospital.
+    - Sets user.hospital_id to link them to the hospital
+    - Sets user.is_admin = True so they see the logo upload in Profile tab
+    - Only platform admin (leslyndiz6@gmail.com) can do this
+    """
+    user = _get_or_404(db, User, user_id)
+ 
+    if user.status != "approved":
+        raise HTTPException(400, "User must be approved before being assigned as hospital admin.")
+ 
+    hospital_id = body.get("hospital_id")
+    make_admin  = body.get("make_admin", True)
+ 
+    if hospital_id:
+        # Verify hospital exists and is active
+        hospital = db.query(Hospital).filter(
+            Hospital.id == hospital_id,
+            Hospital.is_active == True
+        ).first()
+        if not hospital:
+            raise HTTPException(404, "Hospital not found or not active.")
+ 
+        user.hospital_id = hospital_id
+        if make_admin:
+            user.is_admin = True
+ 
+    else:
+        # Remove hospital assignment (demote)
+        user.hospital_id = None
+        user.is_admin = False
+ 
+    db.commit()
+    db.refresh(user)
+    _audit(db, admin.id, "assign_hospital_admin", "user", user_id, {
+        "hospital_id": hospital_id,
+        "target_email": user.email
+    })
+    return user
+
+
+# ── Current user info ──
+@app.get("/me", response_model=UserOut, tags=["Auth"])
+def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@app.get("/hospitals/{hospital_id}/stats", tags=["Hospital"])
+def get_hospital_stats(
+    hospital_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_hospital_access(hospital_id, current_user)
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    if not hospital:
+        raise HTTPException(404, "Hospital not found")
+
+    users = db.query(User).filter(User.hospital_id == hospital_id, User.is_admin == False).all()
+    rad_ids = [u.id for u in users]
+
+    total_patients = db.query(Patient).filter(Patient.radiologist_id.in_(rad_ids)).count() if rad_ids else 0
+    diagnoses = db.query(Diagnosis).filter(Diagnosis.radiologist_id.in_(rad_ids)).all() if rad_ids else []
+    total_dx = len(diagnoses)
+    verified_dx = sum(1 for d in diagnoses if d.radiologist_verified)
+    breakdown: dict = {}
+    for d in diagnoses:
+        cls = d.ai_classification or "Unknown"
+        breakdown[cls] = breakdown.get(cls, 0) + 1
+
+    last_dx = (
+        db.query(Diagnosis)
+        .filter(Diagnosis.radiologist_id.in_(rad_ids))
+        .order_by(Diagnosis.created_at.desc())
+        .first()
+        if rad_ids else None
+    )
+
+    return {
+        "hospital_id": hospital_id,
+        "hospital_name": hospital.name,
+        "radiologists": {
+            "total": len(users),
+            "approved": sum(1 for u in users if str(u.status) in ("approved", "UserStatus.approved")),
+            "pending": sum(1 for u in users if str(u.status) in ("pending", "UserStatus.pending")),
+        },
+        "patients": {"total": total_patients},
+        "diagnoses": {
+            "total": total_dx,
+            "verified": verified_dx,
+            "verification_rate": round(verified_dx / total_dx * 100, 1) if total_dx else 0,
+            "breakdown": breakdown,
+        },
+        "last_activity": last_dx.created_at.isoformat() if last_dx else None,
+    }
+
+
+@app.get("/hospitals/{hospital_id}/radiologists", tags=["Hospital"])
+def get_hospital_radiologists(
+    hospital_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_hospital_access(hospital_id, current_user)
+    users = db.query(User).filter(User.hospital_id == hospital_id, User.is_admin == False).all()
+    result = []
+    for u in users:
+        dx_count = db.query(Diagnosis).filter(Diagnosis.radiologist_id == u.id).count()
+        result.append({
+            "id": u.id,
+            "full_name": u.full_name,
+            "email": u.email,
+            "specialization": u.specialization,
+            "license_number": u.license_number,
+            "years_experience": u.years_experience,
+            "status": u.status.value if hasattr(u.status, "value") else str(u.status),
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "approved_at": u.approved_at.isoformat() if u.approved_at else None,
+            "total_diagnoses": dx_count,
+        })
+    return result
+
+
+@app.post("/hospitals/{hospital_id}/create-admin", tags=["Hospital"])
+async def create_hospital_admin(
+    hospital_id: int,
+    body: dict = Body(...),
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id, Hospital.is_active == True).first()
+    if not hospital:
+        raise HTTPException(404, "Hospital not found or not active")
+
+    email = (body.get("email") or "").lower().strip()
+    full_name = (body.get("full_name") or "").strip()
+    password = (body.get("password") or "").strip()
+
+    if not email or not full_name or not password:
+        raise HTTPException(400, "email, full_name, and password are required")
+    if len(password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+
+    existing = db.query(User).filter(User.email == email).first()
+    if existing:
+        raise HTTPException(400, f"A user with email {email} already exists")
+
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    supabase_uid = None
+
+    if service_key:
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.post(
+                    f"{os.getenv('SUPABASE_URL', 'https://omoinlmgsdtlzfasydgw.supabase.co')}/auth/v1/admin/users",
+                    headers={
+                        "Authorization": f"Bearer {service_key}",
+                        "apikey": service_key,
+                        "Content-Type": "application/json",
+                    },
+                    json={"email": email, "password": password, "email_confirm": True},
+                    timeout=10,
+                )
+            if res.status_code in (200, 201):
+                supabase_uid = res.json().get("id", "")
+            else:
+                raise HTTPException(400, f"Supabase error: {res.json().get('message', res.text)}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(500, f"Failed to create auth user: {e}")
+
+    new_user = User(
+        firebase_uid=supabase_uid or f"hosp_{hospital_id}_{email}",
+        email=email,
+        full_name=full_name,
+        hospital_id=hospital_id,
+        hospital=hospital.name,
+        is_admin=True,
+        status=UserStatus.approved,
+        approved_at=datetime.now(timezone.utc),
+        approved_by_id=admin.id,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    _audit(db, admin.id, "create_hospital_admin", "user", new_user.id, {
+        "hospital": hospital.name, "email": email,
+    })
+
+    return {
+        "user_id": new_user.id,
+        "email": email,
+        "full_name": full_name,
+        "hospital_id": hospital_id,
+        "hospital_name": hospital.name,
+        "message": "Hospital admin created. Share login credentials with the contact person.",
+    }
+
+
+@app.delete("/hospitals/{hospital_id}", tags=["Hospital"])
+def delete_hospital(
+    hospital_id: int,
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    if not hospital:
+        raise HTTPException(404, "Hospital not found")
+
+    # Unlink all users
+    db.query(User).filter(User.hospital_id == hospital_id).update(
+        {"hospital_id": None, "is_admin": False}, synchronize_session=False
+    )
+    # Detach from application
+    db.query(HospitalApplication).filter(
+        HospitalApplication.hospital_id == hospital_id
+    ).update({"hospital_id": None}, synchronize_session=False)
+
+    name = hospital.name
+    db.delete(hospital)
+    db.commit()
+    _audit(db, admin.id, "delete_hospital", "hospital", hospital_id, {"name": name})
+    return {"detail": f"Hospital '{name}' and all linked data deleted."}
+
+
+
+

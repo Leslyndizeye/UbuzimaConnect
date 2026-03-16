@@ -43,7 +43,7 @@ def preprocess_image_for_inference(image_bytes: bytes) -> np.ndarray:
     std  = max(std, 1.0 / np.sqrt(img_float.size))   # avoid division by zero
     img_norm = (img_float - mean) / std
 
-    # Keep original (BGR) for Grad-CAM overlay
+    # Keep original (RGB) for Grad-CAM overlay
     img_original_for_cam = img_resized  # RGB uint8
 
     return np.expand_dims(img_norm, axis=0), img_original_for_cam
@@ -58,13 +58,13 @@ def preprocess_image_file(filepath: str) -> Tuple[np.ndarray, np.ndarray]:
 def preprocess_bulk_upload(upload_dir: str, output_base_dir: str) -> dict:
     """
     Preprocess bulk-uploaded images for retraining.
-    
+
     Expects upload_dir to contain subfolders named after classes:
         upload_dir/Normal/
         upload_dir/Pneumonia/
         upload_dir/Tuberculosis/
         upload_dir/Unknown/
-    
+
     Saves preprocessed images to output_base_dir with same structure.
     Returns dict with counts per class.
     """
@@ -110,43 +110,72 @@ def build_tf_dataset(
     data_dir: str,
     validation_split: float = 0.15,
     batch_size: int = 32,
-) -> Tuple[tf.data.Dataset, tf.data.Dataset, np.ndarray]:
+) -> Tuple[tf.data.Dataset, tf.data.Dataset, dict]:
     """
     Build TF datasets from a directory with class subfolders.
-    Returns (train_ds, val_ds, class_weights_array).
+    Returns (train_ds, val_ds, class_weights_dict).
+
+    IMPORTANT: Always uses all 4 CLASSES indices so label mapping
+    stays consistent with the original model regardless of how many
+    classes were uploaded.
     """
     all_paths, all_labels = [], []
 
     for idx, cls in enumerate(CLASSES):
         cls_dir = Path(data_dir) / cls
         if not cls_dir.exists():
-            print(f"   Skipping missing class folder: {cls}")
+            print(f"  Skipping missing class folder: {cls}")
             continue
-        files = list(cls_dir.glob("*.png")) + list(cls_dir.glob("*.jpg")) + list(cls_dir.glob("*.jpeg"))
+        files = (
+            list(cls_dir.glob("*.png")) +
+            list(cls_dir.glob("*.jpg")) +
+            list(cls_dir.glob("*.jpeg"))
+        )
+        if len(files) == 0:
+            print(f"  {cls}: 0 images (empty folder, skipping)")
+            continue
         all_paths.extend([str(p) for p in files])
         all_labels.extend([idx] * len(files))
-        print(f"  {cls}: {len(files)} images")
+        print(f"  {cls}: {len(files)} images (label index {idx})")
+
+    if len(all_paths) == 0:
+        raise ValueError("No images found in any class folder.")
 
     all_paths  = np.array(all_paths)
-    all_labels = np.array(all_labels)
+    all_labels = np.array(all_labels, dtype=np.int32)
 
-    # Stratified split
+    unique_classes = np.unique(all_labels)
+    n_unique = len(unique_classes)
+
     from sklearn.model_selection import train_test_split
     from sklearn.utils.class_weight import compute_class_weight
+
+    # stratify only works when every class has >= 2 samples
+    min_samples = min(np.sum(all_labels == c) for c in unique_classes)
+    use_stratify = (n_unique > 1) and (min_samples >= 2)
+
     X_train, X_val, y_train, y_val = train_test_split(
         all_paths, all_labels,
         test_size=validation_split,
         random_state=SEED,
-        stratify=all_labels,
+        stratify=all_labels if use_stratify else None,
     )
 
-    # Class weights
-    weights_array = compute_class_weight("balanced", classes=np.unique(y_train), y=y_train)
-    class_weights = {i: weights_array[i] for i in range(len(weights_array))}
+    # Class weights — always build a dict with all 4 indices (0-3)
+    # so retrain_model() never gets a KeyError for a missing class
+    present = np.unique(y_train)
+    raw_weights = compute_class_weight("balanced", classes=present, y=y_train)
+    # Default weight 1.0 for classes not in this training batch
+    class_weights = {i: 1.0 for i in range(len(CLASSES))}
+    for cls_idx, w in zip(present, raw_weights):
+        class_weights[int(cls_idx)] = float(w)
+
+    print(f"  Class weights: {class_weights}")
 
     def _load_and_preprocess(path, label, training=False):
         img = tf.io.read_file(path)
         img = tf.image.decode_image(img, channels=3, expand_animations=False)
+        img.set_shape([None, None, 3])
         img = img[10:-10, 10:-10, :]
         img = tf.image.resize(img, [IMG_SIZE, IMG_SIZE])
         img = tf.cast(img, tf.float32)

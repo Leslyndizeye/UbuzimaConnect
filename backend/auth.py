@@ -1,4 +1,9 @@
 # auth.py — Supabase ES256 JWT, uses firebase_uid field for Supabase UUID
+# Admin hierarchy:
+#   SUPER_ADMIN  = leslyndiz6@alustudent.com  → manages hospitals, top-level access
+#   PLATFORM_ADMIN = leslyndiz6@gmail.com     → manages radiologists, runs diagnostics
+#   Hospital middle admins → credentials set by PLATFORM_ADMIN after hospital approval
+
 import os
 import jwt as pyjwt
 import requests
@@ -8,8 +13,12 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from database import get_db, User, UserStatus
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://omoinlmgsdtlzfasydgw.supabase.co")
-ADMIN_EMAIL = "leslyndiz6@gmail.com"
+SUPABASE_URL   = os.getenv("SUPABASE_URL", "https://omoinlmgsdtlzfasydgw.supabase.co")
+SUPER_ADMIN    = "byakwelianiela@gmail.com"   
+PLATFORM_ADMIN = "leslyndiz6@gmail.com"        # platform: manages radiologists
+
+ADMIN_EMAILS = {SUPER_ADMIN, PLATFORM_ADMIN}
+
 security = HTTPBearer(auto_error=False)
 
 
@@ -86,14 +95,14 @@ def get_current_user(
         user.firebase_uid = supabase_uid
         db.commit()
 
-    # Auto-promote admin email
-    if email == ADMIN_EMAIL and not user.is_admin:
+    # Auto-promote both admin emails
+    if email in ADMIN_EMAILS and not user.is_admin:
         user.is_admin = True
         user.status = UserStatus.approved
         db.commit()
 
     # Block non-approved non-admin users
-    if email != ADMIN_EMAIL:
+    if email not in ADMIN_EMAILS:
         if user.status == UserStatus.pending:
             raise HTTPException(status_code=403, detail="Account pending admin approval.")
         if user.status in (UserStatus.rejected, UserStatus.revoked):
@@ -103,8 +112,18 @@ def get_current_user(
 
 
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    if (current_user.email or "").lower() != ADMIN_EMAIL or not current_user.is_admin:
+    """Platform admin OR super admin — both can manage radiologists."""
+    email = (current_user.email or "").lower()
+    if email not in ADMIN_EMAILS or not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required.")
+    return current_user
+
+
+def get_super_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Super admin only — manages hospitals and hospital applications."""
+    email = (current_user.email or "").lower()
+    if email != SUPER_ADMIN or not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Super admin access required.")
     return current_user
 
 

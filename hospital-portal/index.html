@@ -1,10 +1,93 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>hospital-portal</title>
+    <title>Ubuzima Connect · Hospital Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              med: {
+                green:   '#4ade80',
+                emerald: '#064e3b',
+                mint:    '#ecfdf5',
+                navy:    '#0F172A',
+                slate:   '#F8FAFC',
+              }
+            },
+            fontFamily: {
+              sans:    ['Inter', 'sans-serif'],
+              display: ['Space Grotesk', 'sans-serif'],
+            },
+            animation: {
+              float: 'float 6s ease-in-out infinite',
+            },
+            keyframes: {
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%':      { transform: 'translateY(-15px)' },
+              },
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background-color: #ffffff;
+        color: #111111;
+        font-family: 'Inter', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      #root { min-height: 100vh; }
+
+      .medical-grid {
+        background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+        background-size: 32px 32px;
+      }
+      .glass-card {
+        background: rgba(255,255,255,0.7);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(0,0,0,0.04);
+      }
+
+      ::-webkit-scrollbar { width: 4px; }
+      ::-webkit-scrollbar-track { background: #f9fafb; }
+      ::-webkit-scrollbar-thumb { background: #064e3b; border-radius: 10px; }
+
+      @keyframes fadeUp  { from { opacity:0; transform:translateY(22px); } to { opacity:1; transform:translateY(0); } }
+      @keyframes ticker  { 0% { transform:translateX(0); } 100% { transform:translateX(-50%); } }
+      @keyframes pdot    { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.35; transform:scale(1.6); } }
+      @keyframes barIn   { from { width:0; } to { width:var(--w); } }
+      @keyframes slideUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+
+      .fu  { animation: fadeUp .65s cubic-bezier(.22,1,.36,1) both; }
+      .fu2 { animation: fadeUp .65s cubic-bezier(.22,1,.36,1) .12s both; }
+      .fu3 { animation: fadeUp .65s cubic-bezier(.22,1,.36,1) .24s both; }
+      .anim-in { animation: slideUp .38s cubic-bezier(.22,1,.36,1) both; }
+      .ticker-wrap { animation: ticker 30s linear infinite; }
+      .ticker-wrap:hover { animation-play-state: paused; }
+      .pdot { animation: pdot 2s infinite; }
+      .panel-card {
+        background: #fff;
+        border-radius: 28px;
+        border: 1px solid #F1F5F9;
+        box-shadow: 0 4px 30px rgba(0,0,0,.03);
+      }
+      .btn-s { transition: transform .15s ease, filter .15s ease; }
+      .btn-s:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+      .trow { transition: background .1s ease; }
+      .trow:hover { background: #F7FDF9; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
