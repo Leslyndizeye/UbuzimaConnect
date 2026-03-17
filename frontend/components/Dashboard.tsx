@@ -68,10 +68,16 @@ const validId = (v: string) => /^\d{16}$/.test(v.replace(/\s/g, ''));
 const displayClass = (c: string) => c === 'TB' ? 'Tuberculosis' : c;
 const toDbClass = (c: string) => c === 'Tuberculosis' ? 'TB' : c;
 const fmt = (iso: string) => new Date(iso).toLocaleString('en-RW', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const maskNationalId = (value?: string) => {
+  if (!value) return '—';
+  const id = value.replace(/\s/g, '');
+  if (id.length < 6) return id;
+  return `${id.slice(0, 4)}••••••••••${id.slice(-2)}`;
+};
 const classBadge = (c: string) =>
   c === 'Normal' ? 'bg-emerald-100 text-emerald-700' :
   (c === 'Tuberculosis' || c === 'TB') ? 'bg-red-100 text-red-700' :
-  c === 'Pneumonia' ? 'bg-orange-100 text-orange-700' : 'bg-zinc-100 text-zinc-600';
+  c === 'Pneumonia' ? 'bg-zinc-100 text-zinc-600' : 'bg-zinc-100 text-zinc-600';
 
 function EyeBtn({ show, onToggle }: { show: boolean; onToggle: () => void }) {
   return (
@@ -347,7 +353,11 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     setShowVerifyInline(false);
     try {
       let patient: Patient | null = null;
-      try {
+      const existing = patients.find(p => p.patient_ref_id === pNid);
+      if (existing) {
+        patient = existing;
+        setPredInfo(`Using existing patient: ${existing.name}`);
+      } else {
         patient = await apiFetch('/patients', {
           method: 'POST',
           body: JSON.stringify({ name: pName.trim(), patient_ref_id: pNid, age: Number(pAge), sex: pSex }),
@@ -355,10 +365,6 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
         if (patient && patients.some(p => p.id === patient!.id)) {
           setPredInfo(`Existing patient — adding scan #${diagnoses.filter(d => d.patient_id === patient!.id).length + 1}`);
         }
-      } catch (e: any) {
-        const existing = patients.find(p => p.patient_ref_id === pNid);
-        if (existing) { patient = existing; setPredInfo(`Using existing patient: ${existing.name}`); }
-        else throw e;
       }
       if (!patient) throw new Error('Could not resolve patient');
       setSavedPat(patient);
@@ -763,7 +769,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                   <input ref={fileRef} type="file" accept="image/*" multiple onChange={onFileInput} className="hidden" />
                 </div>
 
-                {predInfo && <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold">{predInfo.replace("ℹ️ ", "")}</div>}
+                {predInfo && <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 text-xs font-semibold">{predInfo.replace("ℹ️ ", "")}</div>}
                 {predErr && <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-xs font-semibold">{predErr}</div>}
 
                 <button onClick={runDiagnosis} disabled={predicting || !files[activeImg] || !pName.trim() || !validId(pNid)}
@@ -803,7 +809,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                       <div className="p-3 rounded-xl bg-gray-50 text-xs space-y-1">
                         <div className="text-[8px] font-bold uppercase tracking-widest text-gray-400 mb-1">Patient</div>
                         <div className="flex justify-between"><span className="text-gray-400">Name</span><span className="font-semibold">{savedPat.name}</span></div>
-                        <div className="flex justify-between"><span className="text-gray-400">National ID</span><span className="font-mono">{savedPat.patient_ref_id}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-400">National ID</span><span className="font-mono">{maskNationalId(savedPat.patient_ref_id)}</span></div>
                         {savedPat.age && <div className="flex justify-between"><span className="text-gray-400">Age</span><span>{savedPat.age} yrs</span></div>}
                         {savedPat.sex && <div className="flex justify-between"><span className="text-gray-400">Sex</span><span>{savedPat.sex}</span></div>}
                         
@@ -814,7 +820,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                     <div className="space-y-2">
                       {[
                         { label: 'Normal', val: pred.normal_probability, col: 'bg-emerald-500' },
-                        { label: 'Pneumonia', val: pred.pneumonia_probability, col: 'bg-orange-500' },
+                        { label: 'Pneumonia', val: pred.pneumonia_probability, col: 'bg-gray-500' },
                         { label: 'Tuberculosis', val: pred.tb_probability, col: 'bg-red-500' },
                       ].map(r => (
                         <div key={r.label}>
@@ -838,8 +844,8 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
 
                     {/* ── Inline verification panel ── */}
                     {savedDiag && showVerifyInline && (
-                      <div className="border-2 border-blue-200 rounded-2xl p-4 bg-blue-50/50 space-y-3">
-                        <div className="text-[9px] font-bold uppercase tracking-widest text-blue-600">Your Assessment Required</div>
+                      <div className="border-2 border-gray-200 rounded-2xl p-4 bg-gray-50 space-y-3">
+                        <div className="text-[9px] font-bold uppercase tracking-widest text-gray-600">Your Assessment Required</div>
                         <p className="text-xs text-gray-600">Review the AI result and confirm or override. This is saved to the patient record.</p>
                         <div>
                           <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Final Diagnosis</label>
@@ -850,7 +856,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                                   inlineOverride === opt
                                     ? opt === 'Normal' ? 'border-emerald-500 bg-emerald-500 text-white'
                                       : opt === 'Tuberculosis' ? 'border-red-500 bg-red-500 text-white'
-                                      : opt === 'Pneumonia' ? 'border-orange-500 bg-orange-500 text-white'
+                                      : opt === 'Pneumonia' ? 'border-gray-500 bg-gray-500 text-white'
                                       : 'border-zinc-500 bg-zinc-500 text-white'
                                     : 'border-gray-200 hover:border-gray-300 text-gray-600 bg-white'
                                 }`}>
@@ -874,7 +880,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                             Skip for now
                           </button>
                           <button onClick={saveInlineVerify} disabled={inlineSaving}
-                            className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold disabled:opacity-40">
+                            className="flex-1 py-2 rounded-xl bg-gray-600 hover:bg-gray-500 text-white text-xs font-bold disabled:opacity-40">
                             {inlineSaving ? 'Saving…' : inlineOverride ? `Confirm: ${inlineOverride}` : `✓ Accept AI: ${pred?.classification}`}
                           </button>
                         </div>
@@ -890,7 +896,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                     <div className="flex gap-2">
                       {savedDiag && !showVerifyInline && !diagnoses.find(d => d.id === savedDiag.id)?.radiologist_verified && (
                         <button onClick={() => { setInlineOverride(''); setInlineNotes(''); setShowVerifyInline(true); }}
-                          className="flex-1 py-2.5 rounded-xl bg-blue-100 text-blue-700 text-xs font-bold hover:bg-blue-200">
+                          className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold hover:bg-gray-200">
                           ✦ Verify Now
                         </button>
                       )}
@@ -932,19 +938,19 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                       </button>
                       <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 items-center min-w-0">
                         <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Name</div><div className="text-sm font-semibold truncate">{p.name}</div></div>
-                        <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">National ID</div><div className="text-xs font-mono text-gray-500">{p.patient_ref_id || '—'}</div></div>
+                        <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">National ID</div><div className="text-xs font-mono text-gray-500">{maskNationalId(p.patient_ref_id)}</div></div>
                         <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Age</div><div className="text-xs text-gray-500">{p.age ? `${p.age} yrs` : '—'}</div></div>
                         <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Sex</div><div className="text-xs text-gray-500">{p.sex || '—'}</div></div>
                         <div>
                           <div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Scans</div>
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${ptDiags.length > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${ptDiags.length > 0 ? 'bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-500'}`}>
                             {ptDiags.length} scan{ptDiags.length !== 1 ? 's' : ''}
                           </span>
                         </div>
                         <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Registered</div><div className="text-xs text-gray-400">{fmt(p.created_at)}</div></div>
                       </div>
                       <button onClick={() => { setEditPat({ ...p }); setEditErr(''); }}
-                        className="flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200">
+                        className="flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
                         Edit
                       </button>
                     </div>
@@ -972,14 +978,17 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                                     </div>
                                     <div>
                                       <div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Status</div>
-                                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${d.radiologist_verified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${d.radiologist_verified ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>
                                         {d.radiologist_verified ? 'Verified' : 'Pending'}
                                       </span>
                                     </div>
                                     <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Date</div><div className="text-[10px] text-gray-400">{fmt(d.created_at)}</div></div>
                                   </div>
+                                  {d.heatmap_b64 && (
+                                    <img src={d.heatmap_b64} alt="Diagnosis heatmap" className="w-14 h-14 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
+                                  )}
                                   <button onClick={() => { setVerifyDiag(d); setVerOverride(d.radiologist_override || ''); setVerNotes(d.radiologist_notes || ''); }}
-                                    className={`flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-lg hover:opacity-80 ${d.radiologist_verified ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}>
+                                    className={`flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-lg hover:opacity-80 ${d.radiologist_verified ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}>
                                     {d.radiologist_verified ? 'Edit' : 'Verify'}
                                   </button>
                                 </div>
@@ -1121,7 +1130,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                     {pw2 && pw1 === pw2 && pw1.length >= 6 && pw1 !== pwCurrent && <p className="text-[10px] text-emerald-600 font-semibold mt-1">✓ Passwords match</p>}
                     {pw1 && pwCurrent && pw1 === pwCurrent && <p className="text-[10px] text-red-500 font-semibold mt-1">New password must differ from current</p>}
                   </div>
-                  {pwMsg && <div className={`p-3 rounded-xl text-xs font-semibold ${pwMsg.startsWith('Error') || pwMsg.toLowerCase().includes('incorrect') || pwMsg.toLowerCase().includes('must') || pwMsg.toLowerCase().includes('match') || pwMsg.toLowerCase().includes('enter') ? 'bg-red-50 text-red-700 border border-red-100' : pwMsg === 'Verifying…' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>{pwMsg}</div>}
+                  {pwMsg && <div className={`p-3 rounded-xl text-xs font-semibold ${pwMsg.startsWith('Error') || pwMsg.toLowerCase().includes('incorrect') || pwMsg.toLowerCase().includes('must') || pwMsg.toLowerCase().includes('match') || pwMsg.toLowerCase().includes('enter') ? 'bg-red-50 text-red-700 border border-red-100' : pwMsg === 'Verifying…' ? 'bg-gray-50 text-gray-700 border border-gray-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>{pwMsg}</div>}
                   <button onClick={changePw} disabled={!pwCurrent || !pw1 || pw1 !== pw2 || pw1.length < 6 || pw1 === pwCurrent}
                     className="w-full py-3 bg-gray-900 hover:bg-black text-white font-bold rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed">
                     Update Password
@@ -1168,8 +1177,8 @@ const Loading = () => (
 const PendingScreen = ({ name, onSignOut }: { name: string; onSignOut: () => void }) => (
   <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center p-4">
     <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-10 text-center max-w-sm w-full">
-      <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-        <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+        <svg className="w-8 h-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </div>
