@@ -35,6 +35,12 @@ function useRwandaTime() {
   return time;
 }
 const validateRwandaId = (id:string) => /^\d{16}$/.test(id.replace(/\s/g,""));
+const maskNationalId = (value?:string) => {
+  if(!value) return "—";
+  const id = value.replace(/\s/g,"");
+  if(id.length < 6) return id;
+  return `${id.slice(0,4)}••••••••••${id.slice(-2)}`;
+};
 function parseDuplicateError(msg:string):{type:"NATIONAL_ID"|"NAME"|null;existingId:number|null;message:string}{
   if(msg.startsWith("DUPLICATE_NATIONAL_ID|")){const p=msg.split("|");return{type:"NATIONAL_ID",existingId:parseInt(p[1])||null,message:p[2]||msg};}
   if(msg.startsWith("DUPLICATE_NAME|")){const p=msg.split("|");return{type:"NAME",existingId:parseInt(p[1])||null,message:p[2]||msg};}
@@ -42,17 +48,19 @@ function parseDuplicateError(msg:string):{type:"NATIONAL_ID"|"NAME"|null;existin
 }
 
 // ─── Design Tokens ────────────────────────────────
-const DARK_GREEN   = "#1C5438";
-const VERY_DARK    = "#0E2B1C";
-const ACCENT_GREEN = "#38A169";
-const BG_APP       = "#F2F4F7";
-const BRAND        = "#86EFAC"; // single brand accent for retrain UI
+const DARK_GREEN   = "#214D3B";
+const VERY_DARK    = "#16352A";
+const ACCENT_GREEN = "#4F8A73";
+const BG_APP       = "#F5F3EE";
+const BRAND        = "#A8D5BA";
+const SOFT_RED     = "#C16A56";
+const SOFT_GREY    = "#8092A3";
 
 const CLS_META: Record<string,{bg:string;border:string;text:string;bar:string}> = {
-  "Normal":       {bg:"#DCFCE7",border:"#86EFAC",text:"#14532D",bar:"#38A169"},
-  "Tuberculosis": {bg:"#FEE2E2",border:"#FCA5A5",text:"#7F1D1D",bar:"#E53E3E"},
-  "Pneumonia":    {bg:"#FEF3C7",border:"#FCD34D",text:"#78350F",bar:"#DD6B20"},
-  "Unknown":      {bg:"#F1F5F9",border:"#CBD5E1",text:"#334155",bar:"#A0AEC0"},
+  "Normal":       {bg:"#E6F4EC",border:"#B9D8C7",text:"#214D3B",bar:"#4F8A73"},
+  "Tuberculosis": {bg:"#F7E7E3",border:"#E7BBB0",text:"#8D4A3A",bar:"#C16A56"},
+  "Pneumonia":    {bg:"#EEF1F4",border:"#D7DEE5",text:"#4A5A68",bar:"#8092A3"},
+  "Unknown":      {bg:"#EEF1F4",border:"#D7DEE5",text:"#4A5A68",bar:"#8092A3"},
 };
 
 // Retrain minimum images per class
@@ -96,6 +104,13 @@ const CSS = `
 
 .bar-in { animation:barIn .85s cubic-bezier(.22,1,.36,1) both; }
 
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+.skeleton {
+  background: linear-gradient(90deg,#E8ECEF 25%,#F6F7F8 37%,#E8ECEF 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.25s ease infinite;
+}
+
 .wavy-bg {
   background: linear-gradient(135deg, ${VERY_DARK} 0%, #17422B 100%);
   position: relative;
@@ -137,8 +152,8 @@ function Panel({children,className=""}:{children:React.ReactNode;className?:stri
 function StatusBadge({status}:{status:string}) {
   const good = status==="approved"||status==="verified"||status==="completed"||status==="healthy"||status==="Verified"||status==="active";
   const pend = status==="pending"||status==="processing"||status==="Pending";
-  const bg   = good?"#DCFCE7":pend?"#FEF3C7":"#FEE2E2";
-  const tx   = good?"#166534":pend?"#92400E":"#991B1B";
+  const bg   = good?"#E6F4EC":pend?"#EEF1F4":"#F7E7E3";
+  const tx   = good?DARK_GREEN:pend?"#4A5A68":"#8D4A3A";
   return <span className="inline-flex items-center text-[10px] font-bold px-2.5 py-1 rounded-full capitalize" style={{backgroundColor:bg,color:tx}}>{status}</span>;
 }
 function ClsBadge({cls}:{cls:string}) {
@@ -189,21 +204,21 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
           </div>
         </div>
         <div className="p-8 space-y-5">
-          {!hasAuth&&<div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium">⚠ Approve user first before setting a password.</div>}
+          {!hasAuth&&<div className="p-4 rounded-2xl text-sm font-medium" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>Approve user first before setting a password.</div>}
           <div className="p-5 rounded-3xl space-y-3" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-green-700">Auto-Generate</p>
             <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating…":"⚡ Generate & Set Password"}</button>
             {gen&&<div className="rounded-2xl p-4 bg-white border border-green-200">
               <p className="text-[9px] font-bold uppercase text-slate-400 mb-2">Share with user</p>
-              <div className="flex items-center gap-2"><code className="flex-1 text-sm font-bold font-mono px-3 py-2 rounded-xl" style={{background:"#DCFCE7",color:"#14532D"}}>{gen}</code><button onClick={()=>{navigator.clipboard.writeText(gen);setCopied(true);setTimeout(()=>setCopied(false),2000);}} className="btn-s px-4 py-2 rounded-full text-white text-xs font-bold" style={{backgroundColor:DARK_GREEN}}>{copied?"✓ Copied":"Copy"}</button></div>
+              <div className="flex items-center gap-2"><code className="flex-1 text-sm font-bold font-mono px-3 py-2 rounded-xl" style={{background:"#E6F4EC",color:DARK_GREEN}}>{gen}</code><button onClick={()=>{navigator.clipboard.writeText(gen);setCopied(true);setTimeout(()=>setCopied(false),2000);}} className="btn-s px-4 py-2 rounded-full text-white text-xs font-bold" style={{backgroundColor:DARK_GREEN}}>{copied?"✓ Copied":"Copy"}</button></div>
             </div>}
           </div>
-          <div className="p-5 rounded-3xl space-y-3" style={{background:"#EFF6FF",border:"1px solid #BFDBFE"}}>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Set Custom Password</p>
+          <div className="p-5 rounded-3xl space-y-3" style={{background:"#EEF1F4",border:"1px solid #D7DEE5"}}>
+            <p className="text-[10px] font-bold uppercase tracking-widest" style={{color:SOFT_GREY}}>Set Custom Password</p>
             <div className="relative"><input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 8 characters" className={INP_RECT+" pr-16"}/><button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold px-2 py-1 rounded-xl bg-slate-200 text-slate-500">{show?"Hide":"Show"}</button></div>
-            <button onClick={setManual} disabled={loading||!hasAuth||!pw} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:"#2563EB"}}>Set Password</button>
+            <button onClick={setManual} disabled={loading||!hasAuth||!pw} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:SOFT_GREY}}>Set Password</button>
           </div>
-          {msg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${ok?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{msg}</div>}
+          {msg&&<div className="p-4 rounded-2xl text-sm font-semibold" style={ok?{background:"#E6F4EC",border:"1px solid #B9D8C7",color:DARK_GREEN}:{background:"#F7E7E3",border:"1px solid #E7BBB0",color:"#8D4A3A"}}>{msg}</div>}
           <button onClick={onClose} className="w-full py-3 rounded-full bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-colors">Close</button>
         </div>
       </div>
@@ -226,6 +241,7 @@ export default function AdminDashboard() {
   const [pwLogs,setPwLogs]=useState<AuditLog[]>([]);
   const [health,setHealth]=useState<any>(null);
   const [retrainJobs,setRetrainJobs]=useState<RetrainJob[]>([]);
+  const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
   const [search,setSearch]=useState("");
   const [pwUser,setPwUser]=useState<ApiUser|null>(null);
@@ -275,10 +291,12 @@ export default function AdminDashboard() {
 
   const loadAll=useCallback(async(currentMe?:ApiUser|null)=>{
     setError("");
+    setLoading(true);
     const resolvedMe = currentMe !== undefined ? currentMe : meRef.current;
     if(!resolvedMe?.is_admin || !resolvedMe?.hospital_id){
       setApiUsers([]); setDiagnoses([]); setPatients([]); setAuditLogs([]); setPwLogs([]); setStagedC({});
       setMyHospital(null); setLogoPreview(null);
+      setLoading(false);
       return;
     }
     try{
@@ -298,6 +316,7 @@ export default function AdminDashboard() {
       adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
       adminFetch(`/hospitals/${hid}`).then(hosp=>{setMyHospital(hosp);if(hosp.logo_base64)setLogoPreview(hosp.logo_base64);}).catch(()=>{});
     }catch(e:any){setError(e.message);}
+    finally{setLoading(false);}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
@@ -310,8 +329,8 @@ export default function AdminDashboard() {
         meRef.current = myData;
         setMe(myData);
         if(myData.is_admin && myData.hospital_id) loadAll(myData);
-        else setError("This dashboard is for hospital admins only. Use the hospital portal for super admin work.");
-      }catch(e:any){setError(e.message||"Failed to load admin profile.");}
+        else {setError("This dashboard is for hospital admins only. Use the hospital portal for super admin work."); setLoading(false);}
+      }catch(e:any){setError(e.message||"Failed to load admin profile.");setLoading(false);}
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
@@ -410,7 +429,11 @@ export default function AdminDashboard() {
     if(!rtFiles.length){setRtMsg("Select files first");setRtOk(false);return;}
     setUploading(true);setRtMsg("");
     try{
-      const fd=new FormData();rtFiles.forEach(f=>fd.append("files",f));
+      const zipFiles=rtFiles.filter(f=>f.name.toLowerCase().endsWith(".zip"));
+      if(zipFiles.length>1){setRtMsg("Select only one ZIP archive at a time.");setRtOk(false);setUploading(false);return;}
+      const fd=new FormData();
+      rtFiles.filter(f=>!f.name.toLowerCase().endsWith(".zip")).forEach(f=>fd.append("files",f));
+      if(zipFiles[0]) fd.append("archive",zipFiles[0]);
       const{data}=await supabase.auth.getSession();const token=data.session?.access_token;
       const res=await fetch(`${API_BASE}/retrain/upload?label=${encodeURIComponent(rtLabel)}`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
       if(!res.ok){const e=await res.json();throw new Error(e.detail);}
@@ -466,6 +489,8 @@ export default function AdminDashboard() {
     ["audit","Audit Log"],
     ["profile","My Hospital"],
   ];
+  const headerLogo = logoPreview || myHospital?.logo_base64 || null;
+  const showInitialSkeleton = loading && !apiUsers.length && !patients.length && !diagnoses.length;
 
   if(me && !isHospitalAdmin){
     return (
@@ -498,7 +523,7 @@ export default function AdminDashboard() {
         {editPatient&&(
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{backgroundColor:"rgba(0,0,0,.45)",backdropFilter:"blur(6px)"}}>
             <div className="anim-pop w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden">
-              <div className="px-8 pt-7 pb-6 text-white" style={{background:"linear-gradient(135deg,#2563EB,#1D4ED8)"}}>
+              <div className="px-8 pt-7 pb-6 text-white" style={{background:`linear-gradient(135deg,${DARK_GREEN},${ACCENT_GREEN})`}}>
                 <div className="flex items-center justify-between"><h2 className="text-lg font-bold">Edit Patient</h2><button onClick={()=>setEditPatient(null)} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center font-bold">✕</button></div>
               </div>
               <div className="p-8 space-y-4">
@@ -544,7 +569,7 @@ export default function AdminDashboard() {
                     <option value="">Select an approved hospital…</option>
                     {hospitals.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}
                   </select>
-                  {hospitals.length===0&&<p className="text-xs text-amber-600 mt-1">⚠ No approved hospitals yet. Approve a hospital application first.</p>}
+                  {hospitals.length===0&&<p className="text-xs mt-1" style={{color:SOFT_RED}}>No approved hospitals yet. Approve a hospital application first.</p>}
                 </div>
                 {assignMsg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${assignMsg.startsWith("✅")?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{assignMsg}</div>}
                 <div className="flex gap-3">
@@ -596,12 +621,20 @@ export default function AdminDashboard() {
             </div>
             <div className="flex items-center gap-4">
               {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
-              {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-amber-50 border border-amber-200 text-amber-700">
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-amber-500"/>{pending} pending
+              {loading&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-white border border-slate-200 text-slate-500"><span className="w-2 h-2 rounded-full pdot" style={{backgroundColor:ACCENT_GREEN}}/> Loading</div>}
+              {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{backgroundColor:SOFT_GREY}}/>{pending} pending
               </div>}
-              <div className="flex items-center gap-3 bg-white rounded-full px-2 py-1.5 pr-5 border border-slate-100 shadow-sm">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{me?.full_name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"AD"}</div>
-                <div><p className="text-[12px] font-bold text-slate-800 leading-tight">Hospital Admin</p><p className="text-[10px] text-slate-400">{me?.email||"—"}</p></div>
+              <div className="flex items-center gap-3 bg-white rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 shadow-sm min-w-[250px]">
+                <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
+                  {headerLogo
+                    ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
+                    : <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{me?.full_name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"HA"}</div>}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-bold text-slate-800 leading-tight">{myHospital?.name||"Hospital Admin"}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{me?.email||"—"}</p>
+                </div>
               </div>
             </div>
           </header>
@@ -617,6 +650,24 @@ export default function AdminDashboard() {
                     <button onClick={loadAll} className="btn-s px-5 py-2.5 rounded-full text-slate-700 text-sm font-bold bg-white border border-slate-200">Refresh</button>
                   </div>
                 </div>
+                {showInitialSkeleton ? (
+                  <>
+                    <div className="grid grid-cols-4 gap-5">
+                      {[0,1,2,3].map(i=>(
+                        <div key={i} className="rounded-[28px] p-6 bg-white border border-slate-100 shadow-sm" style={{minHeight:160}}>
+                          <div className="skeleton h-4 w-24 rounded-full mb-10"/>
+                          <div className="skeleton h-12 w-20 rounded-2xl mb-4"/>
+                          <div className="skeleton h-3 w-28 rounded-full"/>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-12 gap-5">
+                      <div className="col-span-5 rounded-[28px] p-7 bg-white border border-slate-100 shadow-sm"><div className="skeleton h-5 w-40 rounded-full mb-6"/><div className="skeleton h-[220px] w-full rounded-[24px]"/></div>
+                      <div className="col-span-4 rounded-[28px] p-7 bg-white border border-slate-100 shadow-sm"><div className="skeleton h-5 w-32 rounded-full mb-6"/><div className="space-y-3">{[0,1,2,3].map(i=><div key={i} className="skeleton h-4 w-full rounded-full"/>)}</div></div>
+                      <div className="col-span-3 rounded-[28px] p-7 bg-white border border-slate-100 shadow-sm"><div className="skeleton h-5 w-28 rounded-full mb-6"/><div className="space-y-4">{[0,1,2,3].map(i=><div key={i} className="skeleton h-10 w-full rounded-2xl"/>)}</div></div>
+                    </div>
+                  </>
+                ) : (
                 <div className="grid grid-cols-4 gap-5">
                   <div className="anim-in-1 rounded-[28px] p-6 flex flex-col justify-between" style={{backgroundColor:DARK_GREEN,color:"white",minHeight:160}}>
                     <div className="flex justify-between items-start"><span className="text-sm font-medium text-white/90">Radiologists</span><div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">↗</div></div>
@@ -629,6 +680,7 @@ export default function AdminDashboard() {
                     </div>
                   ))}
                 </div>
+                )}
                 <div className="grid grid-cols-12 gap-5">
                   <Panel className="col-span-5 p-7 flex flex-col anim-in">
                     <h3 className="text-base font-bold text-slate-800 mb-5">Diagnosis Distribution</h3>
@@ -725,8 +777,8 @@ export default function AdminDashboard() {
                       <TD><StatusBadge status={u.status}/></TD>
                       <TD mono>{fmt(u.created_at)}</TD>
                       <TD><div className="flex gap-1.5 flex-wrap">
-                        {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200">Reject</button></>}
-                        {u.status==="approved"&&<><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Password</button><button onClick={()=>revokeUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Revoke</button></>}
+                        {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-700 border border-red-200">Reject</button></>}
+                        {u.status==="approved"&&<><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full border" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Password</button><button onClick={()=>revokeUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-700 border border-red-200">Revoke</button></>}
                         {(u.status==="rejected"||u.status==="revoked")&&<button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Re-Approve</button>}
                       </div></TD>
                     </TR>
@@ -755,7 +807,7 @@ export default function AdminDashboard() {
                   {visibleDiagnoses.filter(d=>!search||d.ai_classification===search).map(d=>{const pt=visiblePatients.find(p=>p.id===d.patient_id);return(
                     <TR key={d.id}>
                       <TD><span className="font-bold text-slate-800">{pt?.name??"Unknown"}</span></TD>
-                      <TD mono>{pt?.patient_ref_id??"—"}</TD>
+                      <TD mono>{maskNationalId(pt?.patient_ref_id)}</TD>
                       <TD><ClsBadge cls={d.ai_classification}/></TD>
                       <TD><div className="flex items-center gap-2"><div className="w-14 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full" style={{width:`${d.confidence_score}%`,backgroundColor:ACCENT_GREEN}}/></div><span className="text-xs font-bold">{d.confidence_score.toFixed(1)}%</span></div></TD>
                       <TD mono>{(d.tb_probability*100).toFixed(1)}%</TD>
@@ -787,12 +839,12 @@ export default function AdminDashboard() {
                             {isExp?"▾":"▸"}
                           </button>
                           <div className="flex-1 grid grid-cols-7 gap-3 items-center min-w-0">
-                            {[{l:"Name",v:<span className="text-sm font-bold text-slate-900 truncate">{p.name}</span>},{l:"NID",v:<span className="text-xs font-mono text-slate-400">{p.patient_ref_id||"—"}</span>},{l:"Age",v:<span className="text-xs text-slate-500">{p.age?`${p.age}y`:"—"}</span>},{l:"Sex",v:<span className="text-xs text-slate-500">{p.sex||"—"}</span>},{l:"Hospital",v:<span className="text-xs text-slate-500 truncate">{p.hospital||"—"}</span>},{l:"Scans",v:<span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:ptD.length>0?"#2563EB":"#94A3B8"}}>{ptD.length} scan{ptD.length!==1?"s":""}</span>},{l:"Joined",v:<span className="text-xs text-slate-400">{fmt(p.created_at)}</span>}].map(col=>(
+                            {[{l:"Name",v:<span className="text-sm font-bold text-slate-900 truncate">{p.name}</span>},{l:"NID",v:<span className="text-xs font-mono text-slate-400">{maskNationalId(p.patient_ref_id)}</span>},{l:"Age",v:<span className="text-xs text-slate-500">{p.age?`${p.age}y`:"—"}</span>},{l:"Sex",v:<span className="text-xs text-slate-500">{p.sex||"—"}</span>},{l:"Hospital",v:<span className="text-xs text-slate-500 truncate">{p.hospital||"—"}</span>},{l:"Scans",v:<span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:ptD.length>0?SOFT_GREY:"#9CA3AF"}}>{ptD.length} scan{ptD.length!==1?"s":""}</span>},{l:"Joined",v:<span className="text-xs text-slate-400">{fmt(p.created_at)}</span>}].map(col=>(
                               <div key={col.l}><div className="text-[8px] font-bold uppercase text-slate-300 mb-0.5">{col.l}</div>{col.v}</div>
                             ))}
                           </div>
                           <div className="flex gap-2 shrink-0">
-                            <button onClick={()=>openEdit(p)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">Edit</button>
+                            <button onClick={()=>openEdit(p)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full border" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Edit</button>
                             <button onClick={()=>deletePt(p.id,p.name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200">Delete</button>
                           </div>
                         </div>
@@ -877,7 +929,7 @@ export default function AdminDashboard() {
                           {filteredPatients.filter(p=>!ptSearch||p.name.toLowerCase().includes(ptSearch.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(ptSearch))).slice(0,10).map(p=>(
                             <button key={p.id} onClick={()=>{setSelectedPtId(p.id);setPtSearch(p.name);}}
                               className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors">
-                              <div><p className="text-sm font-bold text-slate-800">{p.name}</p><p className="text-[10px] text-slate-400 font-mono">{p.patient_ref_id||"No NID"}{p.hospital?` · ${p.hospital}`:""}</p></div>
+                              <div><p className="text-sm font-bold text-slate-800">{p.name}</p><p className="text-[10px] text-slate-400 font-mono">{maskNationalId(p.patient_ref_id) || "No NID"}{p.hospital?` · ${p.hospital}`:""}</p></div>
                             </button>
                           ))}
                           {filteredPatients.filter(p=>!ptSearch||p.name.toLowerCase().includes(ptSearch.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(ptSearch))).length===0&&(
@@ -885,8 +937,8 @@ export default function AdminDashboard() {
                           )}
                         </div>
                       )}
-                      {selectedPtId&&(()=>{const p=patients.find(pt=>pt.id===selectedPtId);return p?(<div className="flex items-center justify-between p-3 rounded-2xl" style={{background:"#EFF6FF",border:"1.5px solid #BFDBFE"}}>
-                        <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold bg-blue-600">{p.name.charAt(0)}</div><div><p className="text-sm font-bold text-blue-800">{p.name}</p><p className="text-[10px] text-blue-500 font-mono">{p.patient_ref_id||"—"}</p></div></div>
+                      {selectedPtId&&(()=>{const p=patients.find(pt=>pt.id===selectedPtId);return p?(<div className="flex items-center justify-between p-3 rounded-2xl" style={{background:"#EEF1F4",border:"1.5px solid #D7DEE5"}}>
+                        <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:SOFT_GREY}}>{p.name.charAt(0)}</div><div><p className="text-sm font-bold" style={{color:"#4A5A68"}}>{p.name}</p><p className="text-[10px] font-mono" style={{color:SOFT_GREY}}>{maskNationalId(p.patient_ref_id)}</p></div></div>
                         <button onClick={()=>{setSelectedPtId("");setPtSearch("");}} className="text-xs text-slate-400 hover:text-red-500 font-bold px-2">✕</button>
                       </div>):null;})()}
                     </div>
@@ -904,7 +956,7 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
-                    {predInfo&&<div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-800 text-sm font-semibold">{predInfo}</div>}
+                    {predInfo&&<div className="p-4 rounded-2xl text-sm font-semibold" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>{predInfo}</div>}
                     {predErr&&<div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm font-semibold">{predErr}</div>}
 
                     <button onClick={runPred} disabled={predicting||!xFile||!selectedPtId||!dxRadiologist} className="btn-s w-full py-4 rounded-full text-white font-bold text-sm disabled:opacity-40" style={{backgroundColor:DARK_GREEN,boxShadow:`0 8px 24px ${DARK_GREEN}44`}}>
@@ -985,19 +1037,19 @@ export default function AdminDashboard() {
                     <div className="space-y-3">
                       <div className="flex items-center gap-3">
                         <div className="step-ring active">2</div>
-                        <div><p className="text-sm font-bold text-slate-800">Upload images for <span style={{color:DARK_GREEN}}>"{rtLabel}"</span></p><p className="text-[11px] text-slate-400">Minimum {RT_MIN} images · JPG or PNG</p></div>
+                        <div><p className="text-sm font-bold text-slate-800">Upload images for <span style={{color:DARK_GREEN}}>"{rtLabel}"</span></p><p className="text-[11px] text-slate-400">Minimum {RT_MIN} images · JPG/PNG/WebP or one ZIP archive</p></div>
                       </div>
                       <div
                         onDragOver={e=>{e.preventDefault();setRtDrag(true);}}
                         onDragLeave={()=>setRtDrag(false)}
-                        onDrop={e=>{e.preventDefault();setRtDrag(false);setRtFiles(Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/")));}}
+                        onDrop={e=>{e.preventDefault();setRtDrag(false);setRtFiles(Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/")||f.name.toLowerCase().endsWith(".zip")));}}
                         onClick={()=>rtRef.current?.click()}
                         className="border-2 border-dashed rounded-3xl p-7 text-center cursor-pointer transition-all"
-                        style={{borderColor:rtDrag?"#1C5438":rtFiles.length>0?"#86EFAC":"#E2E8F0",backgroundColor:rtDrag||rtFiles.length>0?"#F0FDF4":"#FAFAFA"}}>
+                        style={{borderColor:rtDrag?DARK_GREEN:rtFiles.length>0?BRAND:"#E2E8F0",backgroundColor:rtDrag||rtFiles.length>0?"#F0FDF4":"#FAFAFA"}}>
                         {rtFiles.length>0
-                          ?<div><p className="text-base font-bold text-emerald-700">{rtFiles.length} file{rtFiles.length!==1?"s":""} selected</p><p className="text-xs text-slate-400 mt-1">Click to change</p></div>
-                          :<div className="float-it"><p className="text-sm font-bold text-slate-500">Drop files here or click to browse</p><p className="text-xs text-slate-400 mt-1">Multiple files OK</p></div>}
-                        <input ref={rtRef} type="file" accept="image/*" multiple onChange={e=>setRtFiles(Array.from(e.target.files||[]))} className="hidden"/>
+                          ?<div><p className="text-base font-bold" style={{color:DARK_GREEN}}>{rtFiles.length} file{rtFiles.length!==1?"s":""} selected</p><p className="text-xs text-slate-400 mt-1">{rtFiles.some(f=>f.name.toLowerCase().endsWith(".zip"))?"ZIP archive ready":"Click to change"}</p></div>
+                          :<div className="float-it"><p className="text-sm font-bold text-slate-500">Drop files here or click to browse</p><p className="text-xs text-slate-400 mt-1">Multiple images or one ZIP archive</p></div>}
+                        <input ref={rtRef} type="file" accept="image/*,.zip" multiple onChange={e=>setRtFiles(Array.from(e.target.files||[]))} className="hidden"/>
                       </div>
                       <button onClick={uploadForRetrain} disabled={uploading||!rtFiles.length}
                         className="btn-s w-full py-3.5 rounded-full text-white font-bold text-sm disabled:opacity-40"
@@ -1025,8 +1077,8 @@ export default function AdminDashboard() {
                               {n===0
                                 ?<span className="text-[10px] italic text-slate-300">Not uploaded</span>
                                 :<div className="flex items-center gap-2">
-                                  <div className="h-1.5 w-20 rounded-full overflow-hidden bg-slate-200"><div className="h-full rounded-full" style={{width:`${Math.min((n/RT_MIN)*100,100)}%`,backgroundColor:ready?"#38A169":"#F59E0B"}}/></div>
-                                  <span className={`text-[10px] font-bold ${ready?"text-emerald-600":"text-amber-600"}`}>{n} {ready?"✓":`/ ${RT_MIN}`}</span>
+                                  <div className="h-1.5 w-20 rounded-full overflow-hidden bg-slate-200"><div className="h-full rounded-full" style={{width:`${Math.min((n/RT_MIN)*100,100)}%`,backgroundColor:ready?DARK_GREEN:SOFT_GREY}}/></div>
+                                  <span className="text-[10px] font-bold" style={{color:ready?DARK_GREEN:SOFT_GREY}}>{n} {ready?"✓":`/ ${RT_MIN}`}</span>
                                 </div>}
                             </div>
                           );
@@ -1044,15 +1096,15 @@ export default function AdminDashboard() {
                         </button>
                         {stagedClasses.length>0&&(
                           <button onClick={clearStaged} disabled={clearing}
-                            className="btn-s px-5 py-4 rounded-full font-bold text-sm border-2 border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-40 whitespace-nowrap"
+                            className="btn-s px-5 py-4 rounded-full font-bold text-sm border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 whitespace-nowrap"
                             title="Clear all staged images">
-                            {clearing?"…":"🗑 Clear"}
+                            {clearing?"…":"Clear"}
                           </button>
                         )}
                       </div>
                     </div>
 
-                    {rtMsg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${rtOk?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{rtMsg}</div>}
+                    {rtMsg&&<div className="p-4 rounded-2xl text-sm font-semibold" style={rtOk?{background:"#E6F4EC",border:"1px solid #B9D8C7",color:DARK_GREEN}:{background:"#F7E7E3",border:"1px solid #E7BBB0",color:"#8D4A3A"}}>{rtMsg}</div>}
                   </Panel>
 
                   {/* Right: job history */}
@@ -1065,14 +1117,14 @@ export default function AdminDashboard() {
                       ?<div className="h-40 flex flex-col items-center justify-center text-slate-300 gap-2 float-it"><svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg><p className="text-sm">No retrain jobs yet</p></div>
                       :<div className="space-y-3 overflow-y-auto max-h-[500px]">{retrainJobs.map(j=>{
                         const isOk=j.status==="completed"; const isFail=j.status==="failed"; const isRun=j.status==="processing"||j.status==="pending";
-                        const borderCol=isOk?"#86EFAC":isFail?"#FCA5A5":"#BFDBFE";
-                        const bgCol=isOk?"#F0FDF4":isFail?"#FEF2F2":"#EFF6FF";
-                        const textCol=isOk?"#14532D":isFail?"#7F1D1D":"#1E40AF";
+                        const borderCol=isOk?"#B9D8C7":isFail?"#E7BBB0":"#D7DEE5";
+                        const bgCol=isOk?"#E6F4EC":isFail?"#F7E7E3":"#EEF1F4";
+                        const textCol=isOk?DARK_GREEN:isFail?"#8D4A3A":"#4A5A68";
                         return(
                           <div key={j.id} className="p-5 rounded-2xl" style={{backgroundColor:bgCol,border:`1.5px solid ${borderCol}`}}>
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
-                                {isRun&&<div className="w-3 h-3 rounded-full pdot" style={{backgroundColor:"#60A5FA"}}/>}
+                                {isRun&&<div className="w-3 h-3 rounded-full pdot" style={{backgroundColor:SOFT_GREY}}/>}
                                 <span className="text-base font-bold" style={{color:textCol}}>Job #{j.id}</span>
                               </div>
                               <StatusBadge status={j.status}/>
@@ -1115,8 +1167,8 @@ export default function AdminDashboard() {
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
                       <TD mono>{u.email}</TD>
                       <TD><StatusBadge status="approved"/></TD>
-                      <TD mono>{last?`${last.action==="admin_generate_password"?"🔑 Generated":"✏️ Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
-                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Manage</button></TD>
+                      <TD mono>{last?`${last.action==="admin_generate_password"?"Generated":"Manual"} · ${fmt(last.timestamp)}`:"—"}</TD>
+                      <TD><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full border" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Manage</button></TD>
                     </TR>);
                   })}
                 </Tbl>
@@ -1126,7 +1178,7 @@ export default function AdminDashboard() {
                     <Tbl heads={["Action","Target","Admin","When"]}>
                       {pwLogs.map(l=>{const target=apiUsers.find(u=>u.id===l.entity_id);return(
                         <TR key={l.id}>
-                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:l.action==="admin_generate_password"?"#7C3AED":"#2563EB"}}>{l.action==="admin_generate_password"?"🔑 Auto":"✏️ Manual"}</span></TD>
+                          <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:SOFT_GREY}}>{l.action==="admin_generate_password"?"Auto":"Manual"}</span></TD>
                           <TD>{target?.full_name??"—"}</TD>
                           <TD>{apiUsers.find(u=>u.id===l.user_id)?.full_name??"Admin"}</TD>
                           <TD mono>{fmt(l.timestamp)}</TD>
@@ -1144,7 +1196,7 @@ export default function AdminDashboard() {
                 <PageHead title="Audit Log" sub={`Last ${auditLogs.length} system events`}/>
                 <Tbl heads={["#","User","Action","Entity","ID","Timestamp"]} empty={auditLogs.length===0?"No audit logs yet":undefined}>
                   {auditLogs.map(l=>{
-                    const col=l.action.includes("password")?"#7C3AED":l.action.includes("predict")?"#2563EB":l.action.includes("approve")?DARK_GREEN:l.action.includes("delete")?"#DC2626":"#64748B";
+                    const col=l.action.includes("delete")||l.action.includes("reject")||l.action.includes("revoke")?SOFT_RED:l.action.includes("approve")||l.action.includes("verify")||l.action.includes("retrain")?DARK_GREEN:SOFT_GREY;
                     return <TR key={l.id}>
                       <TD mono>#{l.id}</TD>
                       <TD>{apiUsers.find(u=>u.id===l.user_id)?.full_name??`User ${l.user_id}`}</TD>
@@ -1181,7 +1233,7 @@ export default function AdminDashboard() {
                         {logoUploading?"Uploading…":"Upload Logo"}
                       </button>
                       <p className="text-xs text-slate-400">PNG or JPG recommended. Auto-displayed on radiologist dashboards.</p>
-                      {logoMsg&&<div className={`p-3 rounded-2xl text-sm font-semibold ${logoOk?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{logoMsg}</div>}
+                      {logoMsg&&<div className="p-3 rounded-2xl text-sm font-semibold" style={logoOk?{background:"#E6F4EC",border:"1px solid #B9D8C7",color:DARK_GREEN}:{background:"#F7E7E3",border:"1px solid #E7BBB0",color:"#8D4A3A"}}>{logoMsg}</div>}
                     </div>
                   </div>
                 </Panel>
@@ -1197,7 +1249,7 @@ export default function AdminDashboard() {
                       </div>
                     ))}
                   </div>
-                  <button onClick={()=>setMyPwdModal(true)} className="btn-s px-6 py-2.5 rounded-full text-white text-sm font-bold" style={{backgroundColor:"#2563EB"}}>
+                  <button onClick={()=>setMyPwdModal(true)} className="btn-s px-6 py-2.5 rounded-full text-white text-sm font-bold" style={{backgroundColor:SOFT_GREY}}>
                     Change Password
                   </button>
                 </Panel>
@@ -1206,7 +1258,7 @@ export default function AdminDashboard() {
                 {myPwdModal&&(
                   <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{backgroundColor:"rgba(0,0,0,.45)",backdropFilter:"blur(6px)"}}>
                     <div className="anim-pop w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden">
-                      <div className="px-8 pt-7 pb-6 text-white" style={{background:"linear-gradient(135deg,#2563EB,#1D4ED8)"}}>
+                      <div className="px-8 pt-7 pb-6 text-white" style={{background:`linear-gradient(135deg,${DARK_GREEN},${ACCENT_GREEN})`}}>
                         <div className="flex items-center justify-between">
                           <h2 className="text-lg font-bold">Change Password</h2>
                           <button onClick={()=>{setMyPwdModal(false);setMyPwd("");setMyPwdMsg("");}} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center font-bold">✕</button>
@@ -1214,10 +1266,10 @@ export default function AdminDashboard() {
                       </div>
                       <div className="p-8 space-y-4">
                         <input type="password" value={myPwd} onChange={e=>setMyPwd(e.target.value)} placeholder="New password (min 8 chars)" className={INP_RECT}/>
-                        {myPwdMsg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${myPwdOk?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{myPwdMsg}</div>}
+                        {myPwdMsg&&<div className="p-4 rounded-2xl text-sm font-semibold" style={myPwdOk?{background:"#E6F4EC",border:"1px solid #B9D8C7",color:DARK_GREEN}:{background:"#F7E7E3",border:"1px solid #E7BBB0",color:"#8D4A3A"}}>{myPwdMsg}</div>}
                         <div className="flex gap-3 pt-1">
                           <button onClick={()=>{setMyPwdModal(false);setMyPwd("");setMyPwdMsg("");}} className="flex-1 py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200">Cancel</button>
-                          <button onClick={changeMyPassword} disabled={myPwdLoading||!myPwd} className="btn-s flex-1 py-3 rounded-full text-white font-bold disabled:opacity-40" style={{backgroundColor:"#2563EB"}}>{myPwdLoading?"Saving…":"Update Password"}</button>
+                          <button onClick={changeMyPassword} disabled={myPwdLoading||!myPwd} className="btn-s flex-1 py-3 rounded-full text-white font-bold disabled:opacity-40" style={{backgroundColor:SOFT_GREY}}>{myPwdLoading?"Saving…":"Update Password"}</button>
                         </div>
                       </div>
                     </div>
