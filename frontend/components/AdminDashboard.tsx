@@ -51,7 +51,7 @@ function parseDuplicateError(msg:string):{type:"NATIONAL_ID"|"NAME"|null;existin
 const DARK_GREEN   = "#214D3B";
 const VERY_DARK    = "#16352A";
 const ACCENT_GREEN = "#4F8A73";
-const BG_APP       = "#F5F3EE";
+const BG_APP       = "#FFFFFF";
 const BRAND        = "#A8D5BA";
 const SOFT_RED     = "#C16A56";
 const SOFT_GREY    = "#8092A3";
@@ -483,7 +483,6 @@ export default function AdminDashboard() {
   const navItems:[Tab,string,number?][]= [
     ["overview","Dashboard"],
     ["users","Radiologists",pending||undefined],
-    ["predictions","Diagnoses",visibleDiagnoses.length||undefined],
     ["patients","Patients"],
     ["retrain","Retrain AI"],
     ["audit","Audit Log"],
@@ -673,28 +672,23 @@ export default function AdminDashboard() {
                     <div className="flex justify-between items-start"><span className="text-sm font-medium text-white/90">Radiologists</span><div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">↗</div></div>
                     <div><div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??visibleUsers.filter(u=>u.status==="approved").length}</div><div className="text-[11px] text-white/70"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending} pending</span></div></div>
                   </div>
-                  {[{l:"AI Diagnoses",v:visibleDiagnoses.length},{l:"Total Patients",v:visiblePatients.length},{l:"Pending Reviews",v:pending}].map((c,i)=>(
+                  {[{l:"Total Patients",v:visiblePatients.length},{l:"Audit Events",v:auditLogs.length},{l:"Pending Reviews",v:pending}].map((c,i)=>(
                     <div key={c.l} className={`anim-in-${i+2} panel-card p-6 flex flex-col justify-between`} style={{minHeight:160}}>
                       <div className="flex justify-between items-start"><span className="text-sm font-semibold text-slate-700">{c.l}</span><div className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500">↗</div></div>
-                      <div><div className="text-5xl font-bold tracking-tight text-slate-900 mb-2">{c.v}</div><div className="text-[11px] text-slate-400">{i===2?"Awaiting approval":"Updated live"}</div></div>
+                      <div><div className="text-5xl font-bold tracking-tight text-slate-900 mb-2">{c.v}</div><div className="text-[11px] text-slate-400">{i===2?"Awaiting approval":"Hospital summary"}</div></div>
                     </div>
                   ))}
                 </div>
                 )}
                 <div className="grid grid-cols-12 gap-5">
                   <Panel className="col-span-5 p-7 flex flex-col anim-in">
-                    <h3 className="text-base font-bold text-slate-800 mb-5">Diagnosis Distribution</h3>
-                    <div className="flex-1 flex items-end justify-between gap-4 px-2">
-                      {dist.map((d,i)=>(
-                        <div key={d.cls} className="flex flex-col items-center gap-2 w-full group cursor-default">
-                          <div className="text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity" style={{color:d.color}}>{d.pct}%</div>
-                          <div className="w-full relative rounded-full overflow-hidden" style={{height:130,backgroundColor:"#F1F5F9"}}>
-                            <div className="absolute bottom-0 w-full rounded-full transition-all duration-700" style={{height:`${Math.max(d.pct,4)}%`,backgroundColor:i%2===0?d.color:undefined,backgroundImage:i%2!==0?`repeating-linear-gradient(45deg,${d.color},${d.color} 2px,transparent 2px,transparent 6px)`:undefined}}/>
-                          </div>
-                          <span className="text-[11px] font-bold text-slate-400">{d.cls[0]}</span>
-                          <span className="text-[10px] font-semibold" style={{color:d.color}}>{d.count}</span>
-                        </div>
-                      ))}
+                    <h3 className="text-base font-bold text-slate-800 mb-5">Privacy Notice</h3>
+                    <div className="space-y-4 text-sm text-slate-600 leading-relaxed">
+                      <p>Diagnosis details stay on the radiologist side. Hospital admins manage access, radiologists, patient counts, retraining and audit activity.</p>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Visible Here</p>
+                        <p>Approved radiologists, patient registrations, pending approvals, retraining status and hospital branding.</p>
+                      </div>
                     </div>
                   </Panel>
                   <Panel className="col-span-4 p-7 flex flex-col justify-between anim-in">
@@ -703,20 +697,16 @@ export default function AdminDashboard() {
                       <p className="text-[13px] text-slate-500 leading-relaxed">Hospital ID: <strong>#{me?.hospital_id}</strong></p>
                       <p className="text-[13px] text-slate-500 mt-2">Approved radiologists: <strong>{visibleUsers.filter(u=>u.status==="approved").length}</strong></p>
                       <p className="text-[13px] text-slate-500 mt-1">Pending approval: <strong>{pending}</strong></p>
-                      <p className="text-[13px] text-slate-500 mt-1">Total diagnoses: <strong>{visibleDiagnoses.length}</strong></p>
+                      <p className="text-[13px] text-slate-500 mt-1">Registered patients: <strong>{visiblePatients.length}</strong></p>
                     </div>
                     <button onClick={()=>setTab("profile")} className="btn-s w-full py-3.5 rounded-full text-white text-sm font-bold mt-4" style={{backgroundColor:DARK_GREEN}}>My Hospital</button>
                   </Panel>
                   <Panel className="col-span-3 p-7 anim-in">
-                    <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Recent Scans</h3><button onClick={()=>setTab("predictions")} className="text-[11px] border px-2.5 py-1 rounded-full text-slate-500 border-slate-200">All →</button></div>
-                    <div className="space-y-4">
-                      {visibleDiagnoses.slice(0,4).map(d=>{const pt=visiblePatients.find(p=>p.id===d.patient_id);const c=CLS_META[d.ai_classification]||CLS_META["Unknown"];return(
-                        <div key={d.id} className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{backgroundColor:c.bg}}><div className="w-3 h-3 rounded-full" style={{backgroundColor:c.bar}}/></div>
-                          <div className="min-w-0"><p className="text-[13px] font-bold text-slate-800 truncate">{pt?.name||"Unknown"}</p><p className="text-[10px] text-slate-400">{d.ai_classification} · {d.confidence_score.toFixed(0)}%</p></div>
-                        </div>
-                      );})}
-                      {diagnoses.length===0&&<p className="text-sm text-slate-400 text-center py-4">No scans yet</p>}
+                    <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Quick Actions</h3></div>
+                    <div className="space-y-3">
+                      <button onClick={()=>setTab("users")} className="btn-s w-full py-3 rounded-2xl text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>Manage Radiologists</button>
+                      <button onClick={()=>setTab("patients")} className="btn-s w-full py-3 rounded-2xl border text-sm font-bold" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Open Patients</button>
+                      <button onClick={()=>setTab("audit")} className="btn-s w-full py-3 rounded-2xl border text-sm font-bold" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Open Audit Log</button>
                     </div>
                   </Panel>
                 </div>
@@ -734,21 +724,14 @@ export default function AdminDashboard() {
                     </div>
                   </Panel>
                   <Panel className="col-span-4 p-7 anim-in flex flex-col items-center">
-                    <h3 className="text-base font-bold text-slate-800 self-start mb-5">AI Confidence</h3>
-                    <div className="relative w-[160px] h-[160px]">
-                      <svg viewBox="0 0 160 160" className="w-full h-full -rotate-90">
-                        <circle cx="80" cy="80" r="60" fill="none" stroke="#F1F5F9" strokeWidth="20"/>
-                        <circle cx="80" cy="80" r="60" fill="none" stroke={ACCENT_GREEN} strokeWidth="20"
-                          strokeDasharray={`${2*Math.PI*60*0.85} ${2*Math.PI*60}`} strokeLinecap="round"/>
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-3xl font-black text-slate-900">85%</span>
-                        <span className="text-[10px] font-bold text-slate-400">Avg Accuracy</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-4 mt-4 text-[11px] font-bold text-slate-500">
-                      <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full" style={{backgroundColor:DARK_GREEN}}/> Verified</span>
-                      <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-slate-300"/> Pending</span>
+                    <h3 className="text-base font-bold text-slate-800 self-start mb-5">Patient Overview</h3>
+                    <div className="w-full space-y-3">
+                      {[{label:"Registered Patients",value:visiblePatients.length},{label:"Patients With Scans",value:visiblePatients.filter(p=>visibleDiagnoses.some(d=>d.patient_id===p.id)).length},{label:"Audit Events",value:auditLogs.length}].map(item=>(
+                        <div key={item.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 w-full">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{item.label}</p>
+                          <p className="text-3xl font-black text-slate-900 mt-2">{item.value}</p>
+                        </div>
+                      ))}
                     </div>
                   </Panel>
                   <div className="col-span-3 anim-in wavy-bg rounded-[28px] p-7 text-white flex flex-col items-center justify-center shadow-lg relative overflow-hidden">
@@ -790,35 +773,10 @@ export default function AdminDashboard() {
             {/* ══ PREDICTIONS ══ */}
             {tab==="predictions"&&(
               <div className="space-y-5 max-w-[1200px] anim-in">
-                <PageHead title="AI Diagnoses" sub={`${visibleDiagnoses.length} total scans`} right={
-                  <div className="flex gap-2">{["All","Normal","Tuberculosis","Pneumonia","Unknown"].map(f=><button key={f} onClick={()=>setSearch(f==="All"?"":f)} className="btn-s text-[11px] font-bold px-3 py-2 rounded-full border transition-all" style={(f==="All"&&!search)||search===f?{backgroundColor:DARK_GREEN,color:"#fff",borderColor:DARK_GREEN}:{backgroundColor:"white",color:"#94a3b8",borderColor:"#E2E8F0"}}>{f}</button>)}</div>
-                }/>
-                <div className="grid grid-cols-4 gap-4">
-                  {dist.map(({cls,count,pct,color})=>{const c=CLS_META[cls];return(
-                    <div key={cls} className="panel-card p-5" style={{borderLeft:`4px solid ${color}`}}>
-                      <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{color:c.text}}>{cls}</div>
-                      <div className="text-3xl font-bold mb-2" style={{color:c.text}}>{count}</div>
-                      <div className="h-2 rounded-full overflow-hidden" style={{backgroundColor:`${color}25`}}><div className="bar-in h-full rounded-full" style={{"--w":`${pct}%`,width:`${pct}%`,backgroundColor:color} as any}/></div>
-                      <div className="text-[10px] font-semibold mt-1" style={{color:c.text}}>{pct}%</div>
-                    </div>
-                  );})}
-                </div>
-                <Tbl heads={["Patient","National ID","Result","Confidence","TB%","Pneumo%","Normal%","Verified","Date","Action"]} empty={visibleDiagnoses.length===0?"No predictions yet":undefined}>
-                  {visibleDiagnoses.filter(d=>!search||d.ai_classification===search).map(d=>{const pt=visiblePatients.find(p=>p.id===d.patient_id);return(
-                    <TR key={d.id}>
-                      <TD><span className="font-bold text-slate-800">{pt?.name??"Unknown"}</span></TD>
-                      <TD mono>{maskNationalId(pt?.patient_ref_id)}</TD>
-                      <TD><ClsBadge cls={d.ai_classification}/></TD>
-                      <TD><div className="flex items-center gap-2"><div className="w-14 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full" style={{width:`${d.confidence_score}%`,backgroundColor:ACCENT_GREEN}}/></div><span className="text-xs font-bold">{d.confidence_score.toFixed(1)}%</span></div></TD>
-                      <TD mono>{(d.tb_probability*100).toFixed(1)}%</TD>
-                      <TD mono>{(d.pneumonia_probability*100).toFixed(1)}%</TD>
-                      <TD mono>{(d.normal_probability*100).toFixed(1)}%</TD>
-                      <TD><StatusBadge status={d.radiologist_verified?"verified":"pending"}/></TD>
-                      <TD mono>{fmt(d.created_at)}</TD>
-                      <TD><button onClick={()=>deleteDx(d.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200">Delete</button></TD>
-                    </TR>
-                  );})}
-                </Tbl>
+                <Panel className="p-10 text-center">
+                  <h3 className="text-lg font-bold text-slate-900 mb-2">Diagnosis details are hidden for hospital admin</h3>
+                  <p className="text-sm text-slate-500">Radiologists keep diagnosis-level patient records on their own dashboard. Hospital admin access stays focused on radiologists, patients, retraining, audit logs and hospital branding.</p>
+                </Panel>
               </div>
             )}
 
@@ -850,22 +808,22 @@ export default function AdminDashboard() {
                         </div>
                         {isExp&&(
                           <div className="border-t border-slate-100 px-6 py-5 bg-slate-50/50">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Diagnoses for {p.name}</p>
-                            {ptD.length===0?<p className="text-sm text-slate-400">No diagnoses yet.</p>:(
-                              <div className="space-y-2">{ptD.map(d=>{const c=CLS_META[d.ai_classification]||CLS_META["Unknown"];return(
-                                <div key={d.id} className="flex items-center gap-5 p-4 rounded-2xl bg-white border-2" style={{borderColor:c.border,borderLeftWidth:4,borderLeftColor:c.bar}}>
-                                  <div className="flex-1 grid grid-cols-5 gap-3 items-center">
-                                    <div><div className="text-[8px] font-bold uppercase text-slate-300">Radiologist</div><div className="text-xs font-bold text-slate-700 mt-0.5">{apiUsers.find(u=>u.id===d.radiologist_id)?.full_name??"—"}</div></div>
-                                    <div><div className="text-[8px] font-bold uppercase text-slate-300">Result</div><div className="mt-1"><ClsBadge cls={d.ai_classification}/></div></div>
-                                    <div><div className="text-[8px] font-bold uppercase text-slate-300">Confidence</div><div className="text-sm font-bold mt-0.5" style={{color:c.text}}>{d.confidence_score.toFixed(1)}%</div></div>
-                                    <div><div className="text-[8px] font-bold uppercase text-slate-300">TB/Pneumo/Normal</div><div className="text-xs font-mono text-slate-400 mt-0.5">{(d.tb_probability*100).toFixed(0)}%/{(d.pneumonia_probability*100).toFixed(0)}%/{(d.normal_probability*100).toFixed(0)}%</div></div>
-                                    <div><div className="text-[8px] font-bold uppercase text-slate-300">Date</div><div className="text-[10px] text-slate-400 mt-0.5">{fmt(d.created_at)}</div></div>
-                                  </div>
-                                  <button onClick={()=>deleteDx(d.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200 shrink-0">Delete</button>
-                                </div>
-                              );})}
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Patient Summary</p>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                                <div className="text-[8px] font-bold uppercase text-slate-300">Assigned Radiologist</div>
+                                <div className="text-sm font-bold text-slate-800 mt-1">{apiUsers.find(u=>u.id===p.radiologist_id)?.full_name??"—"}</div>
                               </div>
-                            )}
+                              <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                                <div className="text-[8px] font-bold uppercase text-slate-300">Scans Recorded</div>
+                                <div className="text-sm font-bold text-slate-800 mt-1">{ptD.length}</div>
+                              </div>
+                              <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                                <div className="text-[8px] font-bold uppercase text-slate-300">Clinical Notes</div>
+                                <div className="text-sm font-medium text-slate-600 mt-1">{p.clinical_notes||"No notes added"}</div>
+                              </div>
+                            </div>
+                            <p className="text-xs text-slate-400 mt-4">Diagnosis details remain visible only on the radiologist side.</p>
                           </div>
                         )}
                       </div>
