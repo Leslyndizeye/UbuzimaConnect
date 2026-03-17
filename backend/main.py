@@ -1115,6 +1115,23 @@ async def update_hospital_application_status(
 
 
 # ── REPLACE the existing approve_hospital_application endpoint with this ──
+@app.delete("/hospital/applications/{app_id}", tags=["Hospital"])
+def delete_hospital_application(
+    app_id: int,
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete a hospital application (any status)."""
+    obj = db.query(HospitalApplication).filter(HospitalApplication.id == app_id).first()
+    if not obj:
+        raise HTTPException(404, "Application not found")
+    name = obj.name
+    db.delete(obj)
+    db.commit()
+    _audit(db, admin.id, "delete_application", "hospital_application", app_id, {"name": name})
+    return {"detail": f"Application for '{name}' deleted"}
+
+
 @app.post("/hospital/applications/{app_id}/approve", response_model=HospitalOut, tags=["Hospital"])
 async def approve_hospital_application(
     app_id: int,

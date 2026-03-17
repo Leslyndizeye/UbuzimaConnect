@@ -86,7 +86,13 @@ function Panel({ children, className = '' }: { children: React.ReactNode; classN
   return <div className={`panel-card ${className}`}>{children}</div>;
 }
 
-type MainTab = 'overview' | 'applications' | 'hospitals';
+interface AuditEntry {
+  id: number; user_id: number | null; action: string;
+  entity: string | null; entity_id: number | null;
+  detail: Record<string, any> | null; timestamp: string;
+}
+
+type MainTab = 'overview' | 'applications' | 'hospitals' | 'audit';
 
 export default function HospitalAdminDashboard() {
   const navigate = useNavigate();
@@ -130,6 +136,10 @@ export default function HospitalAdminDashboard() {
   // Hospital admin info per hospital
   const [hospitalAdmins, setHospitalAdmins] = useState<Record<number, { id: number; email: string; full_name: string; last_login: string | null } | null>>({});
 
+  // Audit log
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
   // Change admin password modal
   const [changePwdHospId, setChangePwdHospId] = useState<number | null>(null);
   const [newPwd, setNewPwd]     = useState('');
@@ -154,6 +164,15 @@ export default function HospitalAdminDashboard() {
       if (statsRes.ok) setGlobalStats(await statsRes.json());
     } catch (e: any) { setError(e.message); }
   }, []);
+
+  const loadAudit = useCallback(async () => {
+    setAuditLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/audit?limit=500`, { headers: hdr() });
+      if (res.ok) setAuditLogs(await res.json());
+    } catch { /* silent */ }
+    finally { setAuditLoading(false); }
+  }, [hdr]);
 
   const sendForgot = async () => {
     if (!loginEmail) { setLoginErr('Enter your email address first'); return; }
@@ -239,7 +258,7 @@ export default function HospitalAdminDashboard() {
         body: JSON.stringify({ status, ...extra }),
       });
       await fetchData(token);
-      setSelected(null); setMeetLink(''); setMeetNotes(''); setMeetLinkErr(''); setRejectReason('');
+      setSelected(null); setMeetLink(''); setMeetLinkErr(''); setRejectReason('');
     } catch (e: any) { setError(e.message); }
     finally { setActionLoading(false); }
   };
@@ -295,6 +314,16 @@ export default function HospitalAdminDashboard() {
       setTimeout(() => { setChangePwdHospId(null); setPwdSuccess(''); }, 2200);
     } catch (e: any) { setPwdErr(e.message); }
     finally { setPwdLoading(false); }
+  };
+
+  const deleteApp = async (a: Application) => {
+    if (!confirm(`Delete application from "${a.name}"?\n\nThis will permanently remove it from your dashboard.`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/hospital/applications/${a.id}`, { method: 'DELETE', headers: hdr() });
+      if (!res.ok) { const e = await res.json(); setError(e.detail || 'Delete failed'); return; }
+      setApps(prev => prev.filter(x => x.id !== a.id));
+      if (selected?.id === a.id) setSelected(null);
+    } catch (e: any) { setError(e.message); }
   };
 
   const removeLogo = async (h: Hospital) => {
@@ -405,6 +434,7 @@ export default function HospitalAdminDashboard() {
     { id: 'overview',     label: 'Overview' },
     { id: 'applications', label: 'Applications', badge: apps.filter(a => ['pending','reviewing','meeting'].includes(a.status)).length || undefined },
     { id: 'hospitals',    label: 'Active Hospitals', badge: hospitals.length || undefined },
+    { id: 'audit',        label: 'Audit Log' },
   ];
 
   return (
@@ -425,7 +455,7 @@ export default function HospitalAdminDashboard() {
           </div>
           <nav className="flex-1 px-4 space-y-1">
             {navItems.map(({ id, label, badge }) => (
-              <button key={id} onClick={() => setTab(id)}
+              <button key={id} onClick={() => { setTab(id); if (id === 'audit') loadAudit(); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all ${tab === id ? 'bg-emerald-50 text-emerald-800 font-bold' : 'text-slate-500 hover:bg-slate-50 font-semibold'} text-[13px]`}>
                 {label}
                 {badge !== undefined && badge > 0 && (
@@ -451,7 +481,7 @@ export default function HospitalAdminDashboard() {
           <header className="h-[80px] flex items-center justify-between px-8 sticky top-0 z-20">
             <div>
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                {tab === 'overview' ? 'Overview' : tab === 'applications' ? 'Hospital Applications' : 'Active Hospitals'}
+                {tab === 'overview' ? 'Overview' : tab === 'applications' ? 'Hospital Applications' : tab === 'audit' ? 'Audit Log' : 'Active Hospitals'}
               </h1>
               <p className="text-xs text-slate-400 mt-0.5">Hospital Partnership Dashboard · byakwelianiela@gmail.com</p>
             </div>
@@ -615,6 +645,9 @@ export default function HospitalAdminDashboard() {
                                 <button onClick={() => setSelected(a)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200">View</button>
                                 {!['approved','rejected'].includes(a.status) && (
                                   <button onClick={() => approveApp(a.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{ backgroundColor: DARK_GREEN }}>Approve</button>
+                                )}
+                                {a.status === 'rejected' && (
+                                  <button onClick={() => deleteApp(a)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200 hover:bg-red-100">Delete</button>
                                 )}
                               </div>
                             </td>
@@ -862,6 +895,74 @@ export default function HospitalAdminDashboard() {
               </div>
             )}
 
+            {/* ── AUDIT TAB ── */}
+            {tab === 'audit' && (
+              <div className="space-y-4 anim-in">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-slate-400">All system actions — last 500 events. No patient data is shown here.</p>
+                  <button onClick={loadAudit} disabled={auditLoading}
+                    className="btn-s flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-slate-600 bg-white border border-slate-200 disabled:opacity-40">
+                    {auditLoading
+                      ? <><div className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"/>Loading…</>
+                      : '↻ Refresh'}
+                  </button>
+                </div>
+                {auditLogs.length === 0 && !auditLoading && (
+                  <Panel className="p-12 text-center text-sm text-slate-400">No audit events yet.</Panel>
+                )}
+                {auditLogs.length > 0 && (
+                  <Panel className="overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-slate-100">
+                            {['#', 'Action', 'Entity', 'Detail', 'Timestamp'].map(h => (
+                              <th key={h} className="text-left px-5 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {auditLogs.map(l => {
+                            const actionColor =
+                              l.action.includes('delete') || l.action.includes('reject') ? '#DC2626'
+                              : l.action.includes('approve') || l.action.includes('create') ? '#166534'
+                              : l.action.includes('password') ? '#7C3AED'
+                              : l.action.includes('meeting') ? '#5B21B6'
+                              : '#475569';
+                            return (
+                              <tr key={l.id} className="trow border-b border-slate-50 last:border-0">
+                                <td className="px-5 py-3 text-[11px] font-mono text-slate-400">#{l.id}</td>
+                                <td className="px-5 py-3">
+                                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white"
+                                    style={{ backgroundColor: actionColor }}>
+                                    {l.action}
+                                  </span>
+                                </td>
+                                <td className="px-5 py-3 text-[11px] font-mono text-slate-500">
+                                  {l.entity ? `${l.entity}${l.entity_id ? ` #${l.entity_id}` : ''}` : '—'}
+                                </td>
+                                <td className="px-5 py-3 text-[11px] text-slate-500 max-w-[280px]">
+                                  {l.detail
+                                    ? Object.entries(l.detail)
+                                        .filter(([k]) => !['patient_id','nid','clinical_notes'].includes(k))
+                                        .map(([k, v]) => `${k}: ${v}`)
+                                        .join(' · ')
+                                    : '—'}
+                                </td>
+                                <td className="px-5 py-3 text-[11px] font-mono text-slate-400 whitespace-nowrap">
+                                  {fmtFull(l.timestamp)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Panel>
+                )}
+              </div>
+            )}
+
           </main>
         </div>
 
@@ -1030,6 +1131,22 @@ export default function HospitalAdminDashboard() {
                   <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
                     <p className="text-[9px] font-bold uppercase text-amber-500 mb-1">Notes from applicant</p>
                     <p className="text-xs text-amber-700">{selected.notes}</p>
+                  </div>
+                )}
+
+                {/* Delete button for rejected */}
+                {selected.status === 'rejected' && (
+                  <div className="pt-3 border-t border-slate-100">
+                    {selected.rejection_reason && (
+                      <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-3">
+                        <p className="text-[9px] font-bold uppercase text-red-400 mb-1">Rejection reason</p>
+                        <p className="text-xs text-red-700">{selected.rejection_reason}</p>
+                      </div>
+                    )}
+                    <button onClick={() => deleteApp(selected)}
+                      className="btn-s w-full py-3 rounded-full text-red-600 font-bold text-sm bg-red-50 border border-red-200 hover:bg-red-100">
+                      🗑 Delete Application Permanently
+                    </button>
                   </div>
                 )}
 
