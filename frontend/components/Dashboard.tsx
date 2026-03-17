@@ -261,6 +261,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   const [pwMsg, setPwMsg] = useState('');
 
   const initials = user.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+  const identityLogo = branding?.logo_base64 || null;
   const inp = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 bg-white';
 
   const loadData = useCallback(async () => {
@@ -515,6 +516,42 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     } catch (e: any) { setPwMsg(`Error: ${e.message}`); }
   };
 
+  const exportPdfReport = (patient: Patient | null, diagnosis: Diagnosis | null, prediction?: Prediction | null, sourceImage?: string | null) => {
+    if (!patient || !diagnosis) return;
+    const finalResult = diagnosis.radiologist_override || prediction?.classification || diagnosis.ai_classification;
+    const reportWindow = window.open('', '_blank', 'width=960,height=900');
+    if (!reportWindow) return;
+    const heatmap = diagnosis.heatmap_b64 ? `<img src="${diagnosis.heatmap_b64}" alt="Heatmap" style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;" />` : '<p style="color:#6b7280;">No heatmap available.</p>';
+    const original = sourceImage ? `<img src="${sourceImage}" alt="X-ray" style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;" />` : `<p style="color:#6b7280;">Original X-ray preview was not stored for this record.</p>`;
+    reportWindow.document.write(`<!doctype html><html><head><title>Ubuzima Report</title><style>
+      body{font-family:Arial,sans-serif;padding:32px;color:#111827}
+      h1,h2,h3{margin:0 0 12px}
+      .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:20px 0}
+      .card{border:1px solid #e5e7eb;border-radius:14px;padding:16px;background:#fff}
+      .label{font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:700;letter-spacing:.08em}
+      .value{font-size:15px;font-weight:700;margin-top:6px}
+      .images{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:18px}
+    </style></head><body>
+      <h1>Ubuzima Connect Report</h1>
+      <p style="color:#6b7280;margin-bottom:20px;">Generated ${new Date().toLocaleString('en-RW')}</p>
+      <div class="meta">
+        <div class="card"><div class="label">Patient</div><div class="value">${patient.name}</div></div>
+        <div class="card"><div class="label">National ID</div><div class="value">${maskNationalId(patient.patient_ref_id)}</div></div>
+        <div class="card"><div class="label">Radiologist</div><div class="value">${user.full_name}</div></div>
+        <div class="card"><div class="label">Hospital</div><div class="value">${user.hospital || branding?.name || '—'}</div></div>
+        <div class="card"><div class="label">Final Result</div><div class="value">${displayClass(finalResult || 'Unknown')}</div></div>
+        <div class="card"><div class="label">Confidence</div><div class="value">${diagnosis.confidence_score?.toFixed(1) || '0.0'}%</div></div>
+      </div>
+      <div class="images">
+        <div class="card"><h3>Diagnosed Image</h3>${original}</div>
+        <div class="card"><h3>AI Heatmap</h3>${heatmap}</div>
+      </div>
+    </body></html>`);
+    reportWindow.document.close();
+    reportWindow.focus();
+    setTimeout(() => reportWindow.print(), 250);
+  };
+
   const filtered = patients.filter(p =>
     !search || p.name.toLowerCase().includes(search.toLowerCase()) || (p.patient_ref_id || '').includes(search)
   );
@@ -618,38 +655,19 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setTab('profile')} className="flex items-center gap-2 hover:opacity-80">
-              <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-black">{initials}</div>
+              <div className="w-9 h-9 rounded-xl overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
+                {identityLogo
+                  ? <img src={identityLogo} alt="Hospital logo" className="w-full h-full object-contain p-1" />
+                  : <div className="w-full h-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-black">{initials}</div>}
+              </div>
               <div className="hidden sm:block text-left">
                 <div className="text-xs font-bold leading-tight">{user.full_name}</div>
-                <div className="text-[10px] text-gray-400 uppercase tracking-widest">{user.hospital || 'Radiologist'}</div>
+                <div className="text-[10px] text-gray-400 uppercase tracking-widest">Radiologist</div>
               </div>
-            </button>
-            <button onClick={onSignOut} className="ml-1 text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-black">
-              Sign Out
             </button>
           </div>
         </div>
       </header>
-
-      {/* Hospital branding banner — only shows if radiologist belongs to an approved hospital */}
-      {branding && (
-        <div className="flex items-center gap-3 px-6 py-2.5 bg-emerald-50 border-b border-emerald-100">
-          {branding.logo_base64 ? (
-            <img
-              src={branding.logo_base64}
-              alt={branding.name}
-              className="h-7 w-auto object-contain rounded"
-            />
-          ) : (
-            <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center text-sm">🏥</div>
-          )}
-          <span className="font-semibold text-emerald-900 text-sm">{branding.name}</span>
-          <span className="text-emerald-600 text-xs">· {branding.district}, {branding.province}</span>
-          <span className="ml-auto text-xs text-emerald-500 bg-emerald-100 px-2.5 py-1 rounded-full">
-            Powered by Ubuzima Connect
-          </span>
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-100 bg-white sticky top-14 z-20">
@@ -900,6 +918,12 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                           ✦ Verify Now
                         </button>
                       )}
+                      {savedDiag && savedPat && (
+                        <button onClick={() => exportPdfReport(savedPat, savedDiag, pred, previews[activeImg] || null)}
+                          className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-bold uppercase tracking-widest hover:bg-gray-50 text-gray-700">
+                          Export PDF
+                        </button>
+                      )}
                       <button onClick={clearScan} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-bold uppercase tracking-widest hover:border-emerald-400 text-gray-600">
                         New Patient Scan
                       </button>
@@ -987,6 +1011,10 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                                   {d.heatmap_b64 && (
                                     <img src={d.heatmap_b64} alt="Diagnosis heatmap" className="w-14 h-14 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
                                   )}
+                                  <button onClick={() => exportPdfReport(p, d, null, null)}
+                                    className="flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50">
+                                    PDF
+                                  </button>
                                   <button onClick={() => { setVerifyDiag(d); setVerOverride(d.radiologist_override || ''); setVerNotes(d.radiologist_notes || ''); }}
                                     className={`flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-lg hover:opacity-80 ${d.radiologist_verified ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}>
                                     {d.radiologist_verified ? 'Edit' : 'Verify'}
@@ -1021,17 +1049,26 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
             <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-700 text-xl font-black">{initials}</div>
+                  <div className="w-14 h-14 rounded-2xl overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
+                    {identityLogo
+                      ? <img src={identityLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5" />
+                      : <div className="w-full h-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-xl font-black">{initials}</div>}
+                  </div>
                   <div>
                     <div className="font-bold text-gray-900">{user.full_name}</div>
                     <div className="text-sm text-gray-400">{user.email}</div>
                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 mt-1 inline-block">✓ Approved</span>
                   </div>
                 </div>
-                <button onClick={() => { setEditing(!editing); setProfMsg(''); }}
-                  className="text-[9px] font-bold uppercase px-3 py-1.5 rounded-lg border border-gray-200 hover:border-emerald-400 transition-all">
-                  {editing ? 'Cancel' : 'Edit'}
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => { setEditing(!editing); setProfMsg(''); }}
+                    className="text-[9px] font-bold uppercase px-3 py-1.5 rounded-lg border border-gray-200 hover:border-emerald-400 transition-all">
+                    {editing ? 'Cancel' : 'Edit'}
+                  </button>
+                  <button onClick={onSignOut} className="text-[9px] font-bold uppercase px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-black">
+                    Sign Out
+                  </button>
+                </div>
               </div>
 
               {editing ? (
