@@ -9,7 +9,3 @@ uploads/
 data/
 logs/
 .DS_Store
-frontend/
-hospital-portal/
-*.png
-*.jpg
