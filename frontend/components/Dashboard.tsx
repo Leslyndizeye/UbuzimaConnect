@@ -31,7 +31,13 @@ interface Prediction {
   pneumonia_probability: number; normal_probability: number; unknown_probability?: number;
   explanation?: string; gradcam_b64?: string; xray_storage_path?: string;
 }
-type Tab = 'diagnose' | 'history' | 'profile';
+interface ChatContact {
+  id: number; full_name: string; email: string; specialization?: string; hospital_id?: number;
+}
+interface ChatMessage {
+  id: number; hospital_id: number; sender_id: number; recipient_id: number; message: string; created_at: string;
+}
+type Tab = 'diagnose' | 'history' | 'chat' | 'profile';
 type AppState = 'loading' | 'unauthenticated' | 'pending' | 'rejected' | 'approved' | 'admin';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -242,6 +248,12 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   const [verNotes, setVerNotes] = useState('');
   const [verSaving, setVerSaving] = useState(false);
   const [diagImageUrls, setDiagImageUrls] = useState<Record<number, string>>({});
+  const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
+  const [activeChatId, setActiveChatId] = useState<number | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState('');
 
   // Profile state
   const [editing, setEditing] = useState(false);
@@ -267,9 +279,13 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
 
   const loadData = useCallback(async () => {
     setBusy(true);
-    const [pr, dr] = await Promise.allSettled([apiFetch('/patients'), apiFetch('/diagnoses')]);
+    const [pr, dr, cr] = await Promise.allSettled([apiFetch('/patients'), apiFetch('/diagnoses'), apiFetch('/chat/contacts')]);
     if (pr.status === 'fulfilled') setPatients(pr.value);
     if (dr.status === 'fulfilled') setDiagnoses(dr.value);
+    if (cr.status === 'fulfilled') {
+      setChatContacts(cr.value);
+      setActiveChatId(prev => prev ?? cr.value[0]?.id ?? null);
+    }
     setBusy(false);
   }, []);
 
@@ -384,7 +400,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
         body: JSON.stringify({
           patient_id: patient.id, xray_filename: currentFile.name,
           xray_storage_path: result.xray_storage_path,
-          ai_classification: result.classification, confidence_score: result.confidence_score,
+          ai_classification: toDbClass(result.classification), confidence_score: result.confidence_score,
           tb_probability: result.tb_probability, pneumonia_probability: result.pneumonia_probability,
           normal_probability: result.normal_probability, unknown_probability: result.unknown_probability ?? 0,
           ai_explanation: result.explanation, heatmap_b64: result.gradcam_b64,
@@ -392,7 +408,6 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
       });
       setSavedDiag(saved);
       setDiagnoses(prev => [saved, ...prev]);
-      setDiagImageUrls(prev => ({ ...prev, [saved.id]: previews[activeImg] }));
       // Mark this image as scanned so user can't accidentally re-submit
       const imgKey = `${currentFile.name}-${currentFile.size}`;
       setScannedKeys(prev => new Set([...prev, imgKey]));
@@ -540,6 +555,15 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
       .forEach(d => { fetchDiagnosisImageUrl(d).catch(() => {}); });
   }, [tab, expanded, diagnoses, diagImageUrls, fetchDiagnosisImageUrl]);
 
+  useEffect(() => {
+    if (!activeChatId) return;
+    setChatBusy(true); setChatError('');
+    apiFetch(`/chat/messages/${activeChatId}`)
+      .then(setChatMessages)
+      .catch((e: any) => setChatError(e.message))
+      .finally(() => setChatBusy(false));
+  }, [activeChatId]);
+
   const exportPdfReport = async (patient: Patient | null, diagnosis: Diagnosis | null, prediction?: Prediction | null, sourceImage?: string | null) => {
     if (!patient || !diagnosis) return;
     const finalResult = diagnosis.radiologist_override || prediction?.classification || diagnosis.ai_classification;
@@ -575,6 +599,23 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     reportWindow.document.close();
     reportWindow.focus();
     setTimeout(() => reportWindow.print(), 250);
+  };
+
+  const sendChatMessage = async () => {
+    if (!activeChatId || !chatDraft.trim()) return;
+    setChatBusy(true); setChatError('');
+    try {
+      const sent = await apiFetch(`/chat/messages/${activeChatId}`, {
+        method: 'POST',
+        body: JSON.stringify({ message: chatDraft.trim() }),
+      });
+      setChatMessages(prev => [...prev, sent]);
+      setChatDraft('');
+    } catch (e: any) {
+      setChatError(e.message);
+    } finally {
+      setChatBusy(false);
+    }
   };
 
   const filtered = patients.filter(p =>
@@ -700,6 +741,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
           {([
             { id: 'diagnose', label: 'Diagnose', icon: '' },
             { id: 'history', label: 'Patient History', icon: '◉', count: patients.length },
+            { id: 'chat', label: 'Chat', icon: '✉', count: chatContacts.length },
             { id: 'profile', label: 'My Profile', icon: '' },
           ] as const).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -879,9 +921,17 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                     </div>
 
                     {pred.gradcam_b64 && (
-                      <div>
+                      <div className="space-y-3">
+                        {previews[activeImg] && (
+                          <div>
+                            <div className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-2">Original X-Ray</div>
+                            <img src={previews[activeImg]} alt="Original X-ray" className="w-full rounded-xl border border-gray-200" />
+                          </div>
+                        )}
+                        <div>
                         <div className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-2">Grad-CAM Heatmap</div>
                         <img src={pred.gradcam_b64} alt="Heatmap" className="w-full rounded-xl" />
+                        </div>
                       </div>
                     )}
 
@@ -1063,6 +1113,65 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                   {search ? 'No patients match your search.' : 'No patients yet — run a diagnosis to get started.'}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'chat' && (
+          <div className="space-y-5">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Hospital Chat</h1>
+              <p className="text-sm text-gray-400 mt-1">Chat with approved radiologists in your hospital only.</p>
+            </div>
+            <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-5">
+              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 text-[10px] font-bold uppercase tracking-widest text-gray-400">Radiologists</div>
+                <div className="max-h-[520px] overflow-y-auto">
+                  {chatContacts.map(contact => (
+                    <button key={contact.id} onClick={() => setActiveChatId(contact.id)}
+                      className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-colors ${activeChatId === contact.id ? 'bg-emerald-50' : 'hover:bg-gray-50'}`}>
+                      <div className="text-sm font-bold text-gray-900">{contact.full_name}</div>
+                      <div className="text-[11px] text-gray-400">{contact.specialization || contact.email}</div>
+                    </button>
+                  ))}
+                  {chatContacts.length === 0 && <div className="p-6 text-sm text-gray-400 text-center">No approved hospital radiologists available yet.</div>}
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-col min-h-[520px]">
+                {!activeChatId ? (
+                  <div className="flex-1 flex items-center justify-center text-sm text-gray-400">Select a radiologist to start chatting.</div>
+                ) : (
+                  <>
+                    <div className="pb-3 border-b border-gray-100">
+                      <div className="text-sm font-bold text-gray-900">{chatContacts.find(c => c.id === activeChatId)?.full_name || 'Conversation'}</div>
+                      <div className="text-[11px] text-gray-400">{chatContacts.find(c => c.id === activeChatId)?.email || ''}</div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto py-4 space-y-3">
+                      {chatMessages.map(msg => (
+                        <div key={msg.id} className={`flex ${msg.sender_id === user.id ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${msg.sender_id === user.id ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                            <div>{msg.message}</div>
+                            <div className={`text-[10px] mt-1 ${msg.sender_id === user.id ? 'text-emerald-100' : 'text-gray-400'}`}>{fmt(msg.created_at)}</div>
+                          </div>
+                        </div>
+                      ))}
+                      {!chatBusy && chatMessages.length === 0 && <div className="text-sm text-gray-400 text-center pt-8">No messages yet.</div>}
+                      {chatBusy && <div className="text-sm text-gray-400 text-center pt-8">Loading chat…</div>}
+                    </div>
+                    <div className="pt-3 border-t border-gray-100 space-y-3">
+                      {chatError && <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">{chatError}</div>}
+                      <div className="flex gap-2">
+                        <textarea value={chatDraft} onChange={e => setChatDraft(e.target.value)} rows={2} placeholder="Write a message…"
+                          className={`${inp} resize-none flex-1`} />
+                        <button onClick={sendChatMessage} disabled={chatBusy || !chatDraft.trim()}
+                          className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm disabled:opacity-40">
+                          Send
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}

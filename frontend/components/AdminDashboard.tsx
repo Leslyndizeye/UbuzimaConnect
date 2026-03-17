@@ -23,7 +23,7 @@ interface Stats { total_radiologists:number; pending_requests:number; total_pati
 interface ModelInfo { status:string; path:string; size_mb:number; last_modified:string; classes:string[]; architecture:string; input_shape:number[]; }
 interface AuditLog { id:number; user_id:number; action:string; entity?:string; entity_id?:number; timestamp:string; }
 interface RetrainJob { id:number; status:string; created_at:string; error_message?:string; final_val_acc?:number; }
-interface PredictionResult { classification:string; confidence_score:number; tb_probability:number; pneumonia_probability:number; normal_probability:number; unknown_probability?:number; explanation?:string; gradcam_b64?:string; }
+interface PredictionResult { classification:string; confidence_score:number; tb_probability:number; pneumonia_probability:number; normal_probability:number; unknown_probability?:number; explanation?:string; gradcam_b64?:string; xray_storage_path?:string; }
 interface EditPatient { id:number; name:string; patient_ref_id:string; hospital:string; clinical_notes:string; }
 type Tab = "overview"|"users"|"passwords"|"predictions"|"patients"|"diagnose"|"retrain"|"model"|"audit"|"profile";
 
@@ -419,7 +419,7 @@ export default function AdminDashboard() {
       const res=await fetch(`${API_BASE}/predict`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
       if(!res.ok){const e=await res.json();throw new Error(e.detail||"Prediction failed");}
       const result:PredictionResult=await res.json();setPred(result);
-      const saved:Diagnosis=await adminFetch("/diagnoses",{method:"POST",body:JSON.stringify({patient_id:patient.id,xray_filename:xFile.name,ai_classification:result.classification,confidence_score:result.confidence_score,tb_probability:result.tb_probability,pneumonia_probability:result.pneumonia_probability,normal_probability:result.normal_probability,unknown_probability:result.unknown_probability??0,ai_explanation:result.explanation,heatmap_b64:result.gradcam_b64})});
+      const saved:Diagnosis=await adminFetch("/diagnoses",{method:"POST",body:JSON.stringify({patient_id:patient.id,xray_filename:xFile.name,xray_storage_path:result.xray_storage_path,ai_classification:result.classification==="Tuberculosis"?"TB":result.classification,confidence_score:result.confidence_score,tb_probability:result.tb_probability,pneumonia_probability:result.pneumonia_probability,normal_probability:result.normal_probability,unknown_probability:result.unknown_probability??0,ai_explanation:result.explanation,heatmap_b64:result.gradcam_b64})});
       setSavedDx(saved);setDiagnoses(prev=>[saved,...prev]);loadAll().catch(()=>{});
     }catch(e:any){setPredErr(e.message);}finally{setPredicting(false);}
   };
