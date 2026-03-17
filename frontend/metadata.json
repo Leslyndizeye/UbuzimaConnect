@@ -1,0 +1,8 @@
+{
+  "name": "Ubuzima Connect",
+  "description": "AI-Powered Diagnostic Protocol for Rwanda's Healthcare System, specializing in TB and Pneumonia detection from Chest X-rays.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

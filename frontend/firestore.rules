@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function myUid() { return request.auth.uid; }
+
+    // Admin by email whitelist (Plan B)
+    function isAdminEmail() {
+      return signedIn() && (
+        request.auth.token.email == "leslyndiz6@gmail.com" ||
+        request.auth.token.email == "l.ndizeye@alustudent.com"
+      );
+    }
+
+    match /users/{uid} {
+      allow read: if isAdminEmail() || (signedIn() && uid == myUid());
+
+      // user creates their own profile doc
+      allow create: if signedIn() && uid == myUid();
+
+      // user can update their own doc BUT cannot approve themselves / change role/status
+      allow update: if signedIn() && uid == myUid()
+        && !("role" in request.resource.data)
+        && !("status" in request.resource.data)
+        && !("approvedByEmail" in request.resource.data)
+        && !("approvedAt" in request.resource.data);
+
+      // admin can update any user doc (approve/suspend/set role)
+      allow update, delete: if isAdminEmail();
+    }
+
+    match /diagnoses/{id} {
+      // admin reads all
+      allow read: if isAdminEmail();
+
+      // radiologist reads their own
+      allow read: if signedIn() && resource.data.radiologistId == myUid();
+
+      // only APPROVED radiologists can create
+      allow create: if signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "radiologist"
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == "approved";
+
+      // owner or admin can update/delete
+      allow update, delete: if isAdminEmail() || (signedIn() && resource.data.radiologistId == myUid());
+    }
+
+    match /sandboxDiagnoses/{id} {
+      allow create: if signedIn();
+      allow read, update, delete: if isAdminEmail() || (signedIn() && resource.data.userId == myUid());
+    }
+
+    match /auditLogs/{id} {
+      allow read, create: if isAdminEmail();
+      allow update, delete: if false;
+    }
+  }
+}
