@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Boolean,
-    DateTime, Text, ForeignKey, Enum as SAEnum, JSON
+    DateTime, Text, ForeignKey, Enum as SAEnum, JSON, text
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.sql import func
@@ -171,6 +171,7 @@ class User(Base):
     approved_at      = Column(DateTime(timezone=True))
     approved_by_id   = Column(Integer, ForeignKey("users.id"))
     updated_at       = Column(DateTime(timezone=True), onupdate=func.now())
+    last_login       = Column(DateTime(timezone=True))
 
     hospital_org = relationship("Hospital", back_populates="users", foreign_keys=[hospital_id])
     patients     = relationship("Patient",   back_populates="radiologist")
@@ -282,3 +283,18 @@ def get_db():
 def init_db():
     Base.metadata.create_all(bind=engine)
     print(" Database tables initialized")
+    _run_migrations()
+
+
+def _run_migrations():
+    """Apply any ALTER TABLE migrations for columns added after initial deploy."""
+    migrations = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP WITH TIME ZONE;",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception as e:
+                print(f"[migration] {sql[:60]}… → {e}")

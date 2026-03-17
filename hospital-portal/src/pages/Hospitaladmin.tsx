@@ -254,9 +254,12 @@ export default function HospitalAdminDashboard() {
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
       const hospital = await res.json();
-      alert(`✅ ${hospital.name} is now active!\n\nSend admin credentials to: ${hospital.email}`);
       await fetchData(token);
       setSelected(null);
+      // Immediately open the Create Admin modal for the newly approved hospital
+      setAdminCreated(null); setAdminErr(''); setAdminEmail(''); setAdminName(''); setAdminPass('');
+      setCreateAdminHosp(hospital);
+      setTab('hospitals');
     } catch (e: any) { setError(e.message); }
     finally { setActionLoading(false); }
   };
@@ -919,17 +922,33 @@ export default function HospitalAdminDashboard() {
                     <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center space-y-2">
                       <div className="text-2xl">✅</div>
                       <p className="text-sm font-bold text-emerald-800">Admin account created!</p>
-                      <p className="text-xs text-emerald-600">Share these credentials with the hospital contact:</p>
-                      <div className="bg-white rounded-xl p-3 border border-emerald-100 text-left mt-2 space-y-1">
-                        <p className="text-[11px] text-slate-500">Email: <strong className="text-slate-800 font-mono">{adminCreated.email}</strong></p>
-                        <p className="text-[11px] text-slate-500">Login URL: <strong className="text-slate-800">hospital-portal/dashboard</strong></p>
+                      <p className="text-xs text-emerald-600">Send these credentials to the hospital contact:</p>
+                      <div className="bg-white rounded-xl p-3 border border-emerald-100 text-left mt-2 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] text-slate-500">Email:</p>
+                          <strong className="text-slate-800 font-mono text-[11px]">{adminCreated.email}</strong>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] text-slate-500">Dashboard URL:</p>
+                          <a href={`${window.location.origin}/dashboard`} target="_blank" rel="noreferrer"
+                            className="text-emerald-700 font-mono text-[11px] underline underline-offset-2 font-bold">
+                            {window.location.origin}/dashboard
+                          </a>
+                        </div>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(`Email: ${adminCreated.email}\nDashboard: ${window.location.origin}/dashboard`)}
+                          className="w-full mt-1 text-[10px] font-bold py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600">
+                          Copy credentials
+                        </button>
                       </div>
                     </div>
                     <button onClick={() => setCreateAdminHosp(null)} className="w-full py-3 rounded-full text-white font-bold text-sm" style={{ backgroundColor: DARK_GREEN }}>Done</button>
                   </div>
                 ) : (
                   <>
-                    <p className="text-xs text-slate-500">Create login credentials for the middle admin of <strong>{createAdminHosp.name}</strong>. They will use these to access the hospital dashboard.</p>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs text-emerald-700">
+                      <span className="font-bold">✅ Hospital approved!</span> Now set up their admin account. Send credentials to <strong>{createAdminHosp.email}</strong>.
+                    </div>
                     {adminErr && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 font-medium">{adminErr}</div>}
                     <div className="space-y-3">
                       <div>

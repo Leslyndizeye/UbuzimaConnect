@@ -1171,7 +1171,20 @@ def get_hospital_stats(
     users = db.query(User).filter(User.hospital_id == hospital_id, User.is_admin == False).all()
     rad_ids = [u.id for u in users]
 
-    total_patients = db.query(Patient).filter(Patient.radiologist_id.in_(rad_ids)).count() if rad_ids else 0
+    # Only count patients who have at least one diagnosis
+    if rad_ids:
+        diagnosed_patient_ids = (
+            db.query(Diagnosis.patient_id)
+            .filter(Diagnosis.radiologist_id.in_(rad_ids))
+            .distinct()
+            .subquery()
+        )
+        total_patients = db.query(Patient).filter(
+            Patient.radiologist_id.in_(rad_ids),
+            Patient.id.in_(diagnosed_patient_ids),
+        ).count()
+    else:
+        total_patients = 0
     diagnoses = db.query(Diagnosis).filter(Diagnosis.radiologist_id.in_(rad_ids)).all() if rad_ids else []
     total_dx = len(diagnoses)
     verified_dx = sum(1 for d in diagnoses if d.radiologist_verified)
@@ -1300,13 +1313,18 @@ async def create_hospital_admin(
         "hospital": hospital.name, "email": email,
     })
 
+    # Send credentials email (no-op if SMTP not configured)
+    portal_url = os.getenv("HOSPITAL_PORTAL_URL", os.getenv("FRONTEND_URL", ""))
+    dashboard_url = portal_url.rstrip("/") + "/dashboard" if portal_url else ""
+    _send_admin_credentials_email(email, full_name, password, hospital.name, dashboard_url)
+
     return {
         "user_id": new_user.id,
         "email": email,
         "full_name": full_name,
         "hospital_id": hospital_id,
         "hospital_name": hospital.name,
-        "message": "Hospital admin created. Share login credentials with the contact person.",
+        "message": "Hospital admin created. Credentials email sent if SMTP is configured.",
     }
 
 
@@ -1320,10 +1338,20 @@ def delete_hospital(
     if not hospital:
         raise HTTPException(404, "Hospital not found")
 
-    # Unlink all users
-    db.query(User).filter(User.hospital_id == hospital_id).update(
-        {"hospital_id": None, "is_admin": False}, synchronize_session=False
-    )
+    # Gather all linked users
+    linked_users = db.query(User).filter(User.hospital_id == hospital_id).all()
+    linked_ids   = [u.id for u in linked_users]
+
+    if linked_ids:
+        # Delete diagnoses for all linked users
+        db.query(Diagnosis).filter(Diagnosis.radiologist_id.in_(linked_ids)).delete(synchronize_session=False)
+        # Delete patients for all linked users
+        db.query(Patient).filter(Patient.radiologist_id.in_(linked_ids)).delete(synchronize_session=False)
+        # Delete audit logs for linked users
+        db.query(AuditLog).filter(AuditLog.user_id.in_(linked_ids)).delete(synchronize_session=False)
+        # Delete the users themselves
+        db.query(User).filter(User.id.in_(linked_ids)).delete(synchronize_session=False)
+
     # Detach from application
     db.query(HospitalApplication).filter(
         HospitalApplication.hospital_id == hospital_id
@@ -1332,9 +1360,207 @@ def delete_hospital(
     name = hospital.name
     db.delete(hospital)
     db.commit()
-    _audit(db, admin.id, "delete_hospital", "hospital", hospital_id, {"name": name})
-    return {"detail": f"Hospital '{name}' and all linked data deleted."}
+    _audit(db, admin.id, "delete_hospital", "hospital", hospital_id, {
+        "name": name, "users_deleted": len(linked_ids)
+    })
+    return {"detail": f"Hospital '{name}', {len(linked_ids)} user(s), and all their data permanently deleted."}
 
 
+# ── GET hospital middle admin info ──
+@app.get("/hospitals/{hospital_id}/admin", tags=["Hospital"])
+def get_hospital_admin_info(
+    hospital_id: int,
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Return the middle admin user for a hospital (super admin only)."""
+    ha = db.query(User).filter(
+        User.hospital_id == hospital_id,
+        User.is_admin == True,
+    ).first()
+    if not ha:
+        return {"admin": None}
+    return {
+        "admin": {
+            "id":         ha.id,
+            "email":      ha.email,
+            "full_name":  ha.full_name,
+            "last_login": ha.last_login.isoformat() if ha.last_login else None,
+            "created_at": ha.created_at.isoformat() if ha.created_at else None,
+        }
+    }
 
+
+# ── Super admin: change hospital admin password ──
+@app.patch("/hospitals/{hospital_id}/admin-password", tags=["Hospital"])
+async def change_hospital_admin_password(
+    hospital_id: int,
+    body: dict = Body(...),
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Super admin resets the middle admin's password for a hospital."""
+    new_password = (body.get("password") or "").strip()
+    if len(new_password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+
+    ha = db.query(User).filter(
+        User.hospital_id == hospital_id,
+        User.is_admin == True,
+    ).first()
+    if not ha:
+        raise HTTPException(404, "No admin found for this hospital")
+
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if service_key and ha.firebase_uid and not ha.firebase_uid.startswith("hosp_"):
+        async with httpx.AsyncClient() as client:
+            res = await client.put(
+                f"{os.getenv('SUPABASE_URL', 'https://omoinlmgsdtlzfasydgw.supabase.co')}/auth/v1/admin/users/{ha.firebase_uid}",
+                headers={
+                    "Authorization": f"Bearer {service_key}",
+                    "apikey": service_key,
+                    "Content-Type": "application/json",
+                },
+                json={"password": new_password},
+                timeout=10,
+            )
+        if res.status_code not in (200, 201):
+            raise HTTPException(400, f"Supabase error: {res.json().get('message', res.text)}")
+
+    _audit(db, admin.id, "change_admin_password", "user", ha.id, {
+        "hospital_id": hospital_id, "target_email": ha.email
+    })
+    return {"detail": "Password updated successfully", "admin_email": ha.email}
+
+
+# ── Any authenticated user: change own password ──
+@app.patch("/me/password", tags=["Auth"])
+async def change_my_password(
+    body: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """User changes their own password. Action is audited so super admin can see it."""
+    new_password = (body.get("password") or "").strip()
+    if len(new_password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if service_key and current_user.firebase_uid and not current_user.firebase_uid.startswith("hosp_"):
+        async with httpx.AsyncClient() as client:
+            res = await client.put(
+                f"{os.getenv('SUPABASE_URL', 'https://omoinlmgsdtlzfasydgw.supabase.co')}/auth/v1/admin/users/{current_user.firebase_uid}",
+                headers={
+                    "Authorization": f"Bearer {service_key}",
+                    "apikey": service_key,
+                    "Content-Type": "application/json",
+                },
+                json={"password": new_password},
+                timeout=10,
+            )
+        if res.status_code not in (200, 201):
+            raise HTTPException(400, f"Password update failed: {res.json().get('message', res.text)}")
+
+    _audit(db, current_user.id, "change_own_password", "user", current_user.id, {
+        "email": current_user.email
+    })
+    return {"detail": "Password updated successfully"}
+
+
+# ── Middle admin (or super admin): upload / update hospital logo ──
+@app.patch("/hospitals/{hospital_id}/logo", tags=["Hospital"])
+def update_hospital_logo(
+    hospital_id: int,
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Allow a hospital's own middle admin (or super admin) to set the logo."""
+    is_super = getattr(current_user, "is_admin", False) and current_user.hospital_id is None
+    is_own_admin = (
+        getattr(current_user, "is_admin", False)
+        and current_user.hospital_id == hospital_id
+    )
+    if not is_super and not is_own_admin:
+        raise HTTPException(403, "Not authorized to update this hospital's logo")
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    if not hospital:
+        raise HTTPException(404, "Hospital not found")
+    logo = payload.get("logo_base64")
+    if not logo:
+        raise HTTPException(400, "logo_base64 is required")
+    hospital.logo_base64 = logo
+    db.commit()
+    _audit(db, current_user.id, "update_hospital_logo", "hospital", hospital_id, {"name": hospital.name})
+    return {"detail": "Logo updated"}
+
+
+# ── Super admin: remove hospital logo ──
+@app.delete("/hospitals/{hospital_id}/logo", tags=["Hospital"])
+def remove_hospital_logo(
+    hospital_id: int,
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    if not hospital:
+        raise HTTPException(404, "Hospital not found")
+    hospital.logo_base64 = None
+    db.commit()
+    _audit(db, admin.id, "remove_hospital_logo", "hospital", hospital_id, {"name": hospital.name})
+    return {"detail": "Logo removed"}
+
+
+# ── Email helper ──
+def _send_admin_credentials_email(email: str, name: str, password: str, hospital_name: str, dashboard_url: str = ""):
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+
+    if not smtp_user or not smtp_pass:
+        print(f"[email] SMTP not configured — skipping credential email to {email}")
+        return
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"Your Ubuzima Connect Admin Access — {hospital_name}"
+        msg["From"]    = f"Ubuzima Connect <{smtp_user}>"
+        msg["To"]      = email
+
+        html = f"""
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
+          <div style="background:#1C5438;padding:28px;border-radius:12px 12px 0 0;text-align:center;">
+            <h1 style="color:white;margin:0;font-size:20px;">Welcome to Ubuzima Connect</h1>
+          </div>
+          <div style="background:#f9fafb;padding:32px;border-radius:0 0 12px 12px;border:1px solid #e5e7eb;">
+            <p style="color:#374151;">Dear <strong>{name}</strong>,</p>
+            <p style="color:#6b7280;">You have been set up as Hospital Admin for
+               <strong>{hospital_name}</strong> on Ubuzima Connect.</p>
+            <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin:24px 0;">
+              <p style="margin:0 0 8px;color:#374151;"><strong>Your login credentials:</strong></p>
+              <p style="margin:4px 0;color:#6b7280;">Email:
+                <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;">{email}</code></p>
+              <p style="margin:4px 0;color:#6b7280;">Password:
+                <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;">{password}</code></p>
+            </div>
+            <p style="color:#6b7280;">Sign in at your hospital admin dashboard:</p>
+            <a href="{dashboard_url}" style="display:inline-block;background:#1C5438;color:white;padding:10px 24px;border-radius:999px;font-weight:700;font-size:13px;text-decoration:none;margin:8px 0;">{dashboard_url}</a>
+            <p style="color:#6b7280;margin-top:8px;">Change your password after first login.</p>
+            <p style="color:#9ca3af;font-size:11px;margin-top:28px;">Ubuzima Connect · Do not share your credentials</p>
+          </div>
+        </div>"""
+
+        msg.attach(MIMEText(html, "html"))
+        with smtplib.SMTP(smtp_host, smtp_port) as s:
+            s.starttls()
+            s.login(smtp_user, smtp_pass)
+            s.sendmail(smtp_user, email, msg.as_string())
+        print(f"[email] Credentials sent to {email}")
+    except Exception as e:
+        print(f"[email] Failed to send to {email}: {e}")
 

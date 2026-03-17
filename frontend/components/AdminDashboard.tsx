@@ -25,7 +25,7 @@ interface AuditLog { id:number; user_id:number; action:string; entity?:string; e
 interface RetrainJob { id:number; status:string; created_at:string; error_message?:string; final_val_acc?:number; }
 interface PredictionResult { classification:string; confidence_score:number; tb_probability:number; pneumonia_probability:number; normal_probability:number; unknown_probability?:number; explanation?:string; gradcam_b64?:string; }
 interface EditPatient { id:number; name:string; patient_ref_id:string; hospital:string; clinical_notes:string; }
-type Tab = "overview"|"users"|"passwords"|"predictions"|"patients"|"diagnose"|"retrain"|"model"|"audit";
+type Tab = "overview"|"users"|"passwords"|"predictions"|"patients"|"diagnose"|"retrain"|"model"|"audit"|"profile";
 
 const fmt = (iso:string) => new Date(iso).toLocaleString("en-RW",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Kigali"});
 const uptimeFmt = (s:number) => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60); return `${h.toString().padStart(2,'0')}h ${m.toString().padStart(2,'0')}m ${sec.toString().padStart(2,'0')}s`; };
@@ -127,6 +127,7 @@ const ICONS: Record<Tab,React.ReactNode> = {
   model:       <><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></>,
   passwords:   <><rect x="3" y="11" width="18" height="11" rx="3"/><path d="M7 11V7a5 5 0 0110 0v4"/></>,
   audit:       <><path d="M14 2H6a3 3 0 00-3 3v14a3 3 0 003 3h12a3 3 0 003-3V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></>,
+  profile:     <><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></>,
 };
 
 // ─── Shared UI ────────────────────────────────────
@@ -231,7 +232,23 @@ export default function AdminDashboard() {
   const [editPatient,setEditPatient]=useState<EditPatient|null>(null);
   const [editError,setEditError]=useState(""); const [editSaving,setEditSaving]=useState(false);
   const [expandedPt,setExpandedPt]=useState<number|null>(null);
-  // Hospital assignment for middle admin
+  // ── Current user identity (for middle admin detection) ──
+  const [me,setMe]=useState<ApiUser|null>(null);
+  // isMiddleAdmin = is_admin AND has a hospital_id assigned (platform super admin has no hospital_id)
+  const isMiddleAdmin = !!(me?.is_admin && me?.hospital_id);
+
+  // ── Middle admin: logo upload ──
+  const [logoUploading,setLogoUploading]=useState(false);
+  const [logoMsg,setLogoMsg]=useState(""); const [logoOk,setLogoOk]=useState(true);
+  const [logoPreview,setLogoPreview]=useState<string|null>(null);
+  const logoRef=useRef<HTMLInputElement>(null);
+
+  // ── Middle admin: own password change ──
+  const [myPwdModal,setMyPwdModal]=useState(false);
+  const [myPwd,setMyPwd]=useState(""); const [myPwdLoading,setMyPwdLoading]=useState(false);
+  const [myPwdMsg,setMyPwdMsg]=useState(""); const [myPwdOk,setMyPwdOk]=useState(true);
+
+  // Hospital assignment for platform admin
   const [hospitals,setHospitals]=useState<HospitalOption[]>([]);
   const [assignUser,setAssignUser]=useState<ApiUser|null>(null);
   const [assignHospId,setAssignHospId]=useState<number|"">("");
@@ -258,20 +275,49 @@ export default function AdminDashboard() {
   const [stagedC,setStagedC]=useState<Record<string,number>>({});
   const [rtDrag,setRtDrag]=useState(false); const rtRef=useRef<HTMLInputElement>(null);
 
-  const loadAll=useCallback(async()=>{
+  const loadAll=useCallback(async(currentMe?:ApiUser|null)=>{
     setError("");
+    const resolvedMe = currentMe !== undefined ? currentMe : me;
+    const isMid = !!(resolvedMe?.hospital_id && resolvedMe?.is_admin && resolvedMe?.email!=="leslyndiz6@gmail.com");
     try{
-      const [u,d,p,s,m,h,a,j]=await Promise.allSettled([adminFetch("/users"),adminFetch("/diagnoses"),adminFetch("/patients"),adminFetch("/stats"),adminFetch("/model/info"),adminFetch("/health"),adminFetch("/audit?limit=100"),adminFetch("/retrain/jobs")]);
-      if(u.status==="fulfilled")setApiUsers(u.value); if(d.status==="fulfilled")setDiagnoses(d.value); if(p.status==="fulfilled")setPatients(p.value);
-      if(s.status==="fulfilled")setStats(s.value); if(m.status==="fulfilled")setModelInfo(m.value); if(h.status==="fulfilled")setHealth(h.value);
-      if(a.status==="fulfilled"){setAuditLogs(a.value);setPwLogs(a.value.filter((l:AuditLog)=>l.action.includes("password")||l.action.includes("Password")));}
-      if(j.status==="fulfilled")setRetrainJobs(j.value);
-      adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
-      adminFetch("/hospitals").then(r=>setHospitals(r.map((h:any)=>({id:h.id,name:h.name})))).catch(()=>{});
+      if(isMid && resolvedMe?.hospital_id){
+        // Middle admin: load only their hospital's data
+        const hid = resolvedMe.hospital_id;
+        const [u,d,p,h] = await Promise.allSettled([
+          adminFetch(`/hospitals/${hid}/radiologists`),
+          adminFetch("/diagnoses"),
+          adminFetch("/patients"),
+          adminFetch("/health"),
+        ]);
+        if(u.status==="fulfilled")setApiUsers(u.value);
+        if(d.status==="fulfilled")setDiagnoses(d.value);
+        if(p.status==="fulfilled")setPatients(p.value);
+        if(h.status==="fulfilled")setHealth(h.value);
+      } else {
+        const [u,d,p,s,m,h,a,j]=await Promise.allSettled([adminFetch("/users"),adminFetch("/diagnoses"),adminFetch("/patients"),adminFetch("/stats"),adminFetch("/model/info"),adminFetch("/health"),adminFetch("/audit?limit=100"),adminFetch("/retrain/jobs")]);
+        if(u.status==="fulfilled")setApiUsers(u.value); if(d.status==="fulfilled")setDiagnoses(d.value); if(p.status==="fulfilled")setPatients(p.value);
+        if(s.status==="fulfilled")setStats(s.value); if(m.status==="fulfilled")setModelInfo(m.value); if(h.status==="fulfilled")setHealth(h.value);
+        if(a.status==="fulfilled"){setAuditLogs(a.value);setPwLogs(a.value.filter((l:AuditLog)=>l.action.includes("password")||l.action.includes("Password")));}
+        if(j.status==="fulfilled")setRetrainJobs(j.value);
+        adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
+        adminFetch("/hospitals").then(r=>setHospitals(r.map((h:any)=>({id:h.id,name:h.name})))).catch(()=>{});
+      }
     }catch(e:any){setError(e.message);}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  useEffect(()=>{loadAll();},[loadAll]);
+  // On mount: get session, fetch /me, then load data accordingly
+  useEffect(()=>{
+    (async()=>{
+      await supabase.auth.getSession(); // ensure fresh token
+      try{
+        const myData:ApiUser = await adminFetch("/me");
+        setMe(myData);
+        loadAll(myData);
+      }catch{loadAll(null);}
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
   useEffect(()=>{
     const active=retrainJobs.some(j=>j.status==="processing"||j.status==="pending"); if(!active)return;
     const id=setInterval(async()=>{const jobs=await adminFetch("/retrain/jobs").catch(()=>null);if(jobs)setRetrainJobs(jobs);},5000);
@@ -290,6 +336,37 @@ export default function AdminDashboard() {
       setTimeout(()=>{setAssignUser(null);setAssignHospId("");setAssignMsg("");loadAll();},1500);
     }catch(e:any){setAssignMsg("Error: "+e.message);}
     finally{setAssignLoading(false);}
+  };
+
+  // ── Middle admin: upload logo ──
+  const uploadLogo=async(file:File)=>{
+    if(!me?.hospital_id)return;
+    setLogoUploading(true);setLogoMsg("");
+    try{
+      const reader=new FileReader();
+      reader.onload=async(ev)=>{
+        const b64=ev.target?.result as string;
+        setLogoPreview(b64);
+        try{
+          await adminFetch(`/hospitals/${me.hospital_id}/logo`,{method:"PATCH",body:JSON.stringify({logo_base64:b64})});
+          setLogoMsg("✅ Logo updated successfully!");setLogoOk(true);
+        }catch(e:any){setLogoMsg("Error: "+e.message);setLogoOk(false);}
+        finally{setLogoUploading(false);}
+      };
+      reader.readAsDataURL(file);
+    }catch(e:any){setLogoMsg("Error: "+e.message);setLogoOk(false);setLogoUploading(false);}
+  };
+
+  // ── Middle admin: change own password ──
+  const changeMyPassword=async()=>{
+    if(myPwd.length<6){setMyPwdMsg("Password must be at least 6 characters");setMyPwdOk(false);return;}
+    setMyPwdLoading(true);setMyPwdMsg("");
+    try{
+      await adminFetch("/me/password",{method:"PATCH",body:JSON.stringify({password:myPwd})});
+      setMyPwdMsg("✅ Password changed! Signing out…");setMyPwdOk(true);
+      setTimeout(()=>supabase.auth.signOut(),2000);
+    }catch(e:any){setMyPwdMsg("Error: "+e.message);setMyPwdOk(false);}
+    finally{setMyPwdLoading(false);}
   };
 
   const openEdit=(p:Patient)=>{setEditPatient({id:p.id,name:p.name,patient_ref_id:p.patient_ref_id||"",hospital:p.hospital||"",clinical_notes:p.clinical_notes||""});setEditError("");};
@@ -365,15 +442,32 @@ export default function AdminDashboard() {
     catch(e:any){setRtMsg(e.message);setRtOk(false);}
   };
 
-  const pending=apiUsers.filter(u=>u.status==="pending").length;
-  const dist=["Normal","Tuberculosis","Pneumonia","Unknown"].map(cls=>({cls,count:diagnoses.filter(d=>d.ai_classification===cls).length,pct:diagnoses.length?Math.round((diagnoses.filter(d=>d.ai_classification===cls).length/diagnoses.length)*100):0,color:CLS_META[cls].bar}));
+  // ── For middle admin: filter data to their hospital ──
+  const visibleUsers = isMiddleAdmin
+    ? apiUsers  // already fetched from /hospitals/{id}/radiologists
+    : apiUsers;
+  const visiblePatients = isMiddleAdmin
+    ? patients.filter(p=>visibleUsers.some(u=>u.id===p.radiologist_id))
+    : patients;
+  const visibleDiagnoses = isMiddleAdmin
+    ? diagnoses.filter(d=>visibleUsers.some(u=>u.id===d.radiologist_id))
+    : diagnoses;
+
+  const pending=visibleUsers.filter(u=>u.status==="pending").length;
+  const dist=["Normal","Tuberculosis","Pneumonia","Unknown"].map(cls=>({cls,count:visibleDiagnoses.filter(d=>d.ai_classification===cls).length,pct:visibleDiagnoses.length?Math.round((visibleDiagnoses.filter(d=>d.ai_classification===cls).length/visibleDiagnoses.length)*100):0,color:CLS_META[cls].bar}));
 
   // Retrain summary helpers
   const stagedClasses = Object.keys(stagedC).filter(k=>stagedC[k]>0);
   const readyClasses  = stagedClasses.filter(k=>stagedC[k]>=RT_MIN);
   const canTrigger    = readyClasses.length>=1;
 
-  const navItems:[Tab,string,number?][]=[
+  const navItems:[Tab,string,number?][]= isMiddleAdmin ? [
+    ["overview","Dashboard"],
+    ["users","Radiologists",pending||undefined],
+    ["predictions","Diagnoses",visibleDiagnoses.length||undefined],
+    ["patients","Patients"],
+    ["profile","My Hospital"],
+  ] : [
     ["overview","Dashboard"],["users","Radiologists",pending||undefined],
     ["predictions","Diagnoses",diagnoses.length||undefined],["patients","Patients"],
     ["diagnose","Run Scan"],["retrain","Retrain AI"],["model","Model Data"],
@@ -493,8 +587,8 @@ export default function AdminDashboard() {
                 <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-amber-500"/>{pending} pending
               </div>}
               <div className="flex items-center gap-3 bg-white rounded-full px-2 py-1.5 pr-5 border border-slate-100 shadow-sm">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>AD</div>
-                <div><p className="text-[12px] font-bold text-slate-800 leading-tight">Admin</p><p className="text-[10px] text-slate-400">leslyndiz6@gmail.com</p></div>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{me?.full_name?.[0]?.toUpperCase()||"A"}</div>
+                <div><p className="text-[12px] font-bold text-slate-800 leading-tight">{me?.full_name||"Admin"}</p><p className="text-[10px] text-slate-400">{me?.email||""}</p></div>
               </div>
             </div>
           </header>
@@ -514,9 +608,9 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-4 gap-5">
                   <div className="anim-in-1 rounded-[28px] p-6 flex flex-col justify-between" style={{backgroundColor:DARK_GREEN,color:"white",minHeight:160}}>
                     <div className="flex justify-between items-start"><span className="text-sm font-medium text-white/90">Radiologists</span><div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">↗</div></div>
-                    <div><div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??apiUsers.filter(u=>u.status==="approved").length}</div><div className="text-[11px] text-white/70"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending} pending</span></div></div>
+                    <div><div className="text-5xl font-bold tracking-tight mb-2">{isMiddleAdmin?visibleUsers.filter((u:ApiUser)=>u.status==="approved").length:(stats?.total_radiologists??visibleUsers.filter((u:ApiUser)=>u.status==="approved").length)}</div><div className="text-[11px] text-white/70"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending} pending</span></div></div>
                   </div>
-                  {[{l:"AI Diagnoses",v:diagnoses.length},{l:"Total Patients",v:patients.length},{l:"Pending Reviews",v:pending}].map((c,i)=>(
+                  {[{l:"AI Diagnoses",v:visibleDiagnoses.length},{l:"Diagnosed Patients",v:visiblePatients.length},{l:"Pending Reviews",v:pending}].map((c,i)=>(
                     <div key={c.l} className={`anim-in-${i+2} panel-card p-6 flex flex-col justify-between`} style={{minHeight:160}}>
                       <div className="flex justify-between items-start"><span className="text-sm font-semibold text-slate-700">{c.l}</span><div className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500">↗</div></div>
                       <div><div className="text-5xl font-bold tracking-tight text-slate-900 mb-2">{c.v}</div><div className="text-[11px] text-slate-400">{i===2?"Awaiting approval":"Updated live"}</div></div>
@@ -551,7 +645,7 @@ export default function AdminDashboard() {
                   <Panel className="col-span-3 p-7 anim-in">
                     <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Recent Scans</h3><button onClick={()=>setTab("predictions")} className="text-[11px] border px-2.5 py-1 rounded-full text-slate-500 border-slate-200">All →</button></div>
                     <div className="space-y-4">
-                      {diagnoses.slice(0,4).map(d=>{const pt=patients.find(p=>p.id===d.patient_id);const c=CLS_META[d.ai_classification]||CLS_META["Unknown"];return(
+                      {visibleDiagnoses.slice(0,4).map((d:Diagnosis)=>{const pt=visiblePatients.find((p:Patient)=>p.id===d.patient_id);const c=CLS_META[d.ai_classification]||CLS_META["Unknown"];return(
                         <div key={d.id} className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{backgroundColor:c.bg}}><div className="w-3 h-3 rounded-full" style={{backgroundColor:c.bar}}/></div>
                           <div className="min-w-0"><p className="text-[13px] font-bold text-slate-800 truncate">{pt?.name||"Unknown"}</p><p className="text-[10px] text-slate-400">{d.ai_classification} · {d.confidence_score.toFixed(0)}%</p></div>
@@ -565,13 +659,13 @@ export default function AdminDashboard() {
                   <Panel className="col-span-5 p-7 anim-in">
                     <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Radiologists</h3><button onClick={()=>setTab("users")} className="text-[11px] border border-slate-200 px-3 py-1.5 rounded-full text-slate-600 font-medium">Manage</button></div>
                     <div className="space-y-4">
-                      {apiUsers.slice(0,4).map((u,i)=>{const emojis=["👨‍⚕️","👩‍⚕️","🧑‍⚕️","👨‍💼"];return(
+                      {visibleUsers.slice(0,4).map((u:ApiUser,i:number)=>{const emojis=["👨‍⚕️","👩‍⚕️","🧑‍⚕️","👨‍💼"];return(
                         <div key={u.id} className="flex items-center justify-between">
                           <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-xl">{emojis[i%4]}</div><div><p className="text-[13px] font-bold text-slate-800">{u.full_name}</p><p className="text-[11px] text-slate-400">{u.hospital||u.role}</p></div></div>
                           <StatusBadge status={u.status}/>
                         </div>
                       );})}
-                      {apiUsers.length===0&&<p className="text-sm text-slate-400 text-center py-4">No team members yet</p>}
+                      {visibleUsers.length===0&&<p className="text-sm text-slate-400 text-center py-4">No team members yet</p>}
                     </div>
                   </Panel>
                   <Panel className="col-span-4 p-7 anim-in flex flex-col items-center">
@@ -606,11 +700,11 @@ export default function AdminDashboard() {
             {/* ══ USERS ══ */}
             {tab==="users"&&(
               <div className="space-y-5 max-w-[1200px] anim-in">
-                <PageHead title="Radiologists" sub={`${apiUsers.length} platform users`} right={
+                <PageHead title="Radiologists" sub={`${visibleUsers.length} ${isMiddleAdmin?"in your hospital":"platform users"}`} right={
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search team…" className={INP+" w-[220px]"}/>
                 }/>
-                <Tbl heads={["Name","Email","Hospital","License","Role","Status","Joined","Actions"]} empty={apiUsers.length===0?"No users yet":undefined}>
-                  {apiUsers.filter(u=>!search||u.full_name.toLowerCase().includes(search.toLowerCase())||u.email.toLowerCase().includes(search.toLowerCase())).map(u=>(
+                <Tbl heads={["Name","Email","Hospital","License","Role","Status","Joined","Actions"]} empty={visibleUsers.length===0?"No users yet":undefined}>
+                  {visibleUsers.filter((u:ApiUser)=>!search||u.full_name.toLowerCase().includes(search.toLowerCase())||u.email.toLowerCase().includes(search.toLowerCase())).map((u:ApiUser)=>(
                     <TR key={u.id}>
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
                       <TD mono>{u.email}</TD><TD>{u.hospital||"—"}</TD><TD mono>{u.license_number||"—"}</TD>
@@ -620,7 +714,7 @@ export default function AdminDashboard() {
                       <TD><div className="flex gap-1.5 flex-wrap">
                         {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200">Reject</button></>}
                         {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Password</button>}
-                        <button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">Delete</button>
+                        {!isMiddleAdmin&&<button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">Delete</button>}
                       </div></TD>
                     </TR>
                   ))}
@@ -631,7 +725,7 @@ export default function AdminDashboard() {
             {/* ══ PREDICTIONS ══ */}
             {tab==="predictions"&&(
               <div className="space-y-5 max-w-[1200px] anim-in">
-                <PageHead title="AI Diagnoses" sub={`${diagnoses.length} total scans`} right={
+                <PageHead title="AI Diagnoses" sub={`${visibleDiagnoses.length} total scans`} right={
                   <div className="flex gap-2">{["All","Normal","Tuberculosis","Pneumonia","Unknown"].map(f=><button key={f} onClick={()=>setSearch(f==="All"?"":f)} className="btn-s text-[11px] font-bold px-3 py-2 rounded-full border transition-all" style={(f==="All"&&!search)||search===f?{backgroundColor:DARK_GREEN,color:"#fff",borderColor:DARK_GREEN}:{backgroundColor:"white",color:"#94a3b8",borderColor:"#E2E8F0"}}>{f}</button>)}</div>
                 }/>
                 <div className="grid grid-cols-4 gap-4">
@@ -644,8 +738,8 @@ export default function AdminDashboard() {
                     </div>
                   );})}
                 </div>
-                <Tbl heads={["Patient","National ID","Result","Confidence","TB%","Pneumo%","Normal%","Verified","Date","Action"]} empty={diagnoses.length===0?"No predictions yet":undefined}>
-                  {diagnoses.filter(d=>!search||d.ai_classification===search).map(d=>{const pt=patients.find(p=>p.id===d.patient_id);return(
+                <Tbl heads={["Patient","National ID","Result","Confidence","TB%","Pneumo%","Normal%","Verified","Date","Action"]} empty={visibleDiagnoses.length===0?"No predictions yet":undefined}>
+                  {visibleDiagnoses.filter((d:Diagnosis)=>!search||d.ai_classification===search).map((d:Diagnosis)=>{const pt=visiblePatients.find((p:Patient)=>p.id===d.patient_id);return(
                     <TR key={d.id}>
                       <TD><span className="font-bold text-slate-800">{pt?.name??"Unknown"}</span></TD>
                       <TD mono>{pt?.patient_ref_id??"—"}</TD>
@@ -666,12 +760,12 @@ export default function AdminDashboard() {
             {/* ══ PATIENTS ══ */}
             {tab==="patients"&&(
               <div className="space-y-4 max-w-[1200px] anim-in">
-                <PageHead title="Patients" sub={`${patients.length} registered`} right={
+                <PageHead title="Patients" sub={`${visiblePatients.length} with diagnoses`} right={
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name or ID…" className={INP+" w-[240px]"}/>
                 }/>
                 <div className="space-y-2">
-                  {patients.filter(p=>!search||p.name.toLowerCase().includes(search.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(search))).map(p=>{
-                    const ptD=diagnoses.filter(d=>d.patient_id===p.id); const isExp=expandedPt===p.id;
+                  {visiblePatients.filter((p:Patient)=>!search||p.name.toLowerCase().includes(search.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(search))).map((p:Patient)=>{
+                    const ptD=visibleDiagnoses.filter((d:Diagnosis)=>d.patient_id===p.id); const isExp=expandedPt===p.id;
                     return (
                       <div key={p.id} className="bg-white rounded-[24px] border overflow-hidden transition-all" style={{borderColor:isExp?"#86EFAC":"#F1F5F9",boxShadow:"0 2px 12px rgba(0,0,0,0.04)"}}>
                         <div className="flex items-center gap-4 px-6 py-4">
@@ -696,7 +790,7 @@ export default function AdminDashboard() {
                               <div className="space-y-2">{ptD.map(d=>{const c=CLS_META[d.ai_classification]||CLS_META["Unknown"];return(
                                 <div key={d.id} className="flex items-center gap-5 p-4 rounded-2xl bg-white border-2" style={{borderColor:c.border,borderLeftWidth:4,borderLeftColor:c.bar}}>
                                   <div className="flex-1 grid grid-cols-5 gap-3 items-center">
-                                    <div><div className="text-[8px] font-bold uppercase text-slate-300">Radiologist</div><div className="text-xs font-bold text-slate-700 mt-0.5">{apiUsers.find(u=>u.id===d.radiologist_id)?.full_name??"—"}</div></div>
+                                    <div><div className="text-[8px] font-bold uppercase text-slate-300">Radiologist</div><div className="text-xs font-bold text-slate-700 mt-0.5">{visibleUsers.find((u:ApiUser)=>u.id===d.radiologist_id)?.full_name??"—"}</div></div>
                                     <div><div className="text-[8px] font-bold uppercase text-slate-300">Result</div><div className="mt-1"><ClsBadge cls={d.ai_classification}/></div></div>
                                     <div><div className="text-[8px] font-bold uppercase text-slate-300">Confidence</div><div className="text-sm font-bold mt-0.5" style={{color:c.text}}>{d.confidence_score.toFixed(1)}%</div></div>
                                     <div><div className="text-[8px] font-bold uppercase text-slate-300">TB/Pneumo/Normal</div><div className="text-xs font-mono text-slate-400 mt-0.5">{(d.tb_probability*100).toFixed(0)}%/{(d.pneumonia_probability*100).toFixed(0)}%/{(d.normal_probability*100).toFixed(0)}%</div></div>
@@ -712,7 +806,7 @@ export default function AdminDashboard() {
                       </div>
                     );
                   })}
-                  {patients.length===0&&<Panel className="p-12 text-center"><span className="text-sm text-slate-400">No patients yet</span></Panel>}
+                  {visiblePatients.length===0&&<Panel className="p-12 text-center"><span className="text-sm text-slate-400">No diagnosed patients yet</span></Panel>}
                 </div>
               </div>
             )}
@@ -1040,7 +1134,7 @@ export default function AdminDashboard() {
                     const col=l.action.includes("password")?"#7C3AED":l.action.includes("predict")?"#2563EB":l.action.includes("approve")?DARK_GREEN:l.action.includes("delete")?"#DC2626":"#64748B";
                     return <TR key={l.id}>
                       <TD mono>#{l.id}</TD>
-                      <TD>{apiUsers.find(u=>u.id===l.user_id)?.full_name??`User ${l.user_id}`}</TD>
+                      <TD>{visibleUsers.find((u:ApiUser)=>u.id===l.user_id)?.full_name??`User ${l.user_id}`}</TD>
                       <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:col}}>{l.action}</span></TD>
                       <TD mono>{l.entity||"—"}</TD>
                       <TD mono>{l.entity_id??"—"}</TD>
@@ -1048,6 +1142,85 @@ export default function AdminDashboard() {
                     </TR>;
                   })}
                 </Tbl>
+              </div>
+            )}
+
+            {/* ══ PROFILE (middle admin only) ══ */}
+            {tab==="profile"&&isMiddleAdmin&&(
+              <div className="space-y-6 max-w-[800px] anim-in">
+                <PageHead title="My Hospital" sub="Manage your hospital's profile and branding"/>
+
+                {/* Logo upload */}
+                <Panel className="p-8 space-y-5">
+                  <h3 className="text-base font-bold text-slate-800">Hospital Logo</h3>
+                  <p className="text-sm text-slate-500">This logo appears on your radiologists' diagnosing page and is visible to the platform super admin.</p>
+                  <div className="flex items-start gap-6">
+                    <div className="w-28 h-28 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden bg-slate-50 shrink-0">
+                      {logoPreview
+                        ? <img src={logoPreview} alt="logo preview" className="w-full h-full object-contain"/>
+                        : <span className="text-3xl">🏥</span>
+                      }
+                    </div>
+                    <div className="flex-1 space-y-3">
+                      <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={e=>{const f=e.target.files?.[0];if(f)uploadLogo(f);}}/>
+                      <button onClick={()=>logoRef.current?.click()} disabled={logoUploading}
+                        className="btn-s px-6 py-2.5 rounded-full text-white text-sm font-bold disabled:opacity-50"
+                        style={{backgroundColor:DARK_GREEN}}>
+                        {logoUploading?"Uploading…":"Upload Logo"}
+                      </button>
+                      <p className="text-xs text-slate-400">PNG, JPG or SVG. Recommended: 256×256px or larger.</p>
+                      {logoMsg&&<div className={`p-3 rounded-2xl text-sm font-semibold ${logoOk?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{logoMsg}</div>}
+                    </div>
+                  </div>
+                </Panel>
+
+                {/* Account info */}
+                <Panel className="p-8 space-y-5">
+                  <h3 className="text-base font-bold text-slate-800">Account</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">Name</div>
+                      <div className="font-semibold text-slate-800">{me?.full_name||"—"}</div>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">Email</div>
+                      <div className="font-semibold text-slate-800">{me?.email||"—"}</div>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">Role</div>
+                      <div className="font-semibold text-slate-800 capitalize">Hospital Admin</div>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">Hospital ID</div>
+                      <div className="font-mono font-semibold text-slate-800">#{me?.hospital_id}</div>
+                    </div>
+                  </div>
+                  <button onClick={()=>setMyPwdModal(true)} className="btn-s px-6 py-2.5 rounded-full text-white text-sm font-bold" style={{backgroundColor:"#2563EB"}}>
+                    Change Password
+                  </button>
+                </Panel>
+
+                {/* Change password modal */}
+                {myPwdModal&&(
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{backgroundColor:"rgba(0,0,0,.45)",backdropFilter:"blur(6px)"}}>
+                    <div className="anim-pop w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden">
+                      <div className="px-8 pt-7 pb-6 text-white" style={{background:`linear-gradient(135deg,#2563EB,#1D4ED8)`}}>
+                        <div className="flex items-center justify-between">
+                          <h2 className="text-lg font-bold">Change Password</h2>
+                          <button onClick={()=>{setMyPwdModal(false);setMyPwd("");setMyPwdMsg("");}} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center font-bold">✕</button>
+                        </div>
+                      </div>
+                      <div className="p-8 space-y-4">
+                        <input type="password" value={myPwd} onChange={e=>setMyPwd(e.target.value)} placeholder="New password (min 6 chars)" className={INP_RECT}/>
+                        {myPwdMsg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${myPwdOk?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{myPwdMsg}</div>}
+                        <div className="flex gap-3 pt-1">
+                          <button onClick={()=>{setMyPwdModal(false);setMyPwd("");setMyPwdMsg("");}} className="flex-1 py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200">Cancel</button>
+                          <button onClick={changeMyPassword} disabled={myPwdLoading||!myPwd} className="btn-s flex-1 py-3 rounded-full text-white font-bold disabled:opacity-40" style={{backgroundColor:"#2563EB"}}>{myPwdLoading?"Saving…":"Update Password"}</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

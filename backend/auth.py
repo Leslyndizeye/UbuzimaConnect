@@ -8,6 +8,7 @@ import os
 import jwt as pyjwt
 import requests
 from functools import lru_cache
+from datetime import datetime, timezone
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -100,6 +101,10 @@ def get_current_user(
         user.is_admin = True
         user.status = UserStatus.approved
         db.commit()
+
+    # Track last login time
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
 
     # Block non-approved non-admin users
     if email not in ADMIN_EMAILS:
