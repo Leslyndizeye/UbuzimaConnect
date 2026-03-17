@@ -25,7 +25,7 @@ interface AuditLog { id:number; user_id:number; action:string; entity?:string; e
 interface RetrainJob { id:number; status:string; created_at:string; error_message?:string; final_val_acc?:number; }
 interface PredictionResult { classification:string; confidence_score:number; tb_probability:number; pneumonia_probability:number; normal_probability:number; unknown_probability?:number; explanation?:string; gradcam_b64?:string; }
 interface EditPatient { id:number; name:string; patient_ref_id:string; hospital:string; clinical_notes:string; }
-type Tab = "overview"|"users"|"passwords"|"predictions"|"patients"|"diagnose"|"retrain"|"model"|"audit";
+type Tab = "overview"|"users"|"passwords"|"predictions"|"patients"|"diagnose"|"retrain"|"model"|"audit"|"profile";
 
 const fmt = (iso:string) => new Date(iso).toLocaleString("en-RW",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Kigali"});
 const uptimeFmt = (s:number) => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60); return `${h.toString().padStart(2,'0')}h ${m.toString().padStart(2,'0')}m ${sec.toString().padStart(2,'0')}s`; };
@@ -127,6 +127,7 @@ const ICONS: Record<Tab,React.ReactNode> = {
   model:       <><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></>,
   passwords:   <><rect x="3" y="11" width="18" height="11" rx="3"/><path d="M7 11V7a5 5 0 0110 0v4"/></>,
   audit:       <><path d="M14 2H6a3 3 0 00-3 3v14a3 3 0 003 3h12a3 3 0 003-3V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></>,
+  profile:     <><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></>,
 };
 
 // ─── Shared UI ────────────────────────────────────
@@ -233,7 +234,9 @@ export default function AdminDashboard() {
   const [expandedPt,setExpandedPt]=useState<number|null>(null);
   // ── Current user identity ──
   const [me,setMe]=useState<ApiUser|null>(null);
-  const isMiddleAdmin = !!(me?.is_admin && me?.hospital_id);
+  const meRef = useRef<ApiUser|null>(null); // avoids stale closure in loadAll
+  const PLATFORM_ADMIN_EMAILS = ["leslyndiz6@gmail.com","byakwelianiela@gmail.com"];
+  const isMiddleAdmin = !!(me?.is_admin && me?.hospital_id && !PLATFORM_ADMIN_EMAILS.includes((me?.email||"").toLowerCase()));
   // ── Middle admin: logo upload ──
   const [logoUploading,setLogoUploading]=useState(false);
   const [logoMsg,setLogoMsg]=useState(""); const [logoOk,setLogoOk]=useState(true);
@@ -272,8 +275,8 @@ export default function AdminDashboard() {
 
   const loadAll=useCallback(async(currentMe?:ApiUser|null)=>{
     setError("");
-    const resolvedMe = currentMe !== undefined ? currentMe : me;
-    const isMid = !!(resolvedMe?.hospital_id && resolvedMe?.is_admin);
+    const resolvedMe = currentMe !== undefined ? currentMe : meRef.current;
+    const isMid = !!(resolvedMe?.hospital_id && resolvedMe?.is_admin && !PLATFORM_ADMIN_EMAILS.includes((resolvedMe?.email||"").toLowerCase()));
     try{
       if(isMid && resolvedMe?.hospital_id){
         const hid = resolvedMe.hospital_id;
@@ -309,6 +312,7 @@ export default function AdminDashboard() {
       await supabase.auth.getSession();
       try{
         const myData:ApiUser = await adminFetch("/me");
+        meRef.current = myData;
         setMe(myData);
         loadAll(myData);
       }catch{loadAll(null);}
@@ -586,8 +590,8 @@ export default function AdminDashboard() {
                 <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-amber-500"/>{pending} pending
               </div>}
               <div className="flex items-center gap-3 bg-white rounded-full px-2 py-1.5 pr-5 border border-slate-100 shadow-sm">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>AD</div>
-                <div><p className="text-[12px] font-bold text-slate-800 leading-tight">Admin</p><p className="text-[10px] text-slate-400">leslyndiz6@gmail.com</p></div>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{me?.full_name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"AD"}</div>
+                <div><p className="text-[12px] font-bold text-slate-800 leading-tight">{isMiddleAdmin?"Hospital Admin":"Platform Admin"}</p><p className="text-[10px] text-slate-400">{me?.email||"—"}</p></div>
               </div>
             </div>
           </header>
@@ -607,9 +611,9 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-4 gap-5">
                   <div className="anim-in-1 rounded-[28px] p-6 flex flex-col justify-between" style={{backgroundColor:DARK_GREEN,color:"white",minHeight:160}}>
                     <div className="flex justify-between items-start"><span className="text-sm font-medium text-white/90">Radiologists</span><div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">↗</div></div>
-                    <div><div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??apiUsers.filter(u=>u.status==="approved").length}</div><div className="text-[11px] text-white/70"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending} pending</span></div></div>
+                    <div><div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??visibleUsers.filter(u=>u.status==="approved").length}</div><div className="text-[11px] text-white/70"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending} pending</span></div></div>
                   </div>
-                  {[{l:"AI Diagnoses",v:diagnoses.length},{l:"Total Patients",v:patients.length},{l:"Pending Reviews",v:pending}].map((c,i)=>(
+                  {[{l:"AI Diagnoses",v:visibleDiagnoses.length},{l:"Total Patients",v:visiblePatients.length},{l:"Pending Reviews",v:pending}].map((c,i)=>(
                     <div key={c.l} className={`anim-in-${i+2} panel-card p-6 flex flex-col justify-between`} style={{minHeight:160}}>
                       <div className="flex justify-between items-start"><span className="text-sm font-semibold text-slate-700">{c.l}</span><div className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500">↗</div></div>
                       <div><div className="text-5xl font-bold tracking-tight text-slate-900 mb-2">{c.v}</div><div className="text-[11px] text-slate-400">{i===2?"Awaiting approval":"Updated live"}</div></div>
@@ -632,19 +636,32 @@ export default function AdminDashboard() {
                       ))}
                     </div>
                   </Panel>
-                  <Panel className="col-span-4 p-7 flex flex-col justify-between anim-in">
-                    <div>
-                      <h3 className="text-base font-bold text-slate-800 mb-3">AI Model Status</h3>
-                      <p className="text-xl font-bold capitalize mb-1" style={{color:DARK_GREEN}}>{modelInfo?.status||"Loading…"}</p>
-                      <p className="text-[13px] text-slate-500 leading-relaxed">Arch: {modelInfo?.architecture||"—"}<br/>Size: {modelInfo?.size_mb||0} MB</p>
-                      {modelInfo?.classes&&<div className="flex flex-wrap gap-1.5 mt-3">{modelInfo.classes.map(c=><ClsBadge key={c} cls={c}/>)}</div>}
-                    </div>
-                    <button onClick={()=>setTab("model")} className="btn-s w-full py-3.5 rounded-full text-white text-sm font-bold mt-4" style={{backgroundColor:DARK_GREEN}}>Manage Model</button>
-                  </Panel>
+                  {isMiddleAdmin ? (
+                    <Panel className="col-span-4 p-7 flex flex-col justify-between anim-in">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-800 mb-3">Hospital Overview</h3>
+                        <p className="text-[13px] text-slate-500 leading-relaxed">Hospital ID: <strong>#{me?.hospital_id}</strong></p>
+                        <p className="text-[13px] text-slate-500 mt-2">Approved radiologists: <strong>{visibleUsers.filter(u=>u.status==="approved").length}</strong></p>
+                        <p className="text-[13px] text-slate-500 mt-1">Pending approval: <strong>{pending}</strong></p>
+                        <p className="text-[13px] text-slate-500 mt-1">Total diagnoses: <strong>{visibleDiagnoses.length}</strong></p>
+                      </div>
+                      <button onClick={()=>setTab("profile")} className="btn-s w-full py-3.5 rounded-full text-white text-sm font-bold mt-4" style={{backgroundColor:DARK_GREEN}}>My Hospital</button>
+                    </Panel>
+                  ) : (
+                    <Panel className="col-span-4 p-7 flex flex-col justify-between anim-in">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-800 mb-3">AI Model Status</h3>
+                        <p className="text-xl font-bold capitalize mb-1" style={{color:DARK_GREEN}}>{modelInfo?.status||"Loading…"}</p>
+                        <p className="text-[13px] text-slate-500 leading-relaxed">Arch: {modelInfo?.architecture||"—"}<br/>Size: {modelInfo?.size_mb||0} MB</p>
+                        {modelInfo?.classes&&<div className="flex flex-wrap gap-1.5 mt-3">{(modelInfo.classes as string[]).map((c,i)=><span key={i}><ClsBadge cls={c}/></span>)}</div>}
+                      </div>
+                      <button onClick={()=>setTab("model")} className="btn-s w-full py-3.5 rounded-full text-white text-sm font-bold mt-4" style={{backgroundColor:DARK_GREEN}}>Manage Model</button>
+                    </Panel>
+                  )}
                   <Panel className="col-span-3 p-7 anim-in">
                     <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Recent Scans</h3><button onClick={()=>setTab("predictions")} className="text-[11px] border px-2.5 py-1 rounded-full text-slate-500 border-slate-200">All →</button></div>
                     <div className="space-y-4">
-                      {diagnoses.slice(0,4).map(d=>{const pt=patients.find(p=>p.id===d.patient_id);const c=CLS_META[d.ai_classification]||CLS_META["Unknown"];return(
+                      {visibleDiagnoses.slice(0,4).map(d=>{const pt=visiblePatients.find(p=>p.id===d.patient_id);const c=CLS_META[d.ai_classification]||CLS_META["Unknown"];return(
                         <div key={d.id} className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{backgroundColor:c.bg}}><div className="w-3 h-3 rounded-full" style={{backgroundColor:c.bar}}/></div>
                           <div className="min-w-0"><p className="text-[13px] font-bold text-slate-800 truncate">{pt?.name||"Unknown"}</p><p className="text-[10px] text-slate-400">{d.ai_classification} · {d.confidence_score.toFixed(0)}%</p></div>
@@ -658,7 +675,7 @@ export default function AdminDashboard() {
                   <Panel className="col-span-5 p-7 anim-in">
                     <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Radiologists</h3><button onClick={()=>setTab("users")} className="text-[11px] border border-slate-200 px-3 py-1.5 rounded-full text-slate-600 font-medium">Manage</button></div>
                     <div className="space-y-4">
-                      {apiUsers.slice(0,4).map((u,i)=>{const emojis=["👨‍⚕️","👩‍⚕️","🧑‍⚕️","👨‍💼"];return(
+                      {visibleUsers.slice(0,4).map((u,i)=>{const emojis=["👨‍⚕️","👩‍⚕️","🧑‍⚕️","👨‍💼"];return(
                         <div key={u.id} className="flex items-center justify-between">
                           <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-xl">{emojis[i%4]}</div><div><p className="text-[13px] font-bold text-slate-800">{u.full_name}</p><p className="text-[11px] text-slate-400">{u.hospital||u.role}</p></div></div>
                           <StatusBadge status={u.status}/>

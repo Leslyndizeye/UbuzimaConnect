@@ -1,6 +1,6 @@
 # auth.py — Supabase ES256 JWT, uses firebase_uid field for Supabase UUID
 # Admin hierarchy:
-#   SUPER_ADMIN  = leslyndiz6@alustudent.com  → manages hospitals, top-level access
+#   SUPER_ADMIN  = byakwelianiela@gmail.com  → manages hospitals, top-level access
 #   PLATFORM_ADMIN = leslyndiz6@gmail.com     → manages radiologists, runs diagnostics
 #   Hospital middle admins → credentials set by PLATFORM_ADMIN after hospital approval
 
@@ -8,14 +8,13 @@ import os
 import jwt as pyjwt
 import requests
 from functools import lru_cache
-from datetime import datetime, timezone
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from database import get_db, User, UserStatus
 
 SUPABASE_URL   = os.getenv("SUPABASE_URL", "https://omoinlmgsdtlzfasydgw.supabase.co")
-SUPER_ADMIN    = "byakwelianiela@gmail.com"   
+SUPER_ADMIN    = "byakwelianiela@gmail.com"   # top-level: manages hospitals
 PLATFORM_ADMIN = "leslyndiz6@gmail.com"        # platform: manages radiologists
 
 ADMIN_EMAILS = {SUPER_ADMIN, PLATFORM_ADMIN}
@@ -102,10 +101,6 @@ def get_current_user(
         user.status = UserStatus.approved
         db.commit()
 
-    # Track last login time
-    user.last_login = datetime.now(timezone.utc)
-    db.commit()
-
     # Block non-approved non-admin users
     if email not in ADMIN_EMAILS:
         if user.status == UserStatus.pending:
@@ -117,9 +112,8 @@ def get_current_user(
 
 
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    """Platform admin OR super admin — both can manage radiologists."""
-    email = (current_user.email or "").lower()
-    if email not in ADMIN_EMAILS or not current_user.is_admin:
+    """Any admin: platform admin, super admin, or hospital middle admin (is_admin=True in DB)."""
+    if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required.")
     return current_user
 

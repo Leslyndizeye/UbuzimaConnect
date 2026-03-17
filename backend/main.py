@@ -41,8 +41,13 @@ from schemas import (
     HospitalApplicationCreate, HospitalApplicationOut,
     HospitalOut, HospitalAppStatusUpdate,
 )
-import random, string
+import random, string, base64, io
 import httpx
+try:
+    from PIL import Image as _PILImage
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
 # APP SETUP
 
 START_TIME = time.time()
@@ -110,6 +115,7 @@ def register_user(body: UserCreate, db: Session = Depends(get_db)):
         email=body.email,
         full_name=body.full_name,
         hospital=body.hospital,
+        hospital_id=body.hospital_id if hasattr(body, 'hospital_id') else None,
         license_number=body.license_number,
         years_experience=body.years_experience,
         phone_number=body.phone_number,
@@ -1043,6 +1049,13 @@ def _require_hospital_access(hospital_id: int, current_user: User):
     raise HTTPException(403, "Access denied to this hospital.")
 
 
+# Public: list approved hospitals for registration dropdown (no auth required)
+@app.get("/hospitals/public", tags=["Hospital"])
+def list_public_hospitals(db: Session = Depends(get_db)):
+    hospitals = db.query(Hospital).filter(Hospital.is_active == True).order_by(Hospital.name).all()
+    return [{"id": h.id, "name": h.name, "district": h.district, "province": h.province} for h in hospitals]
+
+
 #  Super admin: list active hospitals
 @app.get("/hospitals", response_model=list[HospitalOut], tags=["Hospital"])
 def list_hospitals(
@@ -1235,12 +1248,18 @@ def get_hospital_radiologists(
             "id": u.id,
             "full_name": u.full_name,
             "email": u.email,
+            "role": u.role.value if hasattr(u.role, "value") else str(u.role or "radiologist"),
+            "hospital": u.hospital,
+            "hospital_id": u.hospital_id,
+            "is_admin": u.is_admin,
             "specialization": u.specialization,
             "license_number": u.license_number,
             "years_experience": u.years_experience,
+            "phone_number": u.phone_number,
             "status": u.status.value if hasattr(u.status, "value") else str(u.status),
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "approved_at": u.approved_at.isoformat() if u.approved_at else None,
+            "firebase_uid": u.firebase_uid,
             "total_diagnoses": dx_count,
         })
     return result
@@ -1463,6 +1482,63 @@ async def change_my_password(
         "email": current_user.email
     })
     return {"detail": "Password updated successfully"}
+
+
+# ── Upload hospital logo via FormData (Dashboard.tsx) ──
+@app.post("/hospitals/{hospital_id}/logo", tags=["Hospital"])
+async def upload_hospital_logo_form(
+    hospital_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Middle admin or super admin uploads logo as multipart file. Auto-resized to 400×400."""
+    _require_hospital_access(hospital_id, current_user)
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    if not hospital:
+        raise HTTPException(404, "Hospital not found")
+    if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(400, "Only JPG, PNG or WebP allowed")
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File too large (max 5 MB)")
+    try:
+        if _PIL_AVAILABLE:
+            img = _PILImage.open(io.BytesIO(data)).convert("RGB")
+            img.thumbnail((400, 400))
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+        else:
+            b64 = "data:image/jpeg;base64," + base64.b64encode(data).decode()
+    except Exception:
+        b64 = "data:image/jpeg;base64," + base64.b64encode(data).decode()
+    hospital.logo_base64 = b64
+    db.commit()
+    _audit(db, current_user.id, "upload_hospital_logo", "hospital", hospital_id, {"name": hospital.name})
+    return {"detail": "Logo uploaded", "logo_base64": b64}
+
+
+# ── Upload hospital logo via JSON base64 (AdminDashboard.tsx) ──
+@app.patch("/hospitals/{hospital_id}/logo", tags=["Hospital"])
+def upload_hospital_logo_json(
+    hospital_id: int,
+    body: dict = Body(...),
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Middle admin or super admin uploads logo as base64 JSON."""
+    _require_hospital_access(hospital_id, current_user)
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    if not hospital:
+        raise HTTPException(404, "Hospital not found")
+    logo_b64 = body.get("logo_base64", "")
+    if not logo_b64:
+        raise HTTPException(400, "logo_base64 is required")
+    hospital.logo_base64 = logo_b64
+    db.commit()
+    _audit(db, current_user.id, "upload_hospital_logo", "hospital", hospital_id, {"name": hospital.name})
+    return {"detail": "Logo updated"}
 
 
 # ── Super admin: remove hospital logo ──
