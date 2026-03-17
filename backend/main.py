@@ -110,6 +110,7 @@ def register_user(body: UserCreate, db: Session = Depends(get_db)):
         email=body.email,
         full_name=body.full_name,
         hospital=body.hospital,
+        hospital_id=body.hospital_id,
         license_number=body.license_number,
         years_experience=body.years_experience,
         phone_number=body.phone_number,
@@ -1227,6 +1228,14 @@ def hospital_stats(
         "total_radiologists": total_rads,
     }
     
+# Public: list approved hospitals for registration dropdown (no auth needed)
+@app.get("/hospitals/public", tags=["Hospital"])
+def list_public_hospitals(db: Session = Depends(get_db)):
+    """Returns id, name and district of all active hospitals — used by the registration form."""
+    hospitals = db.query(Hospital).filter(Hospital.is_active == True).order_by(Hospital.name).all()
+    return [{"id": h.id, "name": h.name, "district": h.district, "province": h.province} for h in hospitals]
+
+
 # Public: get hospital branding by id (for radiologist dashboard)
 @app.get("/hospitals/{hospital_id}/branding", tags=["Hospital"])
 def get_hospital_branding(

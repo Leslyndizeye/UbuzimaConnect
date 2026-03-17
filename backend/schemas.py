@@ -14,6 +14,7 @@ class UserCreate(BaseModel):
     email:            EmailStr
     full_name:        str
     hospital:         Optional[str] = None
+    hospital_id:      Optional[int] = None
     license_number:   Optional[str] = None
     years_experience: Optional[int] = None
     phone_number:     Optional[str] = None
