@@ -8,7 +8,7 @@ import { useHospitalBranding } from '../hooks/useHospitalBranding';
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 // Admin status is determined by is_admin field from database only
 
-//  Types Email
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface BUser {
   id: number; email: string; full_name: string; hospital?: string;
   hospital_id?: number;
@@ -34,7 +34,7 @@ interface Prediction {
 type Tab = 'diagnose' | 'history' | 'profile';
 type AppState = 'loading' | 'unauthenticated' | 'pending' | 'rejected' | 'approved' | 'admin';
 
-//  Helpers 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 async function getToken(): Promise<string> {
   const { data } = await supabase.auth.getSession();
   const session = data.session;
@@ -64,8 +64,6 @@ async function apiFetch(path: string, opts: RequestInit = {}) {
 }
 
 const validId = (v: string) => /^\d{16}$/.test(v.replace(/\s/g, ''));
-// Rwanda NID masking: show first 4 and last 4, mask middle 8 → 1199••••••••5678
-const maskNid = (nid?: string | null) => { if (!nid || nid.length < 8) return nid || '—'; return nid.slice(0, 4) + '••••••••' + nid.slice(-4); };
 // DB stores "TB" but we show "Tuberculosis" everywhere in the UI
 const displayClass = (c: string) => c === 'TB' ? 'Tuberculosis' : c;
 const toDbClass = (c: string) => c === 'Tuberculosis' ? 'TB' : c;
@@ -94,7 +92,7 @@ function EyeBtn({ show, onToggle }: { show: boolean; onToggle: () => void }) {
 }
 
 
-//  Hospital Logo Upload (for middle admins only) ─
+// ─── Hospital Logo Upload (for middle admins only) ────────────────────────────
 function HospitalLogoUpload({ hospitalId, currentLogo, onUploaded }: {
   hospitalId: number;
   currentLogo: string | null;
@@ -194,7 +192,7 @@ function HospitalLogoUpload({ hospitalId, currentLogo, onUploaded }: {
   );
 }
 
-//  Radiologist Dashboard ─
+// ─── Radiologist Dashboard ────────────────────────────────────────────────────
 function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>('diagnose');
   const [user, setUser] = useState(init);
@@ -269,7 +267,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ── Diagnose ─
+  // ── Diagnose ────────────────────────────────────────────────────────────────
   const onNid = (v: string) => {
     const d = v.replace(/\D/g, '').slice(0, 16);
     setPNid(d);
@@ -429,7 +427,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  // ── Patient edit 
+  // ── Patient edit ────────────────────────────────────────────────────────────
   const saveEdit = async () => {
     if (!editPat?.name?.trim()) { setEditErr('Name is required'); return; }
     if (editPat.patient_ref_id && !validId(editPat.patient_ref_id)) { setEditErr('National ID must be exactly 16 digits'); return; }
@@ -449,7 +447,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     finally { setEditSaving(false); }
   };
 
-  // ── Verify diagnosis ──
+  // ── Verify diagnosis ────────────────────────────────────────────────────────
   const saveVerify = async () => {
     if (!verifyDiag) return;
     setVerSaving(true);
@@ -463,7 +461,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     finally { setVerSaving(false); }
   };
 
-  // ── Profile ──
+  // ── Profile ─────────────────────────────────────────────────────────────────
   const saveProfile = async () => {
     if (!pFullName.trim()) { setProfMsg('Full name is required'); return; }
     setProfSaving(true); setProfMsg('');
@@ -805,7 +803,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                       <div className="p-3 rounded-xl bg-gray-50 text-xs space-y-1">
                         <div className="text-[8px] font-bold uppercase tracking-widest text-gray-400 mb-1">Patient</div>
                         <div className="flex justify-between"><span className="text-gray-400">Name</span><span className="font-semibold">{savedPat.name}</span></div>
-                        <div className="flex justify-between"><span className="text-gray-400">National ID</span><span className="font-mono">{maskNid(savedPat.patient_ref_id)}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-400">National ID</span><span className="font-mono">{savedPat.patient_ref_id}</span></div>
                         {savedPat.age && <div className="flex justify-between"><span className="text-gray-400">Age</span><span>{savedPat.age} yrs</span></div>}
                         {savedPat.sex && <div className="flex justify-between"><span className="text-gray-400">Sex</span><span>{savedPat.sex}</span></div>}
                         
@@ -934,7 +932,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                       </button>
                       <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 items-center min-w-0">
                         <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Name</div><div className="text-sm font-semibold truncate">{p.name}</div></div>
-                        <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">National ID</div><div className="text-xs font-mono text-gray-500">{maskNid(p.patient_ref_id)}</div></div>
+                        <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">National ID</div><div className="text-xs font-mono text-gray-500">{p.patient_ref_id || '—'}</div></div>
                         <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Age</div><div className="text-xs text-gray-500">{p.age ? `${p.age} yrs` : '—'}</div></div>
                         <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Sex</div><div className="text-xs text-gray-500">{p.sex || '—'}</div></div>
                         <div>
@@ -1157,7 +1155,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   );
 }
 
-//  Shell screens 
+// ─── Shell screens ────────────────────────────────────────────────────────────
 const Loading = () => (
   <div className="min-h-screen bg-gray-50 flex items-center justify-center">
     <div className="text-center space-y-4">
@@ -1201,7 +1199,7 @@ const RejectedScreen = ({ onSignOut }: { onSignOut: () => void }) => (
   </div>
 );
 
-//  Main App Shell ──
+// ─── Main App Shell ───────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [appState, setAppState] = useState<AppState>('loading');
   const [bUser, setBUser] = useState<BUser | null>(null);
