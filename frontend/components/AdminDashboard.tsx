@@ -242,6 +242,7 @@ export default function AdminDashboard() {
   const [logoMsg,setLogoMsg]=useState(""); const [logoOk,setLogoOk]=useState(true);
   const [logoPreview,setLogoPreview]=useState<string|null>(null);
   const logoRef=useRef<HTMLInputElement>(null);
+  const [myHospital,setMyHospital]=useState<any>(null);
   // ── Middle admin: own password change ──
   const [myPwdModal,setMyPwdModal]=useState(false);
   const [myPwd,setMyPwd]=useState(""); const [myPwdLoading,setMyPwdLoading]=useState(false);
@@ -293,6 +294,8 @@ export default function AdminDashboard() {
         if(h.status==="fulfilled")setHealth(h.value);
         if(a.status==="fulfilled"){setAuditLogs(a.value);setPwLogs(a.value.filter((l:AuditLog)=>l.action.includes("password")||l.action.includes("Password")));}
         adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
+        // Load hospital branding (logo persists across reloads)
+        adminFetch(`/hospitals/${hid}`).then(hosp=>{setMyHospital(hosp);if(hosp.logo_base64)setLogoPreview(hosp.logo_base64);}).catch(()=>{});
       } else {
         const [u,d,p,s,m,h,a,j]=await Promise.allSettled([adminFetch("/users"),adminFetch("/diagnoses"),adminFetch("/patients"),adminFetch("/stats"),adminFetch("/model/info"),adminFetch("/health"),adminFetch("/audit?limit=100"),adminFetch("/retrain/jobs")]);
         if(u.status==="fulfilled")setApiUsers(u.value); if(d.status==="fulfilled")setDiagnoses(d.value); if(p.status==="fulfilled")setPatients(p.value);
@@ -716,7 +719,7 @@ export default function AdminDashboard() {
             {/* ══ USERS ══ */}
             {tab==="users"&&(
               <div className="space-y-5 max-w-[1200px] anim-in">
-                <PageHead title="Radiologists" sub={`${apiUsers.length} platform users`} right={
+                <PageHead title="Radiologists" sub={isMiddleAdmin?`${visibleUsers.length} hospital radiologists`:`${visibleUsers.length} platform users`} right={
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search team…" className={INP+" w-[220px]"}/>
                 }/>
                 <Tbl heads={["Name","Email","Hospital","License","Role","Status","Joined","Actions"]} empty={apiUsers.length===0?"No users yet":undefined}>
@@ -741,7 +744,7 @@ export default function AdminDashboard() {
             {/* ══ PREDICTIONS ══ */}
             {tab==="predictions"&&(
               <div className="space-y-5 max-w-[1200px] anim-in">
-                <PageHead title="AI Diagnoses" sub={`${diagnoses.length} total scans`} right={
+                <PageHead title="AI Diagnoses" sub={`${visibleDiagnoses.length} total scans`} right={
                   <div className="flex gap-2">{["All","Normal","Tuberculosis","Pneumonia","Unknown"].map(f=><button key={f} onClick={()=>setSearch(f==="All"?"":f)} className="btn-s text-[11px] font-bold px-3 py-2 rounded-full border transition-all" style={(f==="All"&&!search)||search===f?{backgroundColor:DARK_GREEN,color:"#fff",borderColor:DARK_GREEN}:{backgroundColor:"white",color:"#94a3b8",borderColor:"#E2E8F0"}}>{f}</button>)}</div>
                 }/>
                 <div className="grid grid-cols-4 gap-4">
@@ -754,8 +757,8 @@ export default function AdminDashboard() {
                     </div>
                   );})}
                 </div>
-                <Tbl heads={["Patient","National ID","Result","Confidence","TB%","Pneumo%","Normal%","Verified","Date","Action"]} empty={diagnoses.length===0?"No predictions yet":undefined}>
-                  {diagnoses.filter(d=>!search||d.ai_classification===search).map(d=>{const pt=patients.find(p=>p.id===d.patient_id);return(
+                <Tbl heads={["Patient","National ID","Result","Confidence","TB%","Pneumo%","Normal%","Verified","Date","Action"]} empty={visibleDiagnoses.length===0?"No predictions yet":undefined}>
+                  {visibleDiagnoses.filter(d=>!search||d.ai_classification===search).map(d=>{const pt=visiblePatients.find(p=>p.id===d.patient_id);return(
                     <TR key={d.id}>
                       <TD><span className="font-bold text-slate-800">{pt?.name??"Unknown"}</span></TD>
                       <TD mono>{pt?.patient_ref_id??"—"}</TD>
@@ -776,12 +779,12 @@ export default function AdminDashboard() {
             {/* ══ PATIENTS ══ */}
             {tab==="patients"&&(
               <div className="space-y-4 max-w-[1200px] anim-in">
-                <PageHead title="Patients" sub={`${patients.length} registered`} right={
+                <PageHead title="Patients" sub={`${visiblePatients.length} registered`} right={
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name or ID…" className={INP+" w-[240px]"}/>
                 }/>
                 <div className="space-y-2">
-                  {patients.filter(p=>!search||p.name.toLowerCase().includes(search.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(search))).map(p=>{
-                    const ptD=diagnoses.filter(d=>d.patient_id===p.id); const isExp=expandedPt===p.id;
+                  {visiblePatients.filter(p=>!search||p.name.toLowerCase().includes(search.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(search))).map(p=>{
+                    const ptD=visibleDiagnoses.filter(d=>d.patient_id===p.id); const isExp=expandedPt===p.id;
                     return (
                       <div key={p.id} className="bg-white rounded-[24px] border overflow-hidden transition-all" style={{borderColor:isExp?"#86EFAC":"#F1F5F9",boxShadow:"0 2px 12px rgba(0,0,0,0.04)"}}>
                         <div className="flex items-center gap-4 px-6 py-4">
@@ -1164,7 +1167,7 @@ export default function AdminDashboard() {
             {/* ══ PROFILE (middle admin only) ══ */}
             {tab==="profile"&&isMiddleAdmin&&(
               <div className="space-y-6 max-w-[800px] anim-in">
-                <PageHead title="My Hospital" sub="Manage your hospital's branding and account"/>
+                <PageHead title={myHospital?.name||"My Hospital"} sub="Manage your hospital's branding and account"/>
 
                 {/* Logo upload */}
                 <Panel className="p-8 space-y-5">

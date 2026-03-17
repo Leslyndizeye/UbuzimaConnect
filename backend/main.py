@@ -146,6 +146,9 @@ def list_users(
     db: Session = Depends(get_db),
 ):
     q = db.query(User).filter(User.is_admin == False)
+    # Middle admin: only their hospital's radiologists
+    if admin.hospital_id and (admin.email or "").lower() not in {"leslyndiz6@gmail.com","byakwelianiela@gmail.com"}:
+        q = q.filter(User.hospital_id == admin.hospital_id)
     if status:
         q = q.filter(User.status == status)
     return q.order_by(User.created_at.desc()).all()
@@ -195,6 +198,10 @@ def list_patients(
     db: Session = Depends(get_db),
 ):
     if current_user.is_admin:
+        # Middle admin: only patients belonging to their hospital's radiologists
+        if current_user.hospital_id and (current_user.email or "").lower() not in {"leslyndiz6@gmail.com","byakwelianiela@gmail.com"}:
+            rad_ids = [u.id for u in db.query(User).filter(User.hospital_id == current_user.hospital_id, User.is_admin == False).all()]
+            return db.query(Patient).filter(Patient.radiologist_id.in_(rad_ids)).order_by(Patient.created_at.desc()).all()
         return db.query(Patient).order_by(Patient.created_at.desc()).all()
     return (
         db.query(Patient)
@@ -325,6 +332,10 @@ def list_diagnoses(
     q = db.query(Diagnosis)
     if not current_user.is_admin:
         q = q.filter(Diagnosis.radiologist_id == current_user.id)
+    elif current_user.hospital_id and (current_user.email or "").lower() not in {"leslyndiz6@gmail.com","byakwelianiela@gmail.com"}:
+        # Middle admin: only their hospital's radiologists' diagnoses
+        rad_ids = [u.id for u in db.query(User).filter(User.hospital_id == current_user.hospital_id, User.is_admin == False).all()]
+        q = q.filter(Diagnosis.radiologist_id.in_(rad_ids))
     if patient_id:
         q = q.filter(Diagnosis.patient_id == patient_id)
     return q.order_by(Diagnosis.created_at.desc()).all()
