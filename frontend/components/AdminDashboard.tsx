@@ -176,7 +176,7 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
   const [pw,setPw]=useState(""); const [show,setShow]=useState(false);
   const [loading,setLoading]=useState(false); const [gen,setGen]=useState("");
   const [msg,setMsg]=useState(""); const [ok,setOk]=useState(true); const [copied,setCopied]=useState(false);
-  const hasAuth=user.firebase_uid&&!user.firebase_uid.startsWith("pending_");
+  const hasAuth=user.status==="approved";
   const generate=async()=>{setLoading(true);setMsg("");setGen("");try{const r=await adminFetch(`/users/${user.id}/generate-password`,{method:"POST"});setGen(r.password);setMsg(`Set for ${r.email}`);setOk(true);}catch(e:any){setMsg(e.message);setOk(false);}finally{setLoading(false);}};
   const setManual=async()=>{if(pw.length<6){setMsg("Min 6 chars");setOk(false);return;}setLoading(true);setMsg("");try{await adminFetch(`/users/${user.id}/set-password`,{method:"POST",body:JSON.stringify({password:pw})});setMsg("Updated!");setOk(true);setPw("");}catch(e:any){setMsg(e.message);setOk(false);}finally{setLoading(false);}};
   return (
@@ -726,7 +726,7 @@ export default function AdminDashboard() {
                   {apiUsers.filter(u=>!search||u.full_name.toLowerCase().includes(search.toLowerCase())||u.email.toLowerCase().includes(search.toLowerCase())).map(u=>(
                     <TR key={u.id}>
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
-                      <TD mono>{u.email}</TD><TD>{u.hospital||"—"}</TD><TD mono>{u.license_number||"—"}</TD>
+                      <TD mono>{u.email}</TD><TD>{u.hospital||(isMiddleAdmin?myHospital?.name:null)||"—"}</TD><TD mono>{u.license_number||"—"}</TD>
                       <TD><span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">{u.role}</span></TD>
                       <TD><StatusBadge status={u.status}/></TD>
                       <TD mono>{fmt(u.created_at)}</TD>
