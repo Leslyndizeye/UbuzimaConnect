@@ -128,6 +128,16 @@ export default function HospitalAdminDashboard() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminCreated, setAdminCreated] = useState<{ email: string; hospital_name: string } | null>(null);
 
+  // Hospital admin info per hospital
+  const [hospitalAdmins, setHospitalAdmins] = useState<Record<number, { id: number; email: string; full_name: string; last_login: string | null } | null>>({});
+
+  // Change admin password modal
+  const [changePwdHospId, setChangePwdHospId] = useState<number | null>(null);
+  const [newPwd, setNewPwd]     = useState('');
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdErr, setPwdErr]     = useState('');
+  const [pwdSuccess, setPwdSuccess] = useState('');
+
   const hdr = useCallback((): Record<string, string> => ({
     Authorization: `Bearer ${token}`,
   }), [token]);
@@ -171,33 +181,34 @@ export default function HospitalAdminDashboard() {
   const fetchHospitalStats = async (hospitalId: number) => {
     setLoadingStats(hospitalId);
     try {
-      const [statsRes, radsRes] = await Promise.all([
-        fetch(`${API_BASE}/hospitals/${hospitalId}/stats`, { headers: hdr() }),
-        fetch(`${API_BASE}/hospitals/${hospitalId}/radiologists`, { headers: hdr() }),
+      const [statsRes, radsRes, adminRes] = await Promise.all([
+        fetch(`${API_BASE}/hospitals/${hospitalId}/stats`,       { headers: hdr() }),
+        fetch(`${API_BASE}/hospitals/${hospitalId}/radiologists`,{ headers: hdr() }),
+        fetch(`${API_BASE}/hospitals/${hospitalId}/admin`,       { headers: hdr() }),
       ]);
-      if (statsRes.ok) {
-        const s = await statsRes.json();
-        setHospitalStats(prev => ({ ...prev, [hospitalId]: s }));
-      }
-      if (radsRes.ok) {
-        const r = await radsRes.json();
-        setHospitalRads(prev => ({ ...prev, [hospitalId]: r }));
-      }
+      if (statsRes.ok)  { const s = await statsRes.json(); setHospitalStats(prev => ({ ...prev, [hospitalId]: s })); }
+      if (radsRes.ok)   { const r = await radsRes.json(); setHospitalRads(prev  => ({ ...prev, [hospitalId]: r })); }
+      if (adminRes.ok)  { const a = await adminRes.json(); setHospitalAdmins(prev => ({ ...prev, [hospitalId]: a.admin })); }
     } catch (e: any) { setError(e.message); }
     finally { setLoadingStats(null); }
   };
 
+  // On mount: refresh Supabase session to get a fresh token (prevents 401 from stale token)
   useEffect(() => {
-    if (authed && token) fetchData(token);
-  }, [authed, token, fetchData]);
-
-  // Pre-load stats for all active hospitals
-  useEffect(() => {
-    if (!authed || !token || hospitals.length === 0) return;
-    hospitals.forEach(h => {
-      if (!hospitalStats[h.id]) fetchHospitalStats(h.id);
+    if (!authed) return;
+    supabase.auth.getSession().then(({ data }) => {
+      const t = data.session?.access_token;
+      if (t) {
+        localStorage.setItem('hosp_admin_token', t);
+        setToken(t);
+        fetchData(t);
+      } else {
+        localStorage.removeItem('hosp_admin_token');
+        setToken(''); setAuthed(false);
+      }
     });
-  }, [hospitals, authed, token]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const doLogin = async () => {
     setLoginErr(''); setLoginLoading(true);
@@ -266,8 +277,35 @@ export default function HospitalAdminDashboard() {
     finally { setAdminLoading(false); }
   };
 
+  const changeAdminPassword = async () => {
+    if (!changePwdHospId) return;
+    setPwdErr(''); setPwdLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/hospitals/${changePwdHospId}/admin-password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...hdr() },
+        body: JSON.stringify({ password: newPwd }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwdErr(data.detail || 'Failed to update password'); return; }
+      setPwdSuccess('Password updated successfully!');
+      setNewPwd('');
+      setTimeout(() => { setChangePwdHospId(null); setPwdSuccess(''); }, 2200);
+    } catch (e: any) { setPwdErr(e.message); }
+    finally { setPwdLoading(false); }
+  };
+
+  const removeLogo = async (h: Hospital) => {
+    if (!confirm(`Remove logo for "${h.name}"?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/hospitals/${h.id}/logo`, { method: 'DELETE', headers: hdr() });
+      if (!res.ok) { const e = await res.json(); setError(e.detail); return; }
+      setHospitals(prev => prev.map(x => x.id === h.id ? { ...x, logo_base64: null } : x));
+    } catch (e: any) { setError(e.message); }
+  };
+
   const deleteHospital = async (h: Hospital) => {
-    if (!confirm(`⚠️ Permanently delete "${h.name}" and unlink all radiologists?\n\nThis cannot be undone.`)) return;
+    if (!confirm(`⚠️ PERMANENTLY DELETE "${h.name}"?\n\nThis will delete:\n• The hospital admin account\n• All radiologists\n• All patients and diagnoses\n\nThis CANNOT be undone.`)) return;
     setActionLoading(true);
     try {
       const res = await fetch(`${API_BASE}/hospitals/${h.id}`, { method: 'DELETE', headers: hdr() });
@@ -737,19 +775,81 @@ export default function HospitalAdminDashboard() {
                             </p>
                           )}
 
+                          {/* Hospital Admin Status */}
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Hospital Admin Account</p>
+                            {hospitalAdmins[h.id] ? (
+                              <div className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 font-black text-sm shrink-0">
+                                    {hospitalAdmins[h.id]!.full_name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-slate-800">{hospitalAdmins[h.id]!.full_name}</p>
+                                    <p className="text-[10px] text-slate-400 font-mono">{hospitalAdmins[h.id]!.email}</p>
+                                    <p className="text-[9px] text-slate-400 mt-0.5">
+                                      {hospitalAdmins[h.id]!.last_login
+                                        ? `Last seen: ${fmtFull(hospitalAdmins[h.id]!.last_login!)}`
+                                        : 'Never logged in yet'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className={`text-[9px] font-bold px-2.5 py-1.5 rounded-full border ${
+                                    hospitalAdmins[h.id]!.last_login &&
+                                    (new Date().getTime() - new Date(hospitalAdmins[h.id]!.last_login!).getTime()) < 7 * 24 * 60 * 60 * 1000
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-slate-50 text-slate-400 border-slate-200'
+                                  }`}>
+                                    {hospitalAdmins[h.id]!.last_login &&
+                                     (new Date().getTime() - new Date(hospitalAdmins[h.id]!.last_login!).getTime()) < 7 * 24 * 60 * 60 * 1000
+                                      ? '● Active' : '○ Inactive'}
+                                  </span>
+                                  <button
+                                    onClick={() => { setChangePwdHospId(h.id); setNewPwd(''); setPwdErr(''); setPwdSuccess(''); }}
+                                    className="btn-s text-[10px] font-bold px-3 py-1.5 rounded-full text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200">
+                                    Change Password
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
+                                <span className="text-amber-500 text-base">⚠</span>
+                                <p className="text-xs font-bold text-amber-700">No admin account set for this hospital yet.</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Logo section */}
+                          {h.logo_base64 && (
+                            <div>
+                              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Hospital Logo</p>
+                              <div className="flex items-center gap-4 bg-white rounded-2xl border border-slate-100 p-4">
+                                <img src={h.logo_base64} alt="" className="w-16 h-16 rounded-xl object-contain border border-slate-100 p-1" />
+                                <div>
+                                  <p className="text-xs font-bold text-slate-700 mb-2">Logo set by hospital admin</p>
+                                  <button onClick={() => removeLogo(h)}
+                                    className="btn-s text-[10px] font-bold px-3 py-1.5 rounded-full text-orange-600 bg-orange-50 border border-orange-200 hover:bg-orange-100">
+                                    Remove Logo
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Admin actions */}
-                          <div className="flex gap-2 pt-2 border-t border-slate-100">
+                          <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
                             <button
                               onClick={() => { setCreateAdminHosp(h); setAdminCreated(null); setAdminErr(''); }}
                               className="btn-s flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white"
                               style={{ backgroundColor: DARK_GREEN }}>
-                              + Create Admin Account
+                              + {hospitalAdmins[h.id] ? 'Update Admin Account' : 'Create Admin Account'}
                             </button>
                             <button
                               onClick={() => deleteHospital(h)}
                               disabled={actionLoading}
                               className="btn-s flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-40">
-                              Delete Organization
+                              Delete Hospital + All Data
                             </button>
                           </div>
                         </div>
@@ -762,6 +862,41 @@ export default function HospitalAdminDashboard() {
 
           </main>
         </div>
+
+        {/* ── Change Admin Password modal ── */}
+        {changePwdHospId !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ backgroundColor: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)' }}
+            onClick={e => e.target === e.currentTarget && setChangePwdHospId(null)}>
+            <div className="w-full max-w-sm bg-white rounded-[28px] shadow-2xl p-8 space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Change Admin Password</h2>
+                  {hospitalAdmins[changePwdHospId] && (
+                    <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{hospitalAdmins[changePwdHospId]!.email}</p>
+                  )}
+                </div>
+                <button onClick={() => setChangePwdHospId(null)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 font-bold">✕</button>
+              </div>
+              {pwdErr     && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 font-medium">{pwdErr}</div>}
+              {pwdSuccess && <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs text-emerald-700 font-medium">{pwdSuccess}</div>}
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">New Password (min 8 characters)</label>
+                <input value={newPwd} onChange={e => setNewPwd(e.target.value)}
+                  type="password" placeholder="••••••••"
+                  onKeyDown={e => e.key === 'Enter' && newPwd.length >= 8 && changeAdminPassword()}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10" />
+              </div>
+              <button onClick={changeAdminPassword} disabled={pwdLoading || newPwd.length < 8}
+                className="btn-s w-full py-3 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
+                style={{ backgroundColor: DARK_GREEN }}>
+                {pwdLoading
+                  ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Updating…</>
+                  : 'Update Password'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Create Admin modal ── */}
         {createAdminHosp && (

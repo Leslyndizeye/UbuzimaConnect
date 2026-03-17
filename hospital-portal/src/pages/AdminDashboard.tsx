@@ -1,6 +1,6 @@
 // AdminDashboard.tsx — Hospital middle admin dashboard
 // Accessible after super admin creates credentials via Hospitaladmin.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseConfig';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
@@ -72,6 +72,13 @@ export default function AdminDashboard() {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
 
+  // Password change
+  const [pwdModal, setPwdModal] = useState(false);
+  const [newPwd, setNewPwd]     = useState('');
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdErr, setPwdErr]     = useState('');
+  const [pwdSuccess, setPwdSuccess] = useState('');
+
   // Radiologist management
   const [radLoading, setRadLoading] = useState<number | null>(null);
 
@@ -129,6 +136,23 @@ export default function AdminDashboard() {
     await supabase.auth.signOut();
   };
 
+  const changePassword = async () => {
+    setPwdErr(''); setPwdLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/me/password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ password: newPwd }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwdErr(data.detail || 'Failed'); return; }
+      setPwdSuccess('Password updated! Please sign in again.');
+      setNewPwd('');
+      setTimeout(() => { setPwdModal(false); setPwdSuccess(''); signOut(); }, 2500);
+    } catch (e: any) { setPwdErr(e.message); }
+    finally { setPwdLoading(false); }
+  };
+
   const updateRadStatus = async (radId: number, status: string) => {
     setRadLoading(radId);
     try {
@@ -142,19 +166,25 @@ export default function AdminDashboard() {
     finally { setRadLoading(null); }
   };
 
-  // Resume session on mount
+  // Resume session on mount — refresh Supabase token first to prevent 401
   useEffect(() => {
-    if (!authed || !token) return;
+    if (!authed) return;
     (async () => {
       try {
-        const meRes = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
+        const { data } = await supabase.auth.getSession();
+        const t = data.session?.access_token;
+        if (!t) { signOut(); return; }
+        localStorage.setItem('hosp_mid_token', t);
+        setToken(t);
+        const meRes = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${t}` } });
         if (!meRes.ok) { signOut(); return; }
         const meData: MeUser = await meRes.json();
         if (!meData.hospital_id || !meData.is_admin) { signOut(); return; }
         setMe(meData);
-        loadData(token, meData.hospital_id);
+        loadData(t, meData.hospital_id);
       } catch { signOut(); }
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Login screen ──
@@ -243,7 +273,11 @@ export default function AdminDashboard() {
             </button>
           ))}
 
-          <div className="mt-auto">
+          <div className="mt-auto space-y-1">
+            <button onClick={() => { setPwdModal(true); setPwdErr(''); setPwdSuccess(''); setNewPwd(''); }}
+              className="w-full flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors">
+              <span>🔑</span> Change Password
+            </button>
             <button onClick={signOut} className="w-full flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-semibold text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors">
               <span>⎋</span> Sign Out
             </button>
@@ -407,6 +441,40 @@ export default function AdminDashboard() {
 
         </main>
       </div>
+
+      {/* ── Change Password modal ── */}
+      {pwdModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)' }}
+          onClick={e => e.target === e.currentTarget && setPwdModal(false)}>
+          <div className="w-full max-w-sm bg-white rounded-[28px] shadow-2xl p-8 space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Change Password</h2>
+                <p className="text-[10px] text-slate-400 mt-0.5">{me?.email}</p>
+              </div>
+              <button onClick={() => setPwdModal(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 font-bold">✕</button>
+            </div>
+            {pwdErr     && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 font-medium">{pwdErr}</div>}
+            {pwdSuccess && <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs text-emerald-700 font-medium">{pwdSuccess}</div>}
+            <div>
+              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">New Password (min 8 characters)</label>
+              <input value={newPwd} onChange={e => setNewPwd(e.target.value)}
+                type="password" placeholder="••••••••"
+                onKeyDown={e => e.key === 'Enter' && newPwd.length >= 8 && changePassword()}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10" />
+            </div>
+            <p className="text-[10px] text-slate-400">You will be signed out after changing your password.</p>
+            <button onClick={changePassword} disabled={pwdLoading || newPwd.length < 8}
+              className="btn w-full py-3.5 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
+              style={{ backgroundColor: DARK_GREEN }}>
+              {pwdLoading
+                ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Updating…</>
+                : 'Update Password'}
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
