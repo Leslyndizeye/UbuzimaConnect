@@ -178,7 +178,7 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
   const [msg,setMsg]=useState(""); const [ok,setOk]=useState(true); const [copied,setCopied]=useState(false);
   const hasAuth=user.status==="approved";
   const generate=async()=>{setLoading(true);setMsg("");setGen("");try{const r=await adminFetch(`/users/${user.id}/generate-password`,{method:"POST"});setGen(r.password);setMsg(`Set for ${r.email}`);setOk(true);}catch(e:any){setMsg(e.message);setOk(false);}finally{setLoading(false);}};
-  const setManual=async()=>{if(pw.length<6){setMsg("Min 6 chars");setOk(false);return;}setLoading(true);setMsg("");try{await adminFetch(`/users/${user.id}/set-password`,{method:"POST",body:JSON.stringify({password:pw})});setMsg("Updated!");setOk(true);setPw("");}catch(e:any){setMsg(e.message);setOk(false);}finally{setLoading(false);}};
+  const setManual=async()=>{if(pw.length<8){setMsg("Min 8 chars");setOk(false);return;}setLoading(true);setMsg("");try{await adminFetch(`/users/${user.id}/set-password`,{method:"POST",body:JSON.stringify({password:pw})});setMsg("Updated!");setOk(true);setPw("");}catch(e:any){setMsg(e.message);setOk(false);}finally{setLoading(false);}};
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{backgroundColor:"rgba(0,0,0,.45)",backdropFilter:"blur(6px)"}}>
       <div className="anim-pop w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden">
@@ -200,7 +200,7 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
           </div>
           <div className="p-5 rounded-3xl space-y-3" style={{background:"#EFF6FF",border:"1px solid #BFDBFE"}}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Set Custom Password</p>
-            <div className="relative"><input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 characters" className={INP_RECT+" pr-16"}/><button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold px-2 py-1 rounded-xl bg-slate-200 text-slate-500">{show?"Hide":"Show"}</button></div>
+            <div className="relative"><input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 8 characters" className={INP_RECT+" pr-16"}/><button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold px-2 py-1 rounded-xl bg-slate-200 text-slate-500">{show?"Hide":"Show"}</button></div>
             <button onClick={setManual} disabled={loading||!hasAuth||!pw} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:"#2563EB"}}>Set Password</button>
           </div>
           {msg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${ok?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{msg}</div>}
@@ -235,8 +235,7 @@ export default function AdminDashboard() {
   // ── Current user identity ──
   const [me,setMe]=useState<ApiUser|null>(null);
   const meRef = useRef<ApiUser|null>(null); // avoids stale closure in loadAll
-  const PLATFORM_ADMIN_EMAILS = ["leslyndiz6@gmail.com","byakwelianiela@gmail.com"];
-  const isMiddleAdmin = !!(me?.is_admin && me?.hospital_id && !PLATFORM_ADMIN_EMAILS.includes((me?.email||"").toLowerCase()));
+  const isHospitalAdmin = !!(me?.is_admin && me?.hospital_id);
   // ── Middle admin: logo upload ──
   const [logoUploading,setLogoUploading]=useState(false);
   const [logoMsg,setLogoMsg]=useState(""); const [logoOk,setLogoOk]=useState(true);
@@ -277,34 +276,27 @@ export default function AdminDashboard() {
   const loadAll=useCallback(async(currentMe?:ApiUser|null)=>{
     setError("");
     const resolvedMe = currentMe !== undefined ? currentMe : meRef.current;
-    const isMid = !!(resolvedMe?.hospital_id && resolvedMe?.is_admin && !PLATFORM_ADMIN_EMAILS.includes((resolvedMe?.email||"").toLowerCase()));
+    if(!resolvedMe?.is_admin || !resolvedMe?.hospital_id){
+      setApiUsers([]); setDiagnoses([]); setPatients([]); setAuditLogs([]); setPwLogs([]); setStagedC({});
+      setMyHospital(null); setLogoPreview(null);
+      return;
+    }
     try{
-      if(isMid && resolvedMe?.hospital_id){
-        const hid = resolvedMe.hospital_id;
-        const [u,d,p,h,a] = await Promise.allSettled([
-          adminFetch(`/hospitals/${hid}/radiologists`),
-          adminFetch("/diagnoses"),
-          adminFetch("/patients"),
-          adminFetch("/health"),
-          adminFetch("/audit?limit=100"),
-        ]);
-        if(u.status==="fulfilled")setApiUsers(u.value);
-        if(d.status==="fulfilled")setDiagnoses(d.value);
-        if(p.status==="fulfilled")setPatients(p.value);
-        if(h.status==="fulfilled")setHealth(h.value);
-        if(a.status==="fulfilled"){setAuditLogs(a.value);setPwLogs(a.value.filter((l:AuditLog)=>l.action.includes("password")||l.action.includes("Password")));}
-        adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
-        // Load hospital branding (logo persists across reloads)
-        adminFetch(`/hospitals/${hid}`).then(hosp=>{setMyHospital(hosp);if(hosp.logo_base64)setLogoPreview(hosp.logo_base64);}).catch(()=>{});
-      } else {
-        const [u,d,p,s,m,h,a,j]=await Promise.allSettled([adminFetch("/users"),adminFetch("/diagnoses"),adminFetch("/patients"),adminFetch("/stats"),adminFetch("/model/info"),adminFetch("/health"),adminFetch("/audit?limit=100"),adminFetch("/retrain/jobs")]);
-        if(u.status==="fulfilled")setApiUsers(u.value); if(d.status==="fulfilled")setDiagnoses(d.value); if(p.status==="fulfilled")setPatients(p.value);
-        if(s.status==="fulfilled")setStats(s.value); if(m.status==="fulfilled")setModelInfo(m.value); if(h.status==="fulfilled")setHealth(h.value);
-        if(a.status==="fulfilled"){setAuditLogs(a.value);setPwLogs(a.value.filter((l:AuditLog)=>l.action.includes("password")||l.action.includes("Password")));}
-        if(j.status==="fulfilled")setRetrainJobs(j.value);
-        adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
-        adminFetch("/hospitals").then(r=>setHospitals(r.map((h:any)=>({id:h.id,name:h.name})))).catch(()=>{});
-      }
+      const hid = resolvedMe.hospital_id;
+      const [u,d,p,h,a] = await Promise.allSettled([
+        adminFetch(`/hospitals/${hid}/radiologists`),
+        adminFetch("/diagnoses"),
+        adminFetch("/patients"),
+        adminFetch("/health"),
+        adminFetch("/audit?limit=100"),
+      ]);
+      if(u.status==="fulfilled")setApiUsers(u.value);
+      if(d.status==="fulfilled")setDiagnoses(d.value);
+      if(p.status==="fulfilled")setPatients(p.value);
+      if(h.status==="fulfilled")setHealth(h.value);
+      if(a.status==="fulfilled"){setAuditLogs(a.value);setPwLogs(a.value.filter((l:AuditLog)=>l.action.includes("password")||l.action.includes("Password")));}
+      adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
+      adminFetch(`/hospitals/${hid}`).then(hosp=>{setMyHospital(hosp);if(hosp.logo_base64)setLogoPreview(hosp.logo_base64);}).catch(()=>{});
     }catch(e:any){setError(e.message);}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
@@ -314,11 +306,12 @@ export default function AdminDashboard() {
     (async()=>{
       await supabase.auth.getSession();
       try{
-        const myData:ApiUser = await adminFetch("/me");
+        const myData:ApiUser = await adminFetch("/auth/me");
         meRef.current = myData;
         setMe(myData);
-        loadAll(myData);
-      }catch{loadAll(null);}
+        if(myData.is_admin && myData.hospital_id) loadAll(myData);
+        else setError("This dashboard is for hospital admins only. Use the hospital portal for super admin work.");
+      }catch(e:any){setError(e.message||"Failed to load admin profile.");}
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
@@ -330,6 +323,7 @@ export default function AdminDashboard() {
 
   const approveUser=async(id:number)=>{await adminFetch(`/users/${id}/status`,{method:"PATCH",body:JSON.stringify({status:"approved"})});loadAll();};
   const rejectUser=async(id:number)=>{const r=prompt("Reason:")??"";await adminFetch(`/users/${id}/status`,{method:"PATCH",body:JSON.stringify({status:"rejected",rejection_reason:r})});loadAll();};
+  const revokeUser=async(id:number,name:string)=>{if(!confirm(`Revoke ${name}?`))return;try{await adminFetch(`/users/${id}/status`,{method:"PATCH",body:JSON.stringify({status:"revoked"})});loadAll();}catch(e:any){setError(e.message);}};
   const deleteUser=async(id:number,name:string)=>{if(!confirm(`Delete ${name}?`))return;try{await adminFetch(`/users/${id}`,{method:"DELETE"});loadAll();}catch(e:any){setError(e.message);}};
   const assignHospital=async()=>{
     if(!assignUser||!assignHospId){setAssignMsg("Select a hospital");return;}
@@ -363,7 +357,7 @@ export default function AdminDashboard() {
 
   // ── Middle admin: change own password ──
   const changeMyPassword=async()=>{
-    if(myPwd.length<6){setMyPwdMsg("Min 6 characters");setMyPwdOk(false);return;}
+    if(myPwd.length<8){setMyPwdMsg("Min 8 characters");setMyPwdOk(false);return;}
     setMyPwdLoading(true);setMyPwdMsg("");
     try{
       await adminFetch("/me/password",{method:"PATCH",body:JSON.stringify({password:myPwd})});
@@ -448,10 +442,10 @@ export default function AdminDashboard() {
 
   // ── Filter data to hospital scope for middle admin ──
   const visibleUsers = apiUsers; // middle admin: already fetched from /hospitals/{id}/radiologists
-  const visiblePatients = isMiddleAdmin
+  const visiblePatients = isHospitalAdmin
     ? patients.filter(p=>apiUsers.some(u=>u.id===p.radiologist_id))
     : patients;
-  const visibleDiagnoses = isMiddleAdmin
+  const visibleDiagnoses = isHospitalAdmin
     ? diagnoses.filter(d=>apiUsers.some(u=>u.id===d.radiologist_id))
     : diagnoses;
 
@@ -463,9 +457,7 @@ export default function AdminDashboard() {
   const readyClasses  = stagedClasses.filter(k=>stagedC[k]>=RT_MIN);
   const canTrigger    = readyClasses.length>=1;
 
-  // Middle admin: Overview, Radiologists, Diagnoses, Patients, Retrain AI, Audit Log, My Hospital (Profile)
-  // Platform admin: all 9 tabs
-  const navItems:[Tab,string,number?][]= isMiddleAdmin ? [
+  const navItems:[Tab,string,number?][]= [
     ["overview","Dashboard"],
     ["users","Radiologists",pending||undefined],
     ["predictions","Diagnoses",visibleDiagnoses.length||undefined],
@@ -473,12 +465,27 @@ export default function AdminDashboard() {
     ["retrain","Retrain AI"],
     ["audit","Audit Log"],
     ["profile","My Hospital"],
-  ] : [
-    ["overview","Dashboard"],["users","Radiologists",pending||undefined],
-    ["predictions","Diagnoses",diagnoses.length||undefined],["patients","Patients"],
-    ["diagnose","Run Scan"],["retrain","Retrain AI"],["model","Model Data"],
-    ["passwords","Passwords"],["audit","Audit Log"],
   ];
+
+  if(me && !isHospitalAdmin){
+    return (
+      <>
+        <style>{CSS}</style>
+        <div className="min-h-screen flex items-center justify-center p-6" style={{backgroundColor:BG_APP}}>
+          <Panel className="w-full max-w-xl p-10 text-center space-y-4">
+            <div className="text-5xl">🏥</div>
+            <h1 className="text-2xl font-bold text-slate-900">Hospital Admin Dashboard Only</h1>
+            <p className="text-sm text-slate-500">This main platform admin page is reserved for hospital middle admins with a linked hospital account.</p>
+            <p className="text-sm text-slate-500">Super admin work belongs in the hospital portal.</p>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button onClick={()=>window.location.href="/"} className="btn-s px-5 py-3 rounded-full bg-slate-100 text-slate-700 font-bold">Back Home</button>
+              <button onClick={()=>supabase.auth.signOut()} className="btn-s px-5 py-3 rounded-full text-white font-bold" style={{backgroundColor:DARK_GREEN}}>Sign Out</button>
+            </div>
+          </Panel>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -594,7 +601,7 @@ export default function AdminDashboard() {
               </div>}
               <div className="flex items-center gap-3 bg-white rounded-full px-2 py-1.5 pr-5 border border-slate-100 shadow-sm">
                 <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{me?.full_name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"AD"}</div>
-                <div><p className="text-[12px] font-bold text-slate-800 leading-tight">{isMiddleAdmin?"Hospital Admin":"Platform Admin"}</p><p className="text-[10px] text-slate-400">{me?.email||"—"}</p></div>
+                <div><p className="text-[12px] font-bold text-slate-800 leading-tight">Hospital Admin</p><p className="text-[10px] text-slate-400">{me?.email||"—"}</p></div>
               </div>
             </div>
           </header>
@@ -607,7 +614,6 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div><h1 className="text-3xl font-bold text-slate-900">Dashboard</h1><p className="text-slate-500 mt-1 text-sm">Ubuzima Connect — AI-powered chest X-ray diagnostics.</p></div>
                   <div className="flex gap-3">
-                    <button onClick={()=>setTab("diagnose")} className="btn-s flex items-center gap-2 px-5 py-2.5 rounded-full text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>＋ Run Scan</button>
                     <button onClick={loadAll} className="btn-s px-5 py-2.5 rounded-full text-slate-700 text-sm font-bold bg-white border border-slate-200">Refresh</button>
                   </div>
                 </div>
@@ -639,28 +645,16 @@ export default function AdminDashboard() {
                       ))}
                     </div>
                   </Panel>
-                  {isMiddleAdmin ? (
-                    <Panel className="col-span-4 p-7 flex flex-col justify-between anim-in">
-                      <div>
-                        <h3 className="text-base font-bold text-slate-800 mb-3">Hospital Overview</h3>
-                        <p className="text-[13px] text-slate-500 leading-relaxed">Hospital ID: <strong>#{me?.hospital_id}</strong></p>
-                        <p className="text-[13px] text-slate-500 mt-2">Approved radiologists: <strong>{visibleUsers.filter(u=>u.status==="approved").length}</strong></p>
-                        <p className="text-[13px] text-slate-500 mt-1">Pending approval: <strong>{pending}</strong></p>
-                        <p className="text-[13px] text-slate-500 mt-1">Total diagnoses: <strong>{visibleDiagnoses.length}</strong></p>
-                      </div>
-                      <button onClick={()=>setTab("profile")} className="btn-s w-full py-3.5 rounded-full text-white text-sm font-bold mt-4" style={{backgroundColor:DARK_GREEN}}>My Hospital</button>
-                    </Panel>
-                  ) : (
-                    <Panel className="col-span-4 p-7 flex flex-col justify-between anim-in">
-                      <div>
-                        <h3 className="text-base font-bold text-slate-800 mb-3">AI Model Status</h3>
-                        <p className="text-xl font-bold capitalize mb-1" style={{color:DARK_GREEN}}>{modelInfo?.status||"Loading…"}</p>
-                        <p className="text-[13px] text-slate-500 leading-relaxed">Arch: {modelInfo?.architecture||"—"}<br/>Size: {modelInfo?.size_mb||0} MB</p>
-                        {modelInfo?.classes&&<div className="flex flex-wrap gap-1.5 mt-3">{(modelInfo.classes as string[]).map((c,i)=><span key={i}><ClsBadge cls={c}/></span>)}</div>}
-                      </div>
-                      <button onClick={()=>setTab("model")} className="btn-s w-full py-3.5 rounded-full text-white text-sm font-bold mt-4" style={{backgroundColor:DARK_GREEN}}>Manage Model</button>
-                    </Panel>
-                  )}
+                  <Panel className="col-span-4 p-7 flex flex-col justify-between anim-in">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-800 mb-3">Hospital Overview</h3>
+                      <p className="text-[13px] text-slate-500 leading-relaxed">Hospital ID: <strong>#{me?.hospital_id}</strong></p>
+                      <p className="text-[13px] text-slate-500 mt-2">Approved radiologists: <strong>{visibleUsers.filter(u=>u.status==="approved").length}</strong></p>
+                      <p className="text-[13px] text-slate-500 mt-1">Pending approval: <strong>{pending}</strong></p>
+                      <p className="text-[13px] text-slate-500 mt-1">Total diagnoses: <strong>{visibleDiagnoses.length}</strong></p>
+                    </div>
+                    <button onClick={()=>setTab("profile")} className="btn-s w-full py-3.5 rounded-full text-white text-sm font-bold mt-4" style={{backgroundColor:DARK_GREEN}}>My Hospital</button>
+                  </Panel>
                   <Panel className="col-span-3 p-7 anim-in">
                     <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Recent Scans</h3><button onClick={()=>setTab("predictions")} className="text-[11px] border px-2.5 py-1 rounded-full text-slate-500 border-slate-200">All →</button></div>
                     <div className="space-y-4">
@@ -719,21 +713,21 @@ export default function AdminDashboard() {
             {/* ══ USERS ══ */}
             {tab==="users"&&(
               <div className="space-y-5 max-w-[1200px] anim-in">
-                <PageHead title="Radiologists" sub={isMiddleAdmin?`${visibleUsers.length} hospital radiologists`:`${visibleUsers.length} platform users`} right={
+                <PageHead title="Radiologists" sub={`${visibleUsers.length} hospital radiologists`} right={
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search team…" className={INP+" w-[220px]"}/>
                 }/>
                 <Tbl heads={["Name","Email","Hospital","License","Role","Status","Joined","Actions"]} empty={apiUsers.length===0?"No users yet":undefined}>
                   {apiUsers.filter(u=>!search||u.full_name.toLowerCase().includes(search.toLowerCase())||u.email.toLowerCase().includes(search.toLowerCase())).map(u=>(
                     <TR key={u.id}>
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
-                      <TD mono>{u.email}</TD><TD>{u.hospital||(isMiddleAdmin?myHospital?.name:null)||"—"}</TD><TD mono>{u.license_number||"—"}</TD>
+                      <TD mono>{u.email}</TD><TD>{u.hospital||myHospital?.name||"—"}</TD><TD mono>{u.license_number||"—"}</TD>
                       <TD><span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">{u.role}</span></TD>
                       <TD><StatusBadge status={u.status}/></TD>
                       <TD mono>{fmt(u.created_at)}</TD>
                       <TD><div className="flex gap-1.5 flex-wrap">
                         {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200">Reject</button></>}
-                        {u.status==="approved"&&<button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Password</button>}
-                        <button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">Delete</button>
+                        {u.status==="approved"&&<><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🔑 Password</button><button onClick={()=>revokeUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Revoke</button></>}
+                        {(u.status==="rejected"||u.status==="revoked")&&<button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Re-Approve</button>}
                       </div></TD>
                     </TR>
                   ))}
@@ -1164,8 +1158,8 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* ══ PROFILE (middle admin only) ══ */}
-            {tab==="profile"&&isMiddleAdmin&&(
+            {/* ══ PROFILE ══ */}
+            {tab==="profile"&&isHospitalAdmin&&(
               <div className="space-y-6 max-w-[800px] anim-in">
                 <PageHead title={myHospital?.name||"My Hospital"} sub="Manage your hospital's branding and account"/>
 
@@ -1219,7 +1213,7 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                       <div className="p-8 space-y-4">
-                        <input type="password" value={myPwd} onChange={e=>setMyPwd(e.target.value)} placeholder="New password (min 6 chars)" className={INP_RECT}/>
+                        <input type="password" value={myPwd} onChange={e=>setMyPwd(e.target.value)} placeholder="New password (min 8 chars)" className={INP_RECT}/>
                         {myPwdMsg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${myPwdOk?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{myPwdMsg}</div>}
                         <div className="flex gap-3 pt-1">
                           <button onClick={()=>{setMyPwdModal(false);setMyPwd("");setMyPwdMsg("");}} className="flex-1 py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200">Cancel</button>
