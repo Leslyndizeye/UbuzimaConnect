@@ -24,12 +24,12 @@ interface Diagnosis {
   tb_probability: number; pneumonia_probability: number; normal_probability: number;
   unknown_probability?: number; radiologist_verified: boolean;
   radiologist_override?: string; radiologist_notes?: string;
-  xray_filename?: string; heatmap_b64?: string; ai_explanation?: string; created_at: string;
+  xray_filename?: string; xray_storage_path?: string; heatmap_b64?: string; ai_explanation?: string; created_at: string;
 }
 interface Prediction {
   classification: string; confidence_score: number; tb_probability: number;
   pneumonia_probability: number; normal_probability: number; unknown_probability?: number;
-  explanation?: string; gradcam_b64?: string;
+  explanation?: string; gradcam_b64?: string; xray_storage_path?: string;
 }
 type Tab = 'diagnose' | 'history' | 'profile';
 type AppState = 'loading' | 'unauthenticated' | 'pending' | 'rejected' | 'approved' | 'admin';
@@ -241,6 +241,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   const [verOverride, setVerOverride] = useState('');
   const [verNotes, setVerNotes] = useState('');
   const [verSaving, setVerSaving] = useState(false);
+  const [diagImageUrls, setDiagImageUrls] = useState<Record<number, string>>({});
 
   // Profile state
   const [editing, setEditing] = useState(false);
@@ -382,6 +383,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
         method: 'POST',
         body: JSON.stringify({
           patient_id: patient.id, xray_filename: currentFile.name,
+          xray_storage_path: result.xray_storage_path,
           ai_classification: result.classification, confidence_score: result.confidence_score,
           tb_probability: result.tb_probability, pneumonia_probability: result.pneumonia_probability,
           normal_probability: result.normal_probability, unknown_probability: result.unknown_probability ?? 0,
@@ -390,6 +392,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
       });
       setSavedDiag(saved);
       setDiagnoses(prev => [saved, ...prev]);
+      setDiagImageUrls(prev => ({ ...prev, [saved.id]: previews[activeImg] }));
       // Mark this image as scanned so user can't accidentally re-submit
       const imgKey = `${currentFile.name}-${currentFile.size}`;
       setScannedKeys(prev => new Set([...prev, imgKey]));
@@ -516,13 +519,35 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     } catch (e: any) { setPwMsg(`Error: ${e.message}`); }
   };
 
-  const exportPdfReport = (patient: Patient | null, diagnosis: Diagnosis | null, prediction?: Prediction | null, sourceImage?: string | null) => {
+  const fetchDiagnosisImageUrl = useCallback(async (diagnosis: Diagnosis) => {
+    if (!diagnosis.xray_storage_path) return null;
+    if (diagImageUrls[diagnosis.id]) return diagImageUrls[diagnosis.id];
+    const token = await getToken().catch(() => null);
+    const res = await fetch(`${API_BASE}/diagnoses/${diagnosis.id}/image`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    setDiagImageUrls(prev => prev[diagnosis.id] ? prev : { ...prev, [diagnosis.id]: url });
+    return url;
+  }, [diagImageUrls]);
+
+  useEffect(() => {
+    if (tab !== 'history' || expanded == null) return;
+    diagnoses
+      .filter(d => d.patient_id === expanded && d.xray_storage_path && !diagImageUrls[d.id])
+      .forEach(d => { fetchDiagnosisImageUrl(d).catch(() => {}); });
+  }, [tab, expanded, diagnoses, diagImageUrls, fetchDiagnosisImageUrl]);
+
+  const exportPdfReport = async (patient: Patient | null, diagnosis: Diagnosis | null, prediction?: Prediction | null, sourceImage?: string | null) => {
     if (!patient || !diagnosis) return;
     const finalResult = diagnosis.radiologist_override || prediction?.classification || diagnosis.ai_classification;
+    const storedImage = sourceImage || diagImageUrls[diagnosis.id] || await fetchDiagnosisImageUrl(diagnosis);
     const reportWindow = window.open('', '_blank', 'width=960,height=900');
     if (!reportWindow) return;
     const heatmap = diagnosis.heatmap_b64 ? `<img src="${diagnosis.heatmap_b64}" alt="Heatmap" style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;" />` : '<p style="color:#6b7280;">No heatmap available.</p>';
-    const original = sourceImage ? `<img src="${sourceImage}" alt="X-ray" style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;" />` : `<p style="color:#6b7280;">Original X-ray preview was not stored for this record.</p>`;
+    const original = storedImage ? `<img src="${storedImage}" alt="X-ray" style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;" />` : `<p style="color:#6b7280;">Original X-ray preview was not stored for this record.</p>`;
     reportWindow.document.write(`<!doctype html><html><head><title>Ubuzima Report</title><style>
       body{font-family:Arial,sans-serif;padding:32px;color:#111827}
       h1,h2,h3{margin:0 0 12px}
@@ -919,7 +944,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                         </button>
                       )}
                       {savedDiag && savedPat && (
-                        <button onClick={() => exportPdfReport(savedPat, savedDiag, pred, previews[activeImg] || null)}
+                        <button onClick={() => { exportPdfReport(savedPat, savedDiag, pred, previews[activeImg] || null).catch(() => {}); }}
                           className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-bold uppercase tracking-widest hover:bg-gray-50 text-gray-700">
                           Export PDF
                         </button>
@@ -1008,10 +1033,15 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                                     </div>
                                     <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Date</div><div className="text-[10px] text-gray-400">{fmt(d.created_at)}</div></div>
                                   </div>
+                                  {d.xray_storage_path && (
+                                    diagImageUrls[d.id]
+                                      ? <img src={diagImageUrls[d.id]} alt="Diagnosis X-ray" className="w-14 h-14 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
+                                      : <div className="w-14 h-14 rounded-lg object-cover border border-gray-200 flex items-center justify-center text-[9px] text-gray-400 bg-gray-50 flex-shrink-0">Loading</div>
+                                  )}
                                   {d.heatmap_b64 && (
                                     <img src={d.heatmap_b64} alt="Diagnosis heatmap" className="w-14 h-14 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
                                   )}
-                                  <button onClick={() => exportPdfReport(p, d, null, null)}
+                                  <button onClick={() => { exportPdfReport(p, d, null, null).catch(() => {}); }}
                                     className="flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50">
                                     PDF
                                   </button>
