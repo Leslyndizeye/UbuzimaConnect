@@ -113,7 +113,6 @@ export default function HospitalAdminDashboard() {
   const [loadingStats, setLoadingStats]  = useState<number | null>(null);
 
   const [meetLink, setMeetLink]         = useState('');
-  const [meetNotes, setMeetNotes]       = useState('');
   const [meetLinkErr, setMeetLinkErr]   = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
@@ -1049,10 +1048,7 @@ export default function HospitalAdminDashboard() {
                       </div>
                       {meetLinkErr && <p className="text-[10px] text-red-500 font-semibold ml-0.5">{meetLinkErr}</p>}
                       <p className="text-[9px] text-slate-300 ml-0.5">Format: https://meet.google.com/xxx-xxxx-xxx</p>
-                      <textarea value={meetNotes} onChange={e => setMeetNotes(e.target.value)} rows={3}
-                        placeholder="Add a message for the hospital team (optional) — e.g. Please bring your MoH license copy. We will review your partnership terms during the call."
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-xs outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 resize-none" />
-                      <button onClick={() => { if (validateMeetLink(meetLink)) updateStatus(selected.id, 'meeting', { meet_link: meetLink.trim(), meet_notes: meetNotes }); }}
+                      <button onClick={() => { if (validateMeetLink(meetLink)) updateStatus(selected.id, 'meeting', { meet_link: meetLink.trim() }); }}
                         disabled={actionLoading}
                         className="btn-s w-full py-2.5 rounded-xl text-white text-xs font-bold disabled:opacity-40 flex items-center justify-center gap-2" style={{ backgroundColor: '#7C3AED' }}>
                         {actionLoading ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Sending…</> : '📅 Send Meeting Invite by Email'}

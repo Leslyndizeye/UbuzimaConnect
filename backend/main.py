@@ -165,6 +165,144 @@ def update_user_status(
     return user
 
 
+@app.post("/users/{user_id}/generate-password", tags=["Admin"])
+async def generate_user_password(
+    user_id: int,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Generate a random password for a radiologist, set it in Supabase, and email them their credentials."""
+    import random, string
+    user = _get_or_404(db, User, user_id)
+    if not user.firebase_uid or user.firebase_uid.startswith("pending_"):
+        raise HTTPException(400, "User must be approved and have a Supabase account before setting a password")
+
+    password = "".join(random.choices(string.ascii_letters + string.digits, k=12))
+
+    supabase_url = os.getenv("SUPABASE_URL", f"https://{os.getenv('SUPABASE_PROJECT_REF','')}.supabase.co")
+    service_key  = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    async with httpx.AsyncClient() as client:
+        r = await client.put(
+            f"{supabase_url}/auth/v1/admin/users/{user.firebase_uid}",
+            headers={"apikey": service_key, "Authorization": f"Bearer {service_key}"},
+            json={"password": password},
+        )
+        if r.status_code not in (200, 201):
+            raise HTTPException(500, f"Supabase error: {r.text}")
+
+    _audit(db, admin.id, "generate_password", "user", user_id, {"target_email": user.email})
+
+    # Send activation email to the radiologist
+    _send_radiologist_activation_email(
+        email=user.email,
+        name=user.full_name,
+        password=password,
+        hospital=user.hospital or "Ubuzima Connect",
+    )
+
+    return {"email": user.email, "password": password}
+
+
+@app.post("/users/{user_id}/set-password", tags=["Admin"])
+async def set_user_password(
+    user_id: int,
+    body: dict = Body(...),
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Set a custom password for a radiologist and email them their credentials."""
+    user = _get_or_404(db, User, user_id)
+    if not user.firebase_uid or user.firebase_uid.startswith("pending_"):
+        raise HTTPException(400, "User must be approved and have a Supabase account before setting a password")
+
+    password = (body.get("password") or "").strip()
+    if len(password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+
+    supabase_url = os.getenv("SUPABASE_URL", f"https://{os.getenv('SUPABASE_PROJECT_REF','')}.supabase.co")
+    service_key  = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    async with httpx.AsyncClient() as client:
+        r = await client.put(
+            f"{supabase_url}/auth/v1/admin/users/{user.firebase_uid}",
+            headers={"apikey": service_key, "Authorization": f"Bearer {service_key}"},
+            json={"password": password},
+        )
+        if r.status_code not in (200, 201):
+            raise HTTPException(500, f"Supabase error: {r.text}")
+
+    _audit(db, admin.id, "set_password", "user", user_id, {"target_email": user.email})
+
+    _send_radiologist_activation_email(
+        email=user.email,
+        name=user.full_name,
+        password=password,
+        hospital=user.hospital or "Ubuzima Connect",
+    )
+
+    return {"detail": "Password updated and activation email sent"}
+
+
+def _send_radiologist_activation_email(email: str, name: str, password: str, hospital: str):
+    """Send activation credentials to a newly approved radiologist."""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+    if not smtp_user or not smtp_pass:
+        print(f"[email] SMTP not configured — skipping activation email to {email}")
+        return
+
+    dashboard_url = os.getenv("FRONTEND_URL", "https://ubuzimaconnect.vercel.app")
+    html = f"""
+<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f7f6;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 16px;">
+<table width="520" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.06);">
+  <tr><td style="background:linear-gradient(135deg,#0E2B1C,#1C5438);padding:36px 40px;text-align:center;">
+    <h1 style="font-size:22px;font-weight:900;color:#fff;margin:0;">Your Account is Ready ✅</h1>
+    <p style="font-size:14px;color:rgba(255,255,255,.7);margin:10px 0 0;">Ubuzima Connect — AI-Powered Radiology</p>
+  </td></tr>
+  <tr><td style="padding:36px 40px;">
+    <p style="font-size:15px;color:#374151;margin:0 0 20px;">Hello <strong style="color:#0E2B1C;">{name}</strong>,</p>
+    <p style="font-size:14px;color:#6b7280;line-height:1.7;margin:0 0 24px;">
+      Your account at <strong>{hospital}</strong> has been approved. Use the credentials below to log in and start diagnosing.
+    </p>
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:20px 24px;margin:0 0 24px;">
+      <table width="100%" cellpadding="4"><tr>
+        <td style="font-size:12px;font-weight:700;color:#166534;text-transform:uppercase;width:90px;">Email</td>
+        <td style="font-family:monospace;font-size:14px;color:#0E2B1C;font-weight:700;">{email}</td>
+      </tr><tr>
+        <td style="font-size:12px;font-weight:700;color:#166534;text-transform:uppercase;">Password</td>
+        <td style="font-family:monospace;font-size:14px;color:#0E2B1C;font-weight:700;">{password}</td>
+      </tr></table>
+    </div>
+    <a href="{dashboard_url}" style="display:block;text-align:center;background:#1C5438;color:#fff;font-weight:800;font-size:14px;padding:14px 32px;border-radius:50px;text-decoration:none;margin:0 0 24px;">Log In Now →</a>
+    <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:0;">
+      Please change your password after your first login.<br>
+      If you did not request this account, contact your hospital administrator.
+    </p>
+  </td></tr>
+  <tr><td style="background:#f9fafb;padding:20px 40px;text-align:center;">
+    <p style="font-size:11px;color:#9ca3af;margin:0;">Ubuzima Connect · AI-Powered Chest X-Ray Diagnostics · Rwanda</p>
+  </td></tr>
+</table></td></tr></table></body></html>
+"""
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"Your Ubuzima Connect Account is Active — {hospital}"
+        msg["From"] = smtp_user
+        msg["To"] = email
+        msg.attach(MIMEText(html, "html"))
+        with smtplib.SMTP(smtp_host, smtp_port) as s:
+            s.ehlo(); s.starttls(); s.login(smtp_user, smtp_pass)
+            s.sendmail(smtp_user, [email], msg.as_string())
+        print(f"[email] Activation email sent to {email}")
+    except Exception as ex:
+        print(f"[email] Failed to send activation email to {email}: {ex}")
+
 
 # PATIENTS
 

@@ -28,6 +28,8 @@ interface EditPatient { id:number; name:string; patient_ref_id:string; hospital:
 type Tab = "overview"|"users"|"passwords"|"predictions"|"patients"|"diagnose"|"retrain"|"model"|"audit"|"profile";
 
 const fmt = (iso:string) => new Date(iso).toLocaleString("en-RW",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Kigali"});
+// Rwanda NID masking: show first 4 and last 4, mask middle 8 → 1199••••••••5678
+const maskNid = (nid?:string|null) => { if(!nid||nid.length<8)return nid||"—"; return nid.slice(0,4)+"••••••••"+nid.slice(-4); };
 const uptimeFmt = (s:number) => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60); return `${h.toString().padStart(2,'0')}h ${m.toString().padStart(2,'0')}m ${sec.toString().padStart(2,'0')}s`; };
 function useRwandaTime() {
   const [time,setTime]=useState(()=>new Date().toLocaleTimeString("en-RW",{timeZone:"Africa/Kigali",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}));
@@ -742,7 +744,7 @@ export default function AdminDashboard() {
                   {visibleDiagnoses.filter((d:Diagnosis)=>!search||d.ai_classification===search).map((d:Diagnosis)=>{const pt=visiblePatients.find((p:Patient)=>p.id===d.patient_id);return(
                     <TR key={d.id}>
                       <TD><span className="font-bold text-slate-800">{pt?.name??"Unknown"}</span></TD>
-                      <TD mono>{pt?.patient_ref_id??"—"}</TD>
+                      <TD mono>{maskNid(pt?.patient_ref_id)}</TD>
                       <TD><ClsBadge cls={d.ai_classification}/></TD>
                       <TD><div className="flex items-center gap-2"><div className="w-14 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full" style={{width:`${d.confidence_score}%`,backgroundColor:ACCENT_GREEN}}/></div><span className="text-xs font-bold">{d.confidence_score.toFixed(1)}%</span></div></TD>
                       <TD mono>{(d.tb_probability*100).toFixed(1)}%</TD>
@@ -774,7 +776,7 @@ export default function AdminDashboard() {
                             {isExp?"▾":"▸"}
                           </button>
                           <div className="flex-1 grid grid-cols-7 gap-3 items-center min-w-0">
-                            {[{l:"Name",v:<span className="text-sm font-bold text-slate-900 truncate">{p.name}</span>},{l:"NID",v:<span className="text-xs font-mono text-slate-400">{p.patient_ref_id||"—"}</span>},{l:"Age",v:<span className="text-xs text-slate-500">{p.age?`${p.age}y`:"—"}</span>},{l:"Sex",v:<span className="text-xs text-slate-500">{p.sex||"—"}</span>},{l:"Hospital",v:<span className="text-xs text-slate-500 truncate">{p.hospital||"—"}</span>},{l:"Scans",v:<span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:ptD.length>0?"#2563EB":"#94A3B8"}}>{ptD.length} scan{ptD.length!==1?"s":""}</span>},{l:"Joined",v:<span className="text-xs text-slate-400">{fmt(p.created_at)}</span>}].map(col=>(
+                            {[{l:"Name",v:<span className="text-sm font-bold text-slate-900 truncate">{p.name}</span>},{l:"NID",v:<span className="text-xs font-mono text-slate-400">{maskNid(p.patient_ref_id)}</span>},{l:"Age",v:<span className="text-xs text-slate-500">{p.age?`${p.age}y`:"—"}</span>},{l:"Sex",v:<span className="text-xs text-slate-500">{p.sex||"—"}</span>},{l:"Hospital",v:<span className="text-xs text-slate-500 truncate">{p.hospital||"—"}</span>},{l:"Scans",v:<span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:ptD.length>0?"#2563EB":"#94A3B8"}}>{ptD.length} scan{ptD.length!==1?"s":""}</span>},{l:"Joined",v:<span className="text-xs text-slate-400">{fmt(p.created_at)}</span>}].map(col=>(
                               <div key={col.l}><div className="text-[8px] font-bold uppercase text-slate-300 mb-0.5">{col.l}</div>{col.v}</div>
                             ))}
                           </div>
@@ -864,7 +866,7 @@ export default function AdminDashboard() {
                           {filteredPatients.filter(p=>!ptSearch||p.name.toLowerCase().includes(ptSearch.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(ptSearch))).slice(0,10).map(p=>(
                             <button key={p.id} onClick={()=>{setSelectedPtId(p.id);setPtSearch(p.name);}}
                               className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors">
-                              <div><p className="text-sm font-bold text-slate-800">{p.name}</p><p className="text-[10px] text-slate-400 font-mono">{p.patient_ref_id||"No NID"}{p.hospital?` · ${p.hospital}`:""}</p></div>
+                              <div><p className="text-sm font-bold text-slate-800">{p.name}</p><p className="text-[10px] text-slate-400 font-mono">{maskNid(p.patient_ref_id)||"No NID"}{p.hospital?` · ${p.hospital}`:""}</p></div>
                             </button>
                           ))}
                           {filteredPatients.filter(p=>!ptSearch||p.name.toLowerCase().includes(ptSearch.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(ptSearch))).length===0&&(
@@ -873,7 +875,7 @@ export default function AdminDashboard() {
                         </div>
                       )}
                       {selectedPtId&&(()=>{const p=patients.find(pt=>pt.id===selectedPtId);return p?(<div className="flex items-center justify-between p-3 rounded-2xl" style={{background:"#EFF6FF",border:"1.5px solid #BFDBFE"}}>
-                        <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold bg-blue-600">{p.name.charAt(0)}</div><div><p className="text-sm font-bold text-blue-800">{p.name}</p><p className="text-[10px] text-blue-500 font-mono">{p.patient_ref_id||"—"}</p></div></div>
+                        <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold bg-blue-600">{p.name.charAt(0)}</div><div><p className="text-sm font-bold text-blue-800">{p.name}</p><p className="text-[10px] text-blue-500 font-mono">{maskNid(p.patient_ref_id)}</p></div></div>
                         <button onClick={()=>{setSelectedPtId("");setPtSearch("");}} className="text-xs text-slate-400 hover:text-red-500 font-bold px-2">✕</button>
                       </div>):null;})()}
                     </div>
