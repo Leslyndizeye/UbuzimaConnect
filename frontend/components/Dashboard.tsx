@@ -37,6 +37,20 @@ interface ChatContact {
 interface ChatMessage {
   id: number; hospital_id: number; sender_id: number; recipient_id: number; message: string; created_at: string;
 }
+interface SharedDiagnosisPayload {
+  type: 'diagnosis_report';
+  diagnosis_id: number;
+  patient_name: string;
+  patient_ref_masked?: string;
+  classification: string;
+  ai_classification?: string;
+  confidence_score: number;
+  radiologist_name?: string;
+  hospital?: string;
+  shared_note?: string;
+  radiologist_notes?: string;
+  created_at?: string | null;
+}
 type Tab = 'diagnose' | 'history' | 'chat' | 'profile';
 type AppState = 'loading' | 'unauthenticated' | 'pending' | 'rejected' | 'approved' | 'admin';
 
@@ -73,12 +87,22 @@ const validId = (v: string) => /^\d{16}$/.test(v.replace(/\s/g, ''));
 // DB stores "TB" but we show "Tuberculosis" everywhere in the UI
 const displayClass = (c: string) => c === 'TB' ? 'Tuberculosis' : c;
 const toDbClass = (c: string) => c === 'Tuberculosis' ? 'TB' : c;
+const SHARED_DIAGNOSIS_PREFIX = '__UBUZIMA_SHARED_DIAGNOSIS__:';
 const fmt = (iso: string) => new Date(iso).toLocaleString('en-RW', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const maskNationalId = (value?: string) => {
   if (!value) return '—';
   const id = value.replace(/\s/g, '');
   if (id.length < 6) return id;
   return `${id.slice(0, 4)}••••••••••${id.slice(-2)}`;
+};
+const parseSharedDiagnosisMessage = (message: string): SharedDiagnosisPayload | null => {
+  if (!message.startsWith(SHARED_DIAGNOSIS_PREFIX)) return null;
+  try {
+    const parsed = JSON.parse(message.slice(SHARED_DIAGNOSIS_PREFIX.length));
+    return parsed?.type === 'diagnosis_report' ? parsed as SharedDiagnosisPayload : null;
+  } catch {
+    return null;
+  }
 };
 const classBadge = (c: string) =>
   c === 'Normal' ? 'bg-emerald-100 text-emerald-700' :
@@ -254,6 +278,12 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   const [chatDraft, setChatDraft] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
   const [chatError, setChatError] = useState('');
+  const [shareDiag, setShareDiag] = useState<Diagnosis | null>(null);
+  const [sharePatient, setSharePatient] = useState<Patient | null>(null);
+  const [shareTargetId, setShareTargetId] = useState<number | null>(null);
+  const [shareNote, setShareNote] = useState('');
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState('');
 
   // Profile state
   const [editing, setEditing] = useState(false);
@@ -601,6 +631,42 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     setTimeout(() => reportWindow.print(), 250);
   };
 
+  const openShareDiagnosis = (patient: Patient | null, diagnosis: Diagnosis | null) => {
+    if (!patient || !diagnosis) return;
+    setSharePatient(patient);
+    setShareDiag(diagnosis);
+    setShareTargetId(activeChatId ?? chatContacts[0]?.id ?? null);
+    setShareNote('');
+    setShareError(chatContacts.length ? '' : 'No approved radiologists are available in your hospital yet.');
+  };
+
+  const sendSharedDiagnosis = async () => {
+    if (!shareDiag || !shareTargetId) {
+      setShareError('Select a radiologist to share this diagnosis with.');
+      return;
+    }
+    setShareBusy(true); setShareError('');
+    try {
+      const sent = await apiFetch(`/chat/messages/${shareTargetId}`, {
+        method: 'POST',
+        body: JSON.stringify({ message: shareNote.trim(), shared_diagnosis_id: shareDiag.id }),
+      });
+      if (activeChatId === shareTargetId) {
+        setChatMessages(prev => [...prev, sent]);
+      } else {
+        setActiveChatId(shareTargetId);
+      }
+      setTab('chat');
+      setShareDiag(null);
+      setSharePatient(null);
+      setShareNote('');
+    } catch (e: any) {
+      setShareError(e.message);
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
   const sendChatMessage = async () => {
     if (!activeChatId || !chatDraft.trim()) return;
     setChatBusy(true); setChatError('');
@@ -704,6 +770,52 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
               <button onClick={() => setVerifyDiag(null)} className="flex-1 py-2.5 rounded-xl border text-xs font-bold uppercase tracking-widest hover:bg-gray-50">Cancel</button>
               <button onClick={saveVerify} disabled={verSaving} className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-widest disabled:opacity-40">
                 {verSaving ? 'Saving…' : '✓ Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shareDiag && sharePatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-bold">Share Diagnosis</h2>
+              <button onClick={() => { setShareDiag(null); setSharePatient(null); setShareError(''); }}
+                className="w-8 h-8 rounded-lg border flex items-center justify-center text-sm hover:bg-gray-50">âœ•</button>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 space-y-2">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Shared Result</div>
+              <div className="text-sm font-bold text-gray-900">{sharePatient.name}</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${classBadge(shareDiag.radiologist_override || shareDiag.ai_classification)}`}>
+                  {displayClass(shareDiag.radiologist_override || shareDiag.ai_classification)}
+                </span>
+                <span className="text-[11px] text-gray-500">{shareDiag.confidence_score.toFixed(1)}% confidence</span>
+                <span className="text-[11px] text-gray-400">{maskNationalId(sharePatient.patient_ref_id)}</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Send To</label>
+              <select value={shareTargetId ?? ''} onChange={e => setShareTargetId(e.target.value ? Number(e.target.value) : null)} className={inp}>
+                <option value="">Select radiologistâ€¦</option>
+                {chatContacts.map(contact => (
+                  <option key={contact.id} value={contact.id}>{contact.full_name} {contact.specialization ? `â€¢ ${contact.specialization}` : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Note (optional)</label>
+              <textarea value={shareNote} onChange={e => setShareNote(e.target.value)} rows={3}
+                className={`${inp} resize-none`} placeholder="Add a short handoff note for this diagnosisâ€¦" />
+            </div>
+            {shareError && <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">{shareError}</div>}
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => { setShareDiag(null); setSharePatient(null); setShareError(''); }}
+                className="flex-1 py-2.5 rounded-xl border text-xs font-bold uppercase tracking-widest hover:bg-gray-50">Cancel</button>
+              <button onClick={sendSharedDiagnosis} disabled={shareBusy || !shareTargetId}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-widest disabled:opacity-40">
+                {shareBusy ? 'Sharingâ€¦' : 'Share'}
               </button>
             </div>
           </div>
@@ -999,6 +1111,12 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                           Export PDF
                         </button>
                       )}
+                      {savedDiag && savedPat && (
+                        <button onClick={() => openShareDiagnosis(savedPat, savedDiag)}
+                          className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-widest">
+                          Share Result
+                        </button>
+                      )}
                       <button onClick={clearScan} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-bold uppercase tracking-widest hover:border-emerald-400 text-gray-600">
                         New Patient Scan
                       </button>
@@ -1095,6 +1213,10 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                                     className="flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50">
                                     PDF
                                   </button>
+                                  <button onClick={() => openShareDiagnosis(p, d)}
+                                    className="flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500">
+                                    Share
+                                  </button>
                                   <button onClick={() => { setVerifyDiag(d); setVerOverride(d.radiologist_override || ''); setVerNotes(d.radiologist_notes || ''); }}
                                     className={`flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-lg hover:opacity-80 ${d.radiologist_verified ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}>
                                     {d.radiologist_verified ? 'Edit' : 'Verify'}
@@ -1147,14 +1269,38 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                       <div className="text-[11px] text-gray-400">{chatContacts.find(c => c.id === activeChatId)?.email || ''}</div>
                     </div>
                     <div className="flex-1 overflow-y-auto py-4 space-y-3">
-                      {chatMessages.map(msg => (
-                        <div key={msg.id} className={`flex ${msg.sender_id === user.id ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${msg.sender_id === user.id ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
-                            <div>{msg.message}</div>
-                            <div className={`text-[10px] mt-1 ${msg.sender_id === user.id ? 'text-emerald-100' : 'text-gray-400'}`}>{fmt(msg.created_at)}</div>
+                      {chatMessages.map(msg => {
+                        const shared = parseSharedDiagnosisMessage(msg.message);
+                        return (
+                          <div key={msg.id} className={`flex ${msg.sender_id === user.id ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${msg.sender_id === user.id ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                              {shared ? (
+                                <div className="space-y-2">
+                                  <div className={`text-[10px] font-bold uppercase tracking-widest ${msg.sender_id === user.id ? 'text-emerald-100' : 'text-gray-400'}`}>Shared Diagnosis</div>
+                                  <div className={`rounded-xl border p-3 ${msg.sender_id === user.id ? 'border-emerald-300/40 bg-emerald-500/20' : 'border-gray-200 bg-white'}`}>
+                                    <div className="font-bold">{shared.patient_name}</div>
+                                    <div className={`inline-flex mt-2 text-[10px] font-bold px-2 py-1 rounded-full ${classBadge(shared.classification)}`}>
+                                      {displayClass(shared.classification)}
+                                    </div>
+                                    <div className={`text-[11px] mt-2 ${msg.sender_id === user.id ? 'text-emerald-50' : 'text-gray-500'}`}>
+                                      {shared.confidence_score.toFixed(1)}% confidence
+                                      {shared.patient_ref_masked ? ` • ${shared.patient_ref_masked}` : ''}
+                                    </div>
+                                    {shared.shared_note && (
+                                      <div className={`mt-2 text-xs ${msg.sender_id === user.id ? 'text-white' : 'text-gray-700'}`}>
+                                        {shared.shared_note}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>{msg.message}</div>
+                              )}
+                              <div className={`text-[10px] mt-1 ${msg.sender_id === user.id ? 'text-emerald-100' : 'text-gray-400'}`}>{fmt(msg.created_at)}</div>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {!chatBusy && chatMessages.length === 0 && <div className="text-sm text-gray-400 text-center pt-8">No messages yet.</div>}
                       {chatBusy && <div className="text-sm text-gray-400 text-center pt-8">Loading chat…</div>}
                     </div>
