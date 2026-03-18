@@ -15,6 +15,112 @@ async function adminFetch(path: string, options: RequestInit = {}) {
   return res.json();
 }
 
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let c = i;
+    for (let j = 0; j < 8; j += 1) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes: Uint8Array) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i += 1) crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pushU16(target: number[], value: number) {
+  target.push(value & 0xff, (value >>> 8) & 0xff);
+}
+
+function pushU32(target: number[], value: number) {
+  target.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+}
+
+function toDosDateTime(date: Date) {
+  const year = Math.max(date.getFullYear(), 1980);
+  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  return { dosTime, dosDate };
+}
+
+async function packFilesAsZip(files: File[], zipName: string) {
+  const encoder = new TextEncoder();
+  const archiveParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  const { dosTime, dosDate } = toDosDateTime(new Date());
+  let offset = 0;
+
+  for (let i = 0; i < files.length; i += 1) {
+    const file = files[i];
+    const safeName = (file.name || `image-${i + 1}.bin`).replace(/[\\/:*?"<>|]+/g, "_");
+    const nameBytes = encoder.encode(safeName);
+    const data = new Uint8Array(await file.arrayBuffer());
+    const checksum = crc32(data);
+
+    const localHeader: number[] = [];
+    pushU32(localHeader, 0x04034b50);
+    pushU16(localHeader, 20);
+    pushU16(localHeader, 0);
+    pushU16(localHeader, 0);
+    pushU16(localHeader, dosTime);
+    pushU16(localHeader, dosDate);
+    pushU32(localHeader, checksum);
+    pushU32(localHeader, data.length);
+    pushU32(localHeader, data.length);
+    pushU16(localHeader, nameBytes.length);
+    pushU16(localHeader, 0);
+    const localBlock = new Uint8Array(localHeader.length + nameBytes.length);
+    localBlock.set(localHeader, 0);
+    localBlock.set(nameBytes, localHeader.length);
+    archiveParts.push(localBlock, data);
+
+    const centralHeader: number[] = [];
+    pushU32(centralHeader, 0x02014b50);
+    pushU16(centralHeader, 20);
+    pushU16(centralHeader, 20);
+    pushU16(centralHeader, 0);
+    pushU16(centralHeader, 0);
+    pushU16(centralHeader, dosTime);
+    pushU16(centralHeader, dosDate);
+    pushU32(centralHeader, checksum);
+    pushU32(centralHeader, data.length);
+    pushU32(centralHeader, data.length);
+    pushU16(centralHeader, nameBytes.length);
+    pushU16(centralHeader, 0);
+    pushU16(centralHeader, 0);
+    pushU16(centralHeader, 0);
+    pushU16(centralHeader, 0);
+    pushU32(centralHeader, 0);
+    pushU32(centralHeader, offset);
+    const centralBlock = new Uint8Array(centralHeader.length + nameBytes.length);
+    centralBlock.set(centralHeader, 0);
+    centralBlock.set(nameBytes, centralHeader.length);
+    centralParts.push(centralBlock);
+
+    offset += localBlock.length + data.length;
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const centralOffset = offset;
+  archiveParts.push(...centralParts);
+
+  const endRecord: number[] = [];
+  pushU32(endRecord, 0x06054b50);
+  pushU16(endRecord, 0);
+  pushU16(endRecord, 0);
+  pushU16(endRecord, files.length);
+  pushU16(endRecord, files.length);
+  pushU32(endRecord, centralSize);
+  pushU32(endRecord, centralOffset);
+  pushU16(endRecord, 0);
+  archiveParts.push(new Uint8Array(endRecord));
+
+  return new File(archiveParts, zipName, { type: "application/zip" });
+}
+
 interface ApiUser { id:number; email:string; full_name:string; hospital?:string; hospital_id?:number; is_admin?:boolean; license_number?:string; role:string; status:string; created_at:string; firebase_uid?:string; }
 interface HospitalOption { id:number; name:string; }
 interface Diagnosis { id:number; patient_id:number; radiologist_id?:number; ai_classification:string; confidence_score:number; tb_probability:number; pneumonia_probability:number; normal_probability:number; unknown_probability?:number; radiologist_verified:boolean; created_at:string; }
@@ -84,6 +190,7 @@ const CLS_META: Record<string,{bg:string;border:string;text:string;bar:string}> 
 
 // Retrain minimum images per class
 const RT_MIN = 5;
+const RT_MIN_CLASSES = 2;
 
 const INP = "w-full px-5 py-3 rounded-full bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:border-[#86EFAC] focus:ring-4 focus:ring-[#86EFAC]/20 transition-all";
 const INP_RECT = "w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:border-[#86EFAC] focus:ring-4 focus:ring-[#86EFAC]/20 transition-all";
@@ -440,10 +547,10 @@ export default function AdminDashboard() {
     setUploading(true);setRtMsg("");
     try{
       const zipFiles=rtFiles.filter(f=>f.name.toLowerCase().endsWith(".zip"));
-      if(zipFiles.length>1){setRtMsg("Select only one ZIP archive at a time.");setRtOk(false);setUploading(false);return;}
+      if(zipFiles.length>1 || (zipFiles.length===1 && rtFiles.length>1)){setRtMsg("Select either image files or one ZIP archive.");setRtOk(false);setUploading(false);return;}
       const fd=new FormData();
-      rtFiles.filter(f=>!f.name.toLowerCase().endsWith(".zip")).forEach(f=>fd.append("files",f));
-      if(zipFiles[0]) fd.append("archive",zipFiles[0]);
+      const archive = zipFiles[0] || await packFilesAsZip(rtFiles, `retrain-${rtLabel.toLowerCase()}-${Date.now()}.zip`);
+      fd.append("archive", archive);
       const{data}=await supabase.auth.getSession();const token=data.session?.access_token;
       const res=await fetch(`${API_BASE}/retrain/upload?label=${encodeURIComponent(rtLabel)}`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
       if(!res.ok){const e=await res.json();throw new Error(e.detail);}
@@ -465,8 +572,8 @@ export default function AdminDashboard() {
 
   const triggerRetrain=async()=>{
     const cls=Object.keys(stagedC).filter(k=>stagedC[k]>=RT_MIN);
-    if(cls.length<2){setRtMsg(`Need at least ${RT_MIN} images in at least 2 classes to start retraining`);setRtOk(false);return;}
-    if(!window.confirm(`Start retraining with ${cls.length} ready classes? (${cls.join(", ")})`))return;
+    if(cls.length<RT_MIN_CLASSES){setRtMsg(`For best retraining, prepare at least ${RT_MIN_CLASSES} classes with ${RT_MIN}+ images each`);setRtOk(false);return;}
+    if(!window.confirm(`Start retraining with ${cls.length} ready class${cls.length!==1?"es":""}? (${cls.join(", ")})`))return;
     try{const job=await adminFetch("/retrain/trigger",{method:"POST"});setRtMsg(`Job #${job.id} started!`);setRtOk(true);setStagedC({});loadAll();}
     catch(e:any){setRtMsg(e.message);setRtOk(false);}
   };
@@ -485,7 +592,7 @@ export default function AdminDashboard() {
   // Retrain summary helpers
   const stagedClasses = Object.keys(stagedC).filter(k=>stagedC[k]>0);
   const readyClasses  = stagedClasses.filter(k=>stagedC[k]>=RT_MIN);
-  const canTrigger    = readyClasses.length>=2;
+  const canTrigger    = readyClasses.length>=RT_MIN_CLASSES;
 
   const navItems:[Tab,string,number?][]= [
     ["overview","Dashboard"],
@@ -1007,7 +1114,7 @@ export default function AdminDashboard() {
                     <div className="space-y-3">
                       <div className="flex items-center gap-3">
                         <div className="step-ring active">2</div>
-                        <div><p className="text-sm font-bold text-slate-800">Upload images for <span style={{color:DARK_GREEN}}>"{rtLabel}"</span></p><p className="text-[11px] text-slate-400">Minimum {RT_MIN} images - JPG/PNG/WebP or one ZIP archive</p></div>
+                        <div><p className="text-sm font-bold text-slate-800">Upload images for <span style={{color:DARK_GREEN}}>"{rtLabel}"</span></p><p className="text-[11px] text-slate-400">Minimum {RT_MIN} images - selected images are packed into a ZIP before upload</p></div>
                       </div>
                       <div
                         onDragOver={e=>{e.preventDefault();setRtDrag(true);}}
@@ -1017,7 +1124,7 @@ export default function AdminDashboard() {
                         className="border-2 border-dashed rounded-3xl p-7 text-center cursor-pointer transition-all"
                         style={{borderColor:rtDrag?DARK_GREEN:rtFiles.length>0?BRAND:"#E2E8F0",backgroundColor:rtDrag||rtFiles.length>0?"#F0FDF4":"#FAFAFA"}}>
                         {rtFiles.length>0
-                          ?<div><p className="text-base font-bold" style={{color:DARK_GREEN}}>{rtFiles.length} file{rtFiles.length!==1?"s":""} selected</p><p className="text-xs text-slate-400 mt-1">{rtFiles.some(f=>f.name.toLowerCase().endsWith(".zip"))?"ZIP archive ready":"Click to change"}</p></div>
+                          ?<div><p className="text-base font-bold" style={{color:DARK_GREEN}}>{rtFiles.length} file{rtFiles.length!==1?"s":""} selected</p><p className="text-xs text-slate-400 mt-1">{rtFiles.some(f=>f.name.toLowerCase().endsWith(".zip"))?"ZIP archive ready":"Will be packed into a ZIP on upload"}</p></div>
                           :<div className="float-it"><p className="text-sm font-bold text-slate-500">Drop files here or click to browse</p><p className="text-xs text-slate-400 mt-1">Multiple images or one ZIP archive</p></div>}
                         <input ref={rtRef} type="file" accept="image/*,.zip" multiple onChange={e=>setRtFiles(Array.from(e.target.files||[]))} className="hidden"/>
                       </div>
@@ -1031,7 +1138,7 @@ export default function AdminDashboard() {
                     <div className="space-y-3">
                       <div className="flex items-center gap-3">
                         <div className={`step-ring ${canTrigger?"active":"idle"}`}>3</div>
-                        <div><p className="text-sm font-bold text-slate-800">Start Retraining</p><p className="text-[11px] text-slate-400">Need at least {RT_MIN} images in at least 2 classes</p></div>
+                        <div><p className="text-sm font-bold text-slate-800">Start Retraining</p><p className="text-[11px] text-slate-400">Best results: at least {RT_MIN_CLASSES} classes with {RT_MIN}+ images each</p></div>
                       </div>
 
                       <div className="rounded-2xl p-4 space-y-2" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
@@ -1060,7 +1167,7 @@ export default function AdminDashboard() {
                           style={{backgroundColor:canTrigger?"#1C5438":"#94A3B8",boxShadow:canTrigger?`0 4px 14px ${DARK_GREEN}33`:"none"}}>
                           {canTrigger
                             ?`Start Retraining (${readyClasses.length})`
-                            :`Need 2 Ready Classes`}
+                            :`Need ${RT_MIN_CLASSES} Ready Classes`}
                         </button>
                         {stagedClasses.length>0&&(
                           <button onClick={clearStaged} disabled={clearing}
