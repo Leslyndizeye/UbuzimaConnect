@@ -1297,7 +1297,6 @@ export default function AdminDashboard() {
             </div>
             <div className="text-center">
               <p className="text-[10px] font-bold text-slate-700 leading-tight">{myHospital?.name||"Hospital"}</p>
-              <p className="text-[9px] text-slate-400 mt-1">Brand</p>
             </div>
           </div>
         </div>
