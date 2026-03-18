@@ -465,8 +465,8 @@ export default function AdminDashboard() {
 
   const triggerRetrain=async()=>{
     const cls=Object.keys(stagedC).filter(k=>stagedC[k]>=RT_MIN);
-    if(cls.length===0){setRtMsg(`Need at least ${RT_MIN} images in one class to start training`);setRtOk(false);return;}
-    if(!window.confirm(`Start retraining with ${cls.length} class(es)? (${cls.join(", ")})`))return;
+    if(cls.length<2){setRtMsg(`Need at least ${RT_MIN} images in at least 2 classes to start retraining`);setRtOk(false);return;}
+    if(!window.confirm(`Start retraining with ${cls.length} ready classes? (${cls.join(", ")})`))return;
     try{const job=await adminFetch("/retrain/trigger",{method:"POST"});setRtMsg(`Job #${job.id} started!`);setRtOk(true);setStagedC({});loadAll();}
     catch(e:any){setRtMsg(e.message);setRtOk(false);}
   };
@@ -485,7 +485,7 @@ export default function AdminDashboard() {
   // Retrain summary helpers
   const stagedClasses = Object.keys(stagedC).filter(k=>stagedC[k]>0);
   const readyClasses  = stagedClasses.filter(k=>stagedC[k]>=RT_MIN);
-  const canTrigger    = readyClasses.length>=1;
+  const canTrigger    = readyClasses.length>=2;
 
   const navItems:[Tab,string,number?][]= [
     ["overview","Dashboard"],
@@ -1031,7 +1031,7 @@ export default function AdminDashboard() {
                     <div className="space-y-3">
                       <div className="flex items-center gap-3">
                         <div className={`step-ring ${canTrigger?"active":"idle"}`}>3</div>
-                        <div><p className="text-sm font-bold text-slate-800">Start Retraining</p><p className="text-[11px] text-slate-400">Need at least {RT_MIN} images in at least 1 class</p></div>
+                        <div><p className="text-sm font-bold text-slate-800">Start Retraining</p><p className="text-[11px] text-slate-400">Need at least {RT_MIN} images in at least 2 classes</p></div>
                       </div>
 
                       <div className="rounded-2xl p-4 space-y-2" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
@@ -1054,19 +1054,19 @@ export default function AdminDashboard() {
                         {stagedClasses.length===0&&<p className="text-xs italic text-slate-400 text-center py-1">Upload images to see progress</p>}
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
                         <button onClick={triggerRetrain} disabled={!canTrigger}
-                          className="btn-s flex-1 py-4 rounded-full text-white font-bold text-sm disabled:opacity-40"
-                          style={{backgroundColor:canTrigger?"#1C5438":"#94A3B8",boxShadow:canTrigger?`0 8px 24px ${DARK_GREEN}44`:"none"}}>
+                          className="btn-s px-5 py-2.5 rounded-full text-white font-semibold text-[13px] disabled:opacity-40 whitespace-nowrap"
+                          style={{backgroundColor:canTrigger?"#1C5438":"#94A3B8",boxShadow:canTrigger?`0 4px 14px ${DARK_GREEN}33`:"none"}}>
                           {canTrigger
-                            ?`Trigger Retraining (${readyClasses.length} class${readyClasses.length!==1?"es":""})`
-                            :`Upload >= ${RT_MIN} images first`}
+                            ?`Start Retraining (${readyClasses.length})`
+                            :`Need 2 Ready Classes`}
                         </button>
                         {stagedClasses.length>0&&(
                           <button onClick={clearStaged} disabled={clearing}
-                            className="btn-s px-5 py-4 rounded-full font-bold text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 whitespace-nowrap"
+                            className="btn-s px-4 py-2.5 rounded-full font-semibold text-[13px] bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 whitespace-nowrap"
                             title="Clear all staged images">
-                            {clearing?"...":"Clear"}
+                            {clearing?"Clearing...":"Remove All"}
                           </button>
                         )}
                       </div>
