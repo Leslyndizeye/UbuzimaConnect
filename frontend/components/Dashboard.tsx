@@ -50,6 +50,7 @@ interface SharedDiagnosisPayload {
   xray_filename?: string;
   radiologist_name?: string;
   hospital?: string;
+  hospital_logo_base64?: string;
   shared_note?: string;
   radiologist_notes?: string;
   created_at?: string | null;
@@ -276,6 +277,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   const [verNotes, setVerNotes] = useState('');
   const [verSaving, setVerSaving] = useState(false);
   const [diagImageUrls, setDiagImageUrls] = useState<Record<number, string>>({});
+  const [diagImageAttempts, setDiagImageAttempts] = useState<Record<number, true>>({});
   const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -288,6 +290,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   const [shareNote, setShareNote] = useState('');
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState('');
+  const [reportView, setReportView] = useState<'received' | 'sent'>('received');
 
   // Profile state
   const [editing, setEditing] = useState(false);
@@ -309,7 +312,12 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
 
   const initials = user.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
   const identityLogo = branding?.logo_base64 || null;
+  const hospitalDisplayName = branding?.name || user.hospital || '—';
   const inp = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 bg-white';
+
+  useEffect(() => {
+    setPHospital(branding?.name || user.hospital || '');
+  }, [branding?.name, user.hospital]);
 
   const loadData = useCallback(async () => {
     setBusy(true);
@@ -545,7 +553,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
         method: 'PATCH',
         body: JSON.stringify({
           full_name: pFullName.trim(),
-          hospital: pHospital.trim() || null,
+          hospital: (branding?.name || pHospital).trim() || null,
           phone_number: pPhone.trim() || null,
           specialization: pSpec.trim() || null,
           years_experience: pYears ? parseInt(pYears) : null,
@@ -585,32 +593,39 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   };
 
   const fetchDiagnosisImageUrl = useCallback(async (diagnosis: Diagnosis) => {
+    if (diagImageAttempts[diagnosis.id]) return null;
     if (!diagnosis.xray_storage_path && !diagnosis.xray_b64) return null;
     if (diagImageUrls[diagnosis.id]) return diagImageUrls[diagnosis.id];
     if (diagnosis.xray_b64) {
       setDiagImageUrls(prev => prev[diagnosis.id] ? prev : { ...prev, [diagnosis.id]: diagnosis.xray_b64! });
+      setDiagImageAttempts(prev => prev[diagnosis.id] ? prev : { ...prev, [diagnosis.id]: true });
       return diagnosis.xray_b64;
     }
     const token = await getToken().catch(() => null);
     const res = await fetch(`${API_BASE}/diagnoses/${diagnosis.id}/image`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      setDiagImageAttempts(prev => prev[diagnosis.id] ? prev : { ...prev, [diagnosis.id]: true });
+      return null;
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     setDiagImageUrls(prev => prev[diagnosis.id] ? prev : { ...prev, [diagnosis.id]: url });
+    setDiagImageAttempts(prev => prev[diagnosis.id] ? prev : { ...prev, [diagnosis.id]: true });
     return url;
-  }, [diagImageUrls]);
+  }, [diagImageAttempts, diagImageUrls]);
 
   useEffect(() => {
     if (tab !== 'history' || expanded == null) return;
     diagnoses
-      .filter(d => d.patient_id === expanded && (d.xray_storage_path || d.xray_b64) && !diagImageUrls[d.id])
+      .filter(d => d.patient_id === expanded && (d.xray_storage_path || d.xray_b64) && !diagImageUrls[d.id] && !diagImageAttempts[d.id])
       .forEach(d => { fetchDiagnosisImageUrl(d).catch(() => {}); });
-  }, [tab, expanded, diagnoses, diagImageUrls, fetchDiagnosisImageUrl]);
+  }, [tab, expanded, diagnoses, diagImageAttempts, diagImageUrls, fetchDiagnosisImageUrl]);
 
   useEffect(() => {
     if (!activeChatId) return;
+    setReportView('received');
     setChatBusy(true); setChatError('');
     apiFetch(`/chat/messages/${activeChatId}`)
       .then(setChatMessages)
@@ -624,24 +639,33 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     const storedImage = sourceImage || diagImageUrls[diagnosis.id] || await fetchDiagnosisImageUrl(diagnosis);
     const reportWindow = window.open('', '_blank', 'width=960,height=900');
     if (!reportWindow) return;
+    const logo = identityLogo
+      ? `<img src="${identityLogo}" alt="Hospital logo" style="max-height:56px;max-width:160px;object-fit:contain;" />`
+      : '';
     const heatmap = diagnosis.heatmap_b64 ? `<img src="${diagnosis.heatmap_b64}" alt="Heatmap" style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;" />` : '<p style="color:#6b7280;">No heatmap available.</p>';
     const original = storedImage ? `<img src="${storedImage}" alt="X-ray" style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;" />` : `<p style="color:#6b7280;">Original X-ray preview was not stored for this record.</p>`;
     reportWindow.document.write(`<!doctype html><html><head><title>Ubuzima Report</title><style>
       body{font-family:Arial,sans-serif;padding:32px;color:#111827}
       h1,h2,h3{margin:0 0 12px}
+      .brand{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:20px}
       .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:20px 0}
       .card{border:1px solid #e5e7eb;border-radius:14px;padding:16px;background:#fff}
       .label{font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:700;letter-spacing:.08em}
       .value{font-size:15px;font-weight:700;margin-top:6px}
       .images{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:18px}
     </style></head><body>
-      <h1>Ubuzima Connect Report</h1>
-      <p style="color:#6b7280;margin-bottom:20px;">Generated ${new Date().toLocaleString('en-RW')}</p>
+      <div class="brand">
+        <div>
+          <h1>Ubuzima Connect Report</h1>
+          <p style="color:#6b7280;margin:0;">Generated ${new Date().toLocaleString('en-RW')}</p>
+        </div>
+        ${logo}
+      </div>
       <div class="meta">
         <div class="card"><div class="label">Patient</div><div class="value">${patient.name}</div></div>
         <div class="card"><div class="label">National ID</div><div class="value">${maskNationalId(patient.patient_ref_id)}</div></div>
         <div class="card"><div class="label">Radiologist</div><div class="value">${user.full_name}</div></div>
-        <div class="card"><div class="label">Hospital</div><div class="value">${user.hospital || branding?.name || '—'}</div></div>
+        <div class="card"><div class="label">Hospital</div><div class="value">${hospitalDisplayName}</div></div>
         <div class="card"><div class="label">Final Result</div><div class="value">${displayClass(finalResult || 'Unknown')}</div></div>
         <div class="card"><div class="label">Confidence</div><div class="value">${diagnosis.confidence_score?.toFixed(1) || '0.0'}%</div></div>
       </div>
@@ -658,6 +682,9 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   const exportSharedReportPdf = (shared: SharedDiagnosisPayload, sentAt?: string | null) => {
     const reportWindow = window.open('', '_blank', 'width=960,height=900');
     if (!reportWindow) return;
+    const logo = shared.hospital_logo_base64
+      ? `<img src="${shared.hospital_logo_base64}" alt="Hospital logo" style="max-height:56px;max-width:160px;object-fit:contain;" />`
+      : '';
     const original = shared.xray_b64
       ? `<img src="${shared.xray_b64}" alt="Diagnosed X-ray" style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;" />`
       : '<p style="color:#6b7280;">Diagnosed image was not attached to this shared report.</p>';
@@ -667,6 +694,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     reportWindow.document.write(`<!doctype html><html><head><title>Ubuzima Shared Report</title><style>
       body{font-family:Arial,sans-serif;padding:32px;color:#111827}
       h1,h2,h3{margin:0 0 12px}
+      .brand{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:20px}
       .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:20px 0}
       .card{border:1px solid #e5e7eb;border-radius:14px;padding:16px;background:#fff}
       .label{font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:700;letter-spacing:.08em}
@@ -674,8 +702,13 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
       .images{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:18px}
       .note{margin-top:18px}
     </style></head><body>
-      <h1>Ubuzima Shared Report</h1>
-      <p style="color:#6b7280;margin-bottom:20px;">Generated ${new Date().toLocaleString('en-RW')}</p>
+      <div class="brand">
+        <div>
+          <h1>Ubuzima Shared Report</h1>
+          <p style="color:#6b7280;margin:0;">Generated ${new Date().toLocaleString('en-RW')}</p>
+        </div>
+        ${logo}
+      </div>
       <div class="meta">
         <div class="card"><div class="label">Patient</div><div class="value">${shared.patient_name}</div></div>
         <div class="card"><div class="label">National ID</div><div class="value">${shared.patient_ref_masked || '—'}</div></div>
@@ -758,6 +791,9 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   const sharedChatMessages = chatMessages.filter(msg => parseSharedDiagnosisMessage(msg.message));
   const sentReportsCount = sharedChatMessages.filter(msg => msg.sender_id === user.id).length;
   const receivedReportsCount = sharedChatMessages.filter(msg => msg.recipient_id === user.id).length;
+  const visibleSharedChatMessages = sharedChatMessages.filter(msg =>
+    reportView === 'sent' ? msg.sender_id === user.id : msg.recipient_id === user.id
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1317,7 +1353,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
           <div className="space-y-5">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Shared Reports</h1>
-              <p className="text-sm text-gray-400 mt-1">Choose an approved colleague, then review every report you have shared with that radiologist.</p>
+              <p className="text-sm text-gray-400 mt-1">Choose an approved colleague, then open either the received or sent report view for a cleaner handoff history.</p>
             </div>
             <div className="grid sm:grid-cols-3 gap-3">
               <div className="bg-white rounded-2xl border border-gray-100 p-4">
@@ -1379,8 +1415,29 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                         <div className="text-xs text-gray-500 mt-2">{sharedChatMessages.length} shared report{sharedChatMessages.length === 1 ? '' : 's'}</div>
                       </div>
                     </div>
+                    <div className="pt-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="inline-flex rounded-xl bg-gray-100 p-1">
+                        <button
+                          onClick={() => setReportView('received')}
+                          className={`px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-all ${reportView === 'received' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                          Received
+                        </button>
+                        <button
+                          onClick={() => setReportView('sent')}
+                          className={`px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-all ${reportView === 'sent' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                          Sent
+                        </button>
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {reportView === 'received'
+                          ? 'Reports this colleague shared with you'
+                          : 'Reports you shared with this colleague'}
+                      </div>
+                    </div>
                     <div className="flex-1 overflow-y-auto py-4 space-y-3">
-                      {sharedChatMessages.map(msg => {
+                      {visibleSharedChatMessages.map(msg => {
                         const shared = parseSharedDiagnosisMessage(msg.message);
                         if (!shared) return null;
                         const outgoing = msg.sender_id === user.id;
@@ -1421,13 +1478,13 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                                         <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                                           <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Diagnosed Image</div>
                                           {shared.xray_b64
-                                            ? <img src={shared.xray_b64} alt="Shared diagnosed X-ray" className="w-full h-40 rounded-lg object-cover border border-gray-200 bg-white" />
+                                            ? <img src={shared.xray_b64} alt="Shared diagnosed X-ray" className="w-full h-40 rounded-lg object-contain border border-gray-200 bg-white" />
                                             : <div className="h-40 rounded-lg border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-400 bg-white">Image not attached</div>}
                                         </div>
                                         <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                                           <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">AI Heatmap</div>
                                           {shared.heatmap_b64
-                                            ? <img src={shared.heatmap_b64} alt="Shared heatmap" className="w-full h-40 rounded-lg object-cover border border-gray-200 bg-white" />
+                                            ? <img src={shared.heatmap_b64} alt="Shared heatmap" className="w-full h-40 rounded-lg object-contain border border-gray-200 bg-white" />
                                             : <div className="h-40 rounded-lg border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-400 bg-white">Heatmap not attached</div>}
                                         </div>
                                       </div>
@@ -1447,11 +1504,15 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                         );
                       })}
                       {chatError && <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">{chatError}</div>}
-                      {!chatBusy && !chatError && sharedChatMessages.length === 0 && (
+                      {!chatBusy && !chatError && visibleSharedChatMessages.length === 0 && (
                         <div className="h-full flex items-center justify-center text-center">
                           <div>
-                            <div className="text-base font-bold text-gray-700">No shared reports yet</div>
-                            <div className="text-sm text-gray-400 mt-2">Use the Share action from patient history after reviewing or verifying a diagnosis.</div>
+                            <div className="text-base font-bold text-gray-700">No {reportView} reports yet</div>
+                            <div className="text-sm text-gray-400 mt-2">
+                              {reportView === 'received'
+                                ? 'Reports shared by this colleague will appear here with the diagnosed image and download action.'
+                                : 'Use the Share action from patient history after reviewing or verifying a diagnosis.'}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -1484,6 +1545,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                   <div>
                     <div className="font-bold text-gray-900">{user.full_name}</div>
                     <div className="text-sm text-gray-400">{user.email}</div>
+                    <div className="text-xs text-gray-500 mt-1">{hospitalDisplayName}</div>
                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 mt-1 inline-block">✓ Approved</span>
                   </div>
                 </div>
@@ -1507,7 +1569,14 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                     </div>
                     <div>
                       <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Hospital</label>
-                      <input value={pHospital} onChange={e => setPHospital(e.target.value)} className={inp} placeholder="CHUK" />
+                      <input
+                        value={pHospital}
+                        onChange={e => setPHospital(e.target.value)}
+                        className={`${inp} ${branding?.name ? 'bg-gray-50 text-gray-500' : ''}`}
+                        placeholder="CHUK"
+                        readOnly={!!branding?.name}
+                      />
+                      {branding?.name && <p className="text-[10px] text-gray-400 mt-1">Hospital name comes from your approved hospital assignment.</p>}
                     </div>
                     <div>
                       <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Phone</label>
@@ -1531,7 +1600,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
               ) : (
                 <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-3">
                   {[
-                    { label: 'Hospital', value: user.hospital },
+                    { label: 'Hospital', value: hospitalDisplayName },
                     { label: 'License', value: user.license_number },
                     { label: 'Phone', value: user.phone_number },
                     { label: 'Specialization', value: user.specialization },
