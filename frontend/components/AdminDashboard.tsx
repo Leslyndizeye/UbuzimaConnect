@@ -767,7 +767,7 @@ export default function AdminDashboard() {
             )}
 
             {tab==="users"&&(
-              <div className="space-y-5 max-w-[1200px] anim-in">
+              <div className="space-y-5 max-w-[1400px] mx-auto anim-in">
                 <div className="flex justify-end">
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search team..." className={INP+" w-[220px]"}/>
                 </div>
@@ -779,7 +779,7 @@ export default function AdminDashboard() {
                       <TD><span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">{u.role}</span></TD>
                       <TD><StatusBadge status={u.status}/></TD>
                       <TD mono>{fmt(u.created_at)}</TD>
-                      <TD><div className="flex gap-1.5 flex-wrap">
+                      <TD><div className="flex items-center gap-2 flex-nowrap whitespace-nowrap">
                         {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-600 text-white hover:bg-red-700">Reject</button></>}
                         {u.status==="approved"&&<><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full border" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Password</button><button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-600 text-white hover:bg-red-700">Delete</button></>}
                         {(u.status==="rejected"||u.status==="revoked")&&<button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Re-Approve</button>}
@@ -791,7 +791,7 @@ export default function AdminDashboard() {
             )}
 
             {tab==="predictions"&&(
-              <div className="space-y-5 max-w-[1200px] anim-in">
+              <div className="space-y-5 max-w-[1400px] mx-auto anim-in">
                 <Panel className="p-10 text-center">
                   <h3 className="text-lg font-bold text-slate-900 mb-2">Diagnosis details are hidden for hospital admin</h3>
                   <p className="text-sm text-slate-500">Radiologists keep diagnosis-level patient records on their own dashboard. Hospital admin access stays focused on radiologists, patients, retraining, audit logs and hospital branding.</p>
@@ -800,10 +800,10 @@ export default function AdminDashboard() {
             )}
 
             {tab==="patients"&&(
-              <div className="space-y-4 max-w-[1200px] anim-in">
-                <PageHead title="Patients" sub={`${visiblePatients.length} registered`} right={
+              <div className="space-y-4 max-w-[1400px] mx-auto anim-in">
+                <div className="flex justify-end">
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name or ID..." className={INP+" w-[240px]"}/>
-                }/>
+                </div>
                 <div className="space-y-2">
                   {visiblePatients.filter(p=>!search||p.name.toLowerCase().includes(search.toLowerCase())||(p.patient_ref_id&&p.patient_ref_id.includes(search))).map(p=>{
                     const ptD=visibleDiagnoses.filter(d=>d.patient_id===p.id); const isExp=expandedPt===p.id;
@@ -857,8 +857,7 @@ export default function AdminDashboard() {
             )}
 
             {tab==="diagnose"&&(
-              <div className="space-y-6 max-w-[1200px] anim-in">
-                <PageHead title="Run AI Scan" sub="Select a radiologist, then their patient, then upload the chest X-ray"/>
+              <div className="space-y-6 max-w-[1400px] mx-auto anim-in">
                 <div className="grid lg:grid-cols-2 gap-7">
                   <Panel className="p-8 space-y-7">
 
@@ -975,9 +974,7 @@ export default function AdminDashboard() {
             )}
 
             {tab==="retrain"&&(
-              <div className="space-y-6 max-w-[1200px] anim-in">
-                <PageHead title="Retrain AI Model" sub={`Upload labelled X-rays and trigger retraining - minimum ${RT_MIN} images per class`}/>
-
+              <div className="space-y-6 max-w-[1400px] mx-auto anim-in">
                 <div className="grid lg:grid-cols-2 gap-7">
                   {/* Left: upload panel */}
                   <Panel className="p-8 space-y-6">
@@ -1110,7 +1107,7 @@ export default function AdminDashboard() {
             )}
 
             {tab==="model"&&(
-              <div className="space-y-5 max-w-[900px] anim-in">
+              <div className="space-y-5 max-w-[1400px] mx-auto anim-in">
                 <PageHead title="AI Model" sub="ResNet-50 production model"/>
                 {modelInfo&&<div className="grid lg:grid-cols-2 gap-5">
                   <Panel className="p-7">
@@ -1126,7 +1123,7 @@ export default function AdminDashboard() {
             )}
 
             {tab==="passwords"&&(
-              <div className="space-y-5 max-w-[1100px] anim-in">
+              <div className="space-y-5 max-w-[1400px] mx-auto anim-in">
                 <PageHead title="Password Management" sub="Set or generate passwords for approved radiologists"/>
                 <Tbl heads={["User","Email","Status","Last Action","Actions"]} empty={apiUsers.filter(u=>u.status==="approved").length===0?"No approved users yet":undefined}>
                   {apiUsers.filter(u=>u.status==="approved").map(u=>{const last=pwLogs.filter(l=>l.entity_id===u.id).sort((a,b)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime())[0];return(
@@ -1158,8 +1155,7 @@ export default function AdminDashboard() {
             )}
 
             {tab==="audit"&&(
-              <div className="space-y-5 max-w-[1100px] anim-in">
-                <PageHead title="Activity Log" sub={`Last ${auditLogs.length} recorded actions`}/>
+              <div className="space-y-5 max-w-[1400px] mx-auto anim-in">
                 <Tbl heads={["Team member","Activity","Area","Name","Time","Details"]} empty={auditLogs.length===0?"No activity recorded yet":undefined}>
                   {auditLogs.map(l=>{
                     const col=l.action.includes("delete")||l.action.includes("reject")||l.action.includes("revoke")?SOFT_RED:l.action.includes("approve")||l.action.includes("verify")||l.action.includes("retrain")?DARK_GREEN:SOFT_GREY;
@@ -1187,11 +1183,9 @@ export default function AdminDashboard() {
             )}
 
             {tab==="profile"&&isHospitalAdmin&&(
-              <div className="space-y-6 max-w-[800px] anim-in">
-                <PageHead title={myHospital?.name||"My Hospital"} sub="Manage your hospital's branding and account"/>
-
+              <div className="space-y-6 max-w-[1400px] mx-auto anim-in">
                 {/* Logo upload */}
-                <Panel className="p-8 space-y-5">
+                <Panel className="p-8 space-y-5 max-w-[800px]">
                   <h3 className="text-base font-bold text-slate-800">Hospital Logo</h3>
                   <p className="text-sm text-slate-500">This logo appears on your radiologists' diagnosing page as a branding banner.</p>
                   <div className="flex items-start gap-6">
@@ -1214,7 +1208,7 @@ export default function AdminDashboard() {
                 </Panel>
 
                 {/* Account info */}
-                <Panel className="p-8 space-y-5">
+                <Panel className="p-8 space-y-5 max-w-[800px]">
                   <h3 className="text-base font-bold text-slate-800">Account</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     {[{l:"Name",v:me?.full_name},{l:"Email",v:me?.email},{l:"Role",v:"Hospital Admin"},{l:"Linked Hospital",v:myHospital?.name||me?.hospital||"Your hospital"}].map(f=>(
