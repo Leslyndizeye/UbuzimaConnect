@@ -532,7 +532,6 @@ export default function AdminDashboard() {
     ["audit","Audit Log"],
     ["profile","My Hospital"],
   ];
-  const activeNavLabel = navItems.find(([id])=>id===tab)?.[1] || "Dashboard";
   const headerLogo = logoPreview || myHospital?.logo_base64 || null;
   const showInitialSkeleton = loading && !apiUsers.length && !patients.length && !diagnoses.length;
 
@@ -657,30 +656,32 @@ export default function AdminDashboard() {
 
         {/* ════════ MAIN ════════ */}
         <div className="flex-1 flex flex-col min-w-0">
-          <main ref={mainRef} onScroll={e=>setShowScrollNav((e.currentTarget as HTMLElement).scrollTop>48)} className="flex-1 px-10 pb-10 overflow-y-auto">
-            <div className={`sticky top-4 z-20 mb-6 transition-all duration-300 ${showScrollNav ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 -translate-y-4 pointer-events-none"}`}>
-              <div className="w-full max-w-[1400px] mx-auto flex items-center justify-between gap-4 rounded-[26px] border border-slate-200 bg-white/95 backdrop-blur-sm shadow-[0_10px_30px_rgba(0,0,0,0.05)] px-5 py-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Hospital Workspace</p>
-                  <p className="text-sm font-bold text-slate-900 mt-1">{activeNavLabel}</p>
+          <header className="h-[90px] flex items-center justify-between px-10 sticky top-0 z-20 relative">
+            {/* <div className="flex items-center gap-3 bg-white rounded-full px-5 py-3 border border-slate-100 shadow-sm w-[320px]">
+              <svg width="16" height="16" fill="none" stroke="#A0AEC0" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+              <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search patients, users…" className="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"/>
+              {search&&<button onClick={()=>setSearch("")} className="text-slate-400 hover:text-slate-700">✕</button>}
+            </div> */}
+            <div className="flex items-center gap-4 absolute top-5 right-10 flex ">
+              {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
+              {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor:SOFT_GREY}}/>{pending} pending
+              </div>}
+              <div className="flex items-center gap-3 bg-white rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 shadow-sm min-w-[250px]">
+                <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
+                  {headerLogo
+                    ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
+                    : <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{me?.full_name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"HA"}</div>}
                 </div>
-                {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
-                {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>
-                  <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor:SOFT_GREY}}/>{pending} pending
-                </div>}
-                <div className="ml-auto flex items-center gap-3 rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 bg-slate-50/80 min-w-[250px]">
-                  <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
-                    {headerLogo
-                      ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
-                      : <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{(myHospital?.name||me?.full_name||"HA").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}</div>}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[12px] font-bold text-slate-800 leading-tight">{myHospital?.name||"Hospital Admin"}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{me?.email||"—"}</p>
-                  </div>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-bold text-slate-800 leading-tight">{myHospital?.name||"Hospital Admin"}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{me?.email||"—"}</p>
                 </div>
               </div>
             </div>
+          </header>
+
+          <main className="flex-1 px-10 pb-10 overflow-y-auto">
 
             {/* ══ OVERVIEW ══ */}
             {tab==="overview"&&(
@@ -1286,6 +1287,19 @@ export default function AdminDashboard() {
             )}
 
           </main>
+        </div>
+        <div className="hidden xl:flex fixed right-5 top-1/2 -translate-y-1/2 z-20 pointer-events-none">
+          <div className="pointer-events-auto bg-white/96 backdrop-blur-sm border border-slate-200 shadow-[0_10px_30px_rgba(0,0,0,0.08)] rounded-[28px] px-4 py-5 w-[92px] flex flex-col items-center gap-3">
+            <div className="w-14 h-14 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center">
+              {headerLogo
+                ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
+                : <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{(myHospital?.name||me?.full_name||"HA").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}</div>}
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] font-bold text-slate-700 leading-tight">{myHospital?.name||"Hospital"}</p>
+              <p className="text-[9px] text-slate-400 mt-1">Brand</p>
+            </div>
+          </div>
         </div>
       </div>
     </>
