@@ -118,6 +118,12 @@ const classBadge = (c: string) =>
   c === 'Normal' ? 'bg-emerald-100 text-emerald-700' :
   (c === 'Tuberculosis' || c === 'TB') ? 'bg-red-100 text-red-700' :
   c === 'Pneumonia' ? 'bg-zinc-100 text-zinc-600' : 'bg-zinc-100 text-zinc-600';
+const reportPill = (c: string) =>
+  c === 'Normal'
+    ? 'border border-[#166534]/20 bg-[#166534]/10 text-[#166534]'
+    : (c === 'Tuberculosis' || c === 'TB')
+      ? 'border border-[#DC2626]/20 bg-[#DC2626]/10 text-[#DC2626]'
+      : 'border border-[#475569]/20 bg-[#475569]/10 text-[#475569]';
 
 function EyeBtn({ show, onToggle }: { show: boolean; onToggle: () => void }) {
   return (
@@ -1435,36 +1441,36 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
           <div className="space-y-5">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Shared Reports</h1>
-              <p className="text-sm text-gray-400 mt-1">Choose a radiologist, open received or sent reports, then review, re-share, download, delete, or diagnose again from one smooth workspace.</p>
+              <p className="text-sm text-[#475569] mt-1">Choose a radiologist, open received or sent reports, then review, re-share, download, delete, or diagnose again from one smooth workspace.</p>
             </div>
-            <div className="grid xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
-              <div className="bg-white rounded-[28px] border border-gray-100 p-5 md:p-6 flex flex-col min-h-[640px] shadow-[0_10px_35px_rgba(15,23,42,0.04)]">
+            <div className="grid xl:grid-cols-[320px_minmax(0,1fr)] gap-5 items-start">
+              <div className="xl:order-2 bg-white rounded-[28px] border border-[#475569]/15 p-5 md:p-6 flex flex-col min-h-[640px] shadow-[0_10px_35px_rgba(71,85,105,0.08)]">
                 {!activeChatId ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-center">
-                    <div className="w-16 h-16 rounded-[22px] bg-emerald-50 text-emerald-700 flex items-center justify-center text-2xl font-black">1</div>
-                    <div className="text-base font-bold text-gray-700 mt-4">Choose a radiologist first</div>
-                    <div className="text-sm text-gray-400 mt-2 max-w-md">Use the right panel to select an approved colleague in your hospital, then switch between received and sent reports here.</div>
+                    <div className="w-16 h-16 rounded-[22px] bg-[#166534]/10 text-[#166534] flex items-center justify-center text-2xl font-black">2</div>
+                    <div className="text-base font-bold text-[#475569] mt-4">Choose a radiologist first</div>
+                    <div className="text-sm text-[#475569] mt-2 max-w-md">Use the left panel to select an approved colleague in your hospital, then switch between received and sent reports here.</div>
                   </div>
                 ) : (
                   <>
-                    <div className="pb-5 border-b border-gray-100 flex flex-wrap items-start justify-between gap-4">
+                    <div className="pb-5 border-b border-[#475569]/15 flex flex-wrap items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-gray-400">Step 2 - Review Reports</div>
-                        <div className="text-lg font-bold text-gray-900 mt-1">{selectedReportContact?.full_name || 'Shared Reports'}</div>
-                        <div className="text-sm text-gray-400 mt-1">{selectedReportContact?.specialization || 'Radiologist'}</div>
-                        <div className="text-xs text-gray-400 mt-1">{selectedReportContact?.email || ''}</div>
+                        <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#475569]">Step 2 - Review Reports</div>
+                        <div className="text-lg font-bold text-[#475569] mt-1">{selectedReportContact?.full_name || 'Shared Reports'}</div>
+                        <div className="text-sm text-[#475569] mt-1">{selectedReportContact?.specialization || 'Radiologist'}</div>
+                        <div className="text-xs text-[#475569] mt-1">{selectedReportContact?.email || ''}</div>
                       </div>
                       <div className="shrink-0">
-                        <div className="inline-flex rounded-2xl bg-gray-100 p-1.5">
+                        <div className="inline-flex rounded-2xl border border-[#475569]/15 bg-[#475569]/10 p-1.5">
                           <button
                             onClick={() => setReportView('received')}
-                            className={`px-4 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-[0.18em] transition-all ${reportView === 'received' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`px-4 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-[0.18em] ${reportView === 'received' ? 'bg-[#475569] text-white' : 'text-[#475569]'}`}
                           >
                             Received
                           </button>
                           <button
                             onClick={() => setReportView('sent')}
-                            className={`px-4 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-[0.18em] transition-all ${reportView === 'sent' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`px-4 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-[0.18em] ${reportView === 'sent' ? 'bg-[#166534] text-white' : 'text-[#475569]'}`}
                           >
                             Sent
                           </button>
@@ -1473,10 +1479,10 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                     </div>
                     <div className="pt-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">Received {selectedReceivedCount}</span>
-                        <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">Sent {selectedSentCount}</span>
+                        <span className="px-2.5 py-1 rounded-full border border-[#475569]/20 bg-[#475569]/10 text-[#475569] text-[10px] font-bold">Received {selectedReceivedCount}</span>
+                        <span className="px-2.5 py-1 rounded-full border border-[#166534]/20 bg-[#166534]/10 text-[#166534] text-[10px] font-bold">Sent {selectedSentCount}</span>
                       </div>
-                      <div className="text-xs text-gray-400">
+                      <div className="text-xs text-[#475569]">
                         {reportView === 'received'
                           ? 'Reports this colleague shared with you'
                           : 'Reports you shared with this colleague'}
@@ -1488,38 +1494,38 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                         if (!shared) return null;
                         const outgoing = msg.sender_id === user.id;
                         return (
-                          <article key={msg.id} className="w-full rounded-[26px] border border-gray-100 bg-gradient-to-br from-white via-white to-gray-50 p-5 shadow-[0_12px_32px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+                          <article key={msg.id} className="w-full rounded-[26px] border border-[#475569]/15 bg-white p-5 shadow-[0_8px_24px_rgba(71,85,105,0.07)]">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={`inline-flex text-[10px] font-bold px-2.5 py-1 rounded-full ${outgoing ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                  <span className={`inline-flex text-[10px] font-bold px-2.5 py-1 rounded-full border ${outgoing ? 'border-[#166534]/20 bg-[#166534]/10 text-[#166534]' : 'border-[#475569]/20 bg-[#475569]/10 text-[#475569]'}`}>
                                     {outgoing ? 'Sent Report' : 'Received Report'}
                                   </span>
-                                  <span className={`inline-flex text-[10px] font-bold px-2.5 py-1 rounded-full ${classBadge(shared.classification)}`}>
+                                  <span className={`inline-flex text-[10px] font-bold px-2.5 py-1 rounded-full ${reportPill(shared.classification)}`}>
                                     {displayClass(shared.classification)}
                                   </span>
                                 </div>
-                                <div className="mt-3 text-lg font-bold text-gray-900">{shared.patient_name}</div>
-                                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                                <div className="mt-3 text-lg font-bold text-[#475569]">{shared.patient_name}</div>
+                                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[#475569]">
                                   <span>{shared.confidence_score.toFixed(1)}% confidence</span>
                                   {shared.patient_ref_masked && <span>{shared.patient_ref_masked}</span>}
                                   {shared.radiologist_name && <span>{shared.radiologist_name}</span>}
                                   {shared.hospital && <span>{shared.hospital}</span>}
                                 </div>
                               </div>
-                              <div className="text-[11px] text-gray-400">{fmt(msg.created_at)}</div>
+                              <div className="text-[11px] text-[#475569]">{fmt(msg.created_at)}</div>
                             </div>
                             {(shared.shared_note || shared.radiologist_notes) && (
                               <div className="mt-4 grid gap-3 lg:grid-cols-2">
                                 {shared.shared_note && (
-                                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-3.5 text-xs text-gray-700">
-                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700 mb-1.5">Shared Note</div>
+                                  <div className="rounded-2xl border border-[#166534]/20 bg-[#166534]/10 p-3.5 text-xs text-[#166534]">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1.5">Shared Note</div>
                                     {shared.shared_note}
                                   </div>
                                 )}
                                 {shared.radiologist_notes && (
-                                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3.5 text-xs text-gray-600">
-                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500 mb-1.5">Clinical Note</div>
+                                  <div className="rounded-2xl border border-[#475569]/20 bg-[#475569]/10 p-3.5 text-xs text-[#475569]">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1.5">Clinical Note</div>
                                     {shared.radiologist_notes}
                                   </div>
                                 )}
@@ -1527,68 +1533,68 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                             )}
                             <div className="mt-4 grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] gap-4">
                               <div className="grid sm:grid-cols-2 gap-4">
-                                <div className="rounded-[22px] border border-gray-200 bg-gray-50 p-3">
-                                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 mb-2">Diagnosed Image</div>
+                                <div className="rounded-[22px] border border-[#475569]/15 bg-[#475569]/[0.04] p-3">
+                                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#475569] mb-2">Diagnosed Image</div>
                                   {shared.xray_b64
-                                    ? <img src={shared.xray_b64} alt="Shared diagnosed X-ray" className="w-full h-48 rounded-[18px] object-contain border border-gray-200 bg-white" />
-                                    : <div className="h-48 rounded-[18px] border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-400 bg-white">Image not attached</div>}
+                                    ? <img src={shared.xray_b64} alt="Shared diagnosed X-ray" className="w-full h-48 rounded-[18px] object-contain border border-[#475569]/15 bg-white" />
+                                    : <div className="h-48 rounded-[18px] border border-dashed border-[#475569]/25 flex items-center justify-center text-xs text-[#475569] bg-white">Image not attached</div>}
                                 </div>
-                                <div className="rounded-[22px] border border-gray-200 bg-gray-50 p-3">
-                                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 mb-2">AI Heatmap</div>
+                                <div className="rounded-[22px] border border-[#475569]/15 bg-[#475569]/[0.04] p-3">
+                                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#475569] mb-2">AI Heatmap</div>
                                   {shared.heatmap_b64
-                                    ? <img src={shared.heatmap_b64} alt="Shared heatmap" className="w-full h-48 rounded-[18px] object-contain border border-gray-200 bg-white" />
-                                    : <div className="h-48 rounded-[18px] border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-400 bg-white">Heatmap not attached</div>}
+                                    ? <img src={shared.heatmap_b64} alt="Shared heatmap" className="w-full h-48 rounded-[18px] object-contain border border-[#475569]/15 bg-white" />
+                                    : <div className="h-48 rounded-[18px] border border-dashed border-[#475569]/25 flex items-center justify-center text-xs text-[#475569] bg-white">Heatmap not attached</div>}
                                 </div>
                               </div>
-                              <div className="rounded-[22px] border border-gray-100 bg-white p-4">
-                                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">Actions</div>
-                                <div className="text-xs text-gray-400 mt-1">Everything for this report stays in one place.</div>
+                              <div className="rounded-[22px] border border-[#475569]/15 bg-white p-4">
+                                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#475569]">Actions</div>
+                                <div className="text-xs text-[#475569] mt-1">Everything for this report stays in one place.</div>
                                 <div className="mt-3 flex flex-wrap gap-2.5">
                                   <button
                                     onClick={() => exportSharedReportPdf(shared, msg.created_at)}
-                                    className="px-3.5 py-2.5 rounded-xl bg-gray-900 text-white text-[11px] font-bold uppercase tracking-[0.16em] hover:bg-black transition-colors"
+                                    className="px-3.5 py-2.5 rounded-xl bg-[#166534] text-white text-[11px] font-bold uppercase tracking-[0.16em]"
                                   >
                                     Download Report
                                   </button>
                                   <button
                                     onClick={() => downloadSharedImage(shared)}
                                     disabled={!shared.xray_b64}
-                                    className="px-3.5 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-[11px] font-bold uppercase tracking-[0.16em] hover:bg-gray-50 disabled:opacity-40"
+                                    className="px-3.5 py-2.5 rounded-xl border border-[#475569]/20 bg-white text-[#475569] text-[11px] font-bold uppercase tracking-[0.16em] disabled:opacity-40"
                                   >
                                     Download Image
                                   </button>
                                   <button
                                     onClick={() => rediagnoseSharedImage(shared).catch(() => setChatError('Could not load that image for re-diagnosis.'))}
                                     disabled={!shared.xray_b64}
-                                    className="px-3.5 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px] font-bold uppercase tracking-[0.16em] hover:bg-emerald-100 disabled:opacity-40"
+                                    className="px-3.5 py-2.5 rounded-xl border border-[#166534]/20 bg-[#166534]/10 text-[#166534] text-[11px] font-bold uppercase tracking-[0.16em] disabled:opacity-40"
                                   >
                                     Diagnose Again
                                   </button>
                                   <button
                                     onClick={() => openForwardReport(shared)}
-                                    className="px-3.5 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-[11px] font-bold uppercase tracking-[0.16em] hover:bg-gray-50"
+                                    className="px-3.5 py-2.5 rounded-xl border border-[#475569]/20 bg-[#475569]/10 text-[#475569] text-[11px] font-bold uppercase tracking-[0.16em]"
                                   >
                                     Share Again
                                   </button>
                                   <button
                                     onClick={() => deleteSharedReport(msg.id)}
-                                    className="px-3.5 py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-[11px] font-bold uppercase tracking-[0.16em] hover:bg-red-100"
+                                    className="px-3.5 py-2.5 rounded-xl border border-[#DC2626]/20 bg-[#DC2626]/10 text-[#DC2626] text-[11px] font-bold uppercase tracking-[0.16em]"
                                   >
                                     Delete Report
                                   </button>
                                 </div>
-                                {shared.xray_filename && <div className="mt-4 text-[11px] text-gray-400">File: {shared.xray_filename}</div>}
+                                {shared.xray_filename && <div className="mt-4 text-[11px] text-[#475569]">File: {shared.xray_filename}</div>}
                               </div>
                             </div>
                           </article>
                         );
                       })}
-                      {chatError && <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">{chatError}</div>}
+                      {chatError && <div className="p-3 rounded-xl bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626] text-xs font-semibold">{chatError}</div>}
                       {!chatBusy && !chatError && visibleSharedChatMessages.length === 0 && (
-                        <div className="h-full flex items-center justify-center text-center rounded-[24px] border border-dashed border-gray-200 bg-gray-50/70">
+                        <div className="h-full flex items-center justify-center text-center rounded-[24px] border border-dashed border-[#475569]/25 bg-[#475569]/[0.04]">
                           <div className="px-6 py-10">
-                            <div className="text-base font-bold text-gray-700">No {reportView} reports yet</div>
-                            <div className="text-sm text-gray-400 mt-2">
+                            <div className="text-base font-bold text-[#475569]">No {reportView} reports yet</div>
+                            <div className="text-sm text-[#475569] mt-2">
                               {reportView === 'received'
                                 ? 'Reports shared by this colleague will appear here with clean actions for download, re-share, and re-diagnosis.'
                                 : 'Use the Share action from patient history to send a reviewed diagnosis to this colleague.'}
@@ -1596,25 +1602,25 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                           </div>
                         </div>
                       )}
-                      {chatBusy && <div className="text-sm text-gray-400 text-center pt-12">Loading shared reports...</div>}
+                      {chatBusy && <div className="text-sm text-[#475569] text-center pt-12">Loading shared reports...</div>}
                     </div>
                   </>
                 )}
               </div>
-              <div className="bg-white rounded-[28px] border border-gray-100 overflow-hidden shadow-[0_10px_35px_rgba(15,23,42,0.04)]">
-                <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-br from-white via-white to-emerald-50/50">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-gray-400">Step 1 - Choose Radiologist</div>
-                  <div className="text-xs text-gray-400 mt-1">Search approved colleagues in your hospital and open their shared report thread.</div>
+              <div className="xl:order-1 bg-white rounded-[28px] border border-[#475569]/15 overflow-hidden shadow-[0_10px_35px_rgba(71,85,105,0.08)]">
+                <div className="px-5 py-4 border-b border-[#475569]/15 bg-[#475569]/[0.04]">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#475569]">Step 1 - Choose Radiologist</div>
+                  <div className="text-xs text-[#475569] mt-1">Search approved colleagues in your hospital and open their shared report thread.</div>
                   <div className="mt-3">
                     <input
                       value={reportSearch}
                       onChange={e => setReportSearch(e.target.value)}
-                      className={inp}
+                      className="w-full px-3 py-2.5 rounded-xl border border-[#475569]/20 text-sm text-[#475569] focus:outline-none focus:ring-2 focus:ring-[#166534]/15 bg-white"
                       placeholder="Search by radiologist name or email"
                     />
                   </div>
                 </div>
-                {contactsError && <div className="mx-4 mt-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">{contactsError}</div>}
+                {contactsError && <div className="mx-4 mt-4 p-3 rounded-xl bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626] text-xs font-semibold">{contactsError}</div>}
                 <div className="max-h-[640px] overflow-y-auto p-3 space-y-2">
                   {filteredContacts.map(contact => {
                     const contactMessages = sharedChatMessages.filter(msg => msg.sender_id === contact.id || msg.recipient_id === contact.id);
@@ -1622,24 +1628,24 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                     const contactSent = contactMessages.filter(msg => msg.recipient_id === contact.id).length;
                     return (
                       <button key={contact.id} onClick={() => setActiveChatId(contact.id)}
-                        className={`w-full text-left rounded-[22px] border px-4 py-3.5 transition-all duration-200 ${activeChatId === contact.id ? 'border-emerald-300 bg-emerald-50 shadow-[0_10px_24px_rgba(16,185,129,0.12)] -translate-y-0.5' : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50 hover:-translate-y-0.5'}`}>
+                        className={`w-full text-left rounded-[22px] border px-4 py-3.5 transition-colors ${activeChatId === contact.id ? 'border-[#166534]/30 bg-[#166534]/10 shadow-[0_10px_24px_rgba(22,101,52,0.12)]' : 'border-[#475569]/15 bg-white'}`}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="text-sm font-bold text-gray-900 truncate">{contact.full_name}</div>
-                            <div className="text-[11px] text-gray-400 mt-0.5 truncate">{contact.specialization || 'Radiologist'}</div>
-                            <div className="text-[11px] text-gray-400 mt-1 truncate">{contact.email}</div>
+                            <div className="text-sm font-bold text-[#475569] truncate">{contact.full_name}</div>
+                            <div className="text-[11px] text-[#475569] mt-0.5 truncate">{contact.specialization || 'Radiologist'}</div>
+                            <div className="text-[11px] text-[#475569] mt-1 truncate">{contact.email}</div>
                           </div>
-                          <span className="shrink-0 text-[9px] font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">Approved</span>
+                          <span className="shrink-0 text-[9px] font-bold px-2 py-1 rounded-full border border-[#166534]/20 bg-[#166534]/10 text-[#166534]">Approved</span>
                         </div>
-                        <div className="mt-3 flex items-center gap-2 text-[10px] font-semibold text-gray-500">
-                          <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-600">Received {contactReceived}</span>
-                          <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">Sent {contactSent}</span>
+                        <div className="mt-3 flex items-center gap-2 text-[10px] font-semibold">
+                          <span className="px-2 py-1 rounded-full border border-[#475569]/20 bg-[#475569]/10 text-[#475569]">Received {contactReceived}</span>
+                          <span className="px-2 py-1 rounded-full border border-[#166534]/20 bg-[#166534]/10 text-[#166534]">Sent {contactSent}</span>
                         </div>
                       </button>
                     );
                   })}
                   {!contactsError && filteredContacts.length === 0 && (
-                    <div className="p-6 text-sm text-gray-400 text-center">
+                    <div className="p-6 text-sm text-[#475569] text-center">
                       {chatContacts.length === 0 ? 'No approved radiologists are available in your hospital yet.' : 'No radiologist matches your search.'}
                     </div>
                   )}
