@@ -275,7 +275,6 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatDraft, setChatDraft] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
   const [chatError, setChatError] = useState('');
   const [shareDiag, setShareDiag] = useState<Diagnosis | null>(null);
@@ -685,26 +684,11 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     }
   };
 
-  const sendChatMessage = async () => {
-    if (!activeChatId || !chatDraft.trim()) return;
-    setChatBusy(true); setChatError('');
-    try {
-      const sent = await apiFetch(`/chat/messages/${activeChatId}`, {
-        method: 'POST',
-        body: JSON.stringify({ message: chatDraft.trim() }),
-      });
-      setChatMessages(prev => [...prev, sent]);
-      setChatDraft('');
-    } catch (e: any) {
-      setChatError(e.message);
-    } finally {
-      setChatBusy(false);
-    }
-  };
-
   const filtered = patients.filter(p =>
     !search || p.name.toLowerCase().includes(search.toLowerCase()) || (p.patient_ref_id || '').includes(search)
   );
+  const selectedReportContact = chatContacts.find(c => c.id === activeChatId) || null;
+  const sharedChatMessages = chatMessages.filter(msg => parseSharedDiagnosisMessage(msg.message));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -870,7 +854,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
           {([
             { id: 'diagnose', label: 'Diagnose', icon: '' },
             { id: 'history', label: 'Patient History', icon: '◉', count: patients.length },
-            { id: 'chat', label: 'Chat', icon: '✉', count: chatContacts.length },
+            { id: 'chat', label: 'Reports', icon: '✉', count: chatContacts.length },
             { id: 'profile', label: 'My Profile', icon: '' },
           ] as const).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -1263,8 +1247,8 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
         {tab === 'chat' && (
           <div className="space-y-5">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Hospital Chat</h1>
-              <p className="text-sm text-gray-400 mt-1">Chat with approved radiologists in your hospital only.</p>
+              <h1 className="text-2xl font-bold tracking-tight">Shared Reports</h1>
+              <p className="text-sm text-gray-400 mt-1">Review diagnosis reports shared with approved radiologists in your hospital.</p>
             </div>
             <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-5">
               <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -1282,22 +1266,22 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-col min-h-[520px]">
                 {!activeChatId ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-gray-400">Select a radiologist to start chatting.</div>
+                  <div className="flex-1 flex items-center justify-center text-sm text-gray-400">Select a radiologist to view shared reports.</div>
                 ) : (
                   <>
                     <div className="pb-3 border-b border-gray-100">
-                      <div className="text-sm font-bold text-gray-900">{chatContacts.find(c => c.id === activeChatId)?.full_name || 'Conversation'}</div>
-                      <div className="text-[11px] text-gray-400">{chatContacts.find(c => c.id === activeChatId)?.email || ''}</div>
+                      <div className="text-sm font-bold text-gray-900">{selectedReportContact?.full_name || 'Shared Reports'}</div>
+                      <div className="text-[11px] text-gray-400">{selectedReportContact?.email || ''}</div>
                     </div>
                     <div className="flex-1 overflow-y-auto py-4 space-y-3">
-                      {chatMessages.map(msg => {
+                      {sharedChatMessages.map(msg => {
                         const shared = parseSharedDiagnosisMessage(msg.message);
+                        if (!shared) return null;
                         return (
                           <div key={msg.id} className={`flex ${msg.sender_id === user.id ? 'justify-end' : 'justify-start'}`}>
                             <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${msg.sender_id === user.id ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
-                              {shared ? (
-                                <div className="space-y-2">
-                                  <div className={`text-[10px] font-bold uppercase tracking-widest ${msg.sender_id === user.id ? 'text-emerald-100' : 'text-gray-400'}`}>Shared Diagnosis</div>
+                              <div className="space-y-2">
+                                  <div className={`text-[10px] font-bold uppercase tracking-widest ${msg.sender_id === user.id ? 'text-emerald-100' : 'text-gray-400'}`}>{msg.sender_id === user.id ? 'Sent Report' : 'Received Report'}</div>
                                   <div className={`rounded-xl border p-3 ${msg.sender_id === user.id ? 'border-emerald-300/40 bg-emerald-500/20' : 'border-gray-200 bg-white'}`}>
                                     <div className="font-bold">{shared.patient_name}</div>
                                     <div className={`inline-flex mt-2 text-[10px] font-bold px-2 py-1 rounded-full ${classBadge(shared.classification)}`}>
@@ -1319,27 +1303,14 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                                     )}
                                   </div>
                                 </div>
-                              ) : (
-                                <div>{msg.message}</div>
-                              )}
                               <div className={`text-[10px] mt-1 ${msg.sender_id === user.id ? 'text-emerald-100' : 'text-gray-400'}`}>{fmt(msg.created_at)}</div>
                             </div>
                           </div>
                         );
                       })}
-                      {!chatBusy && chatMessages.length === 0 && <div className="text-sm text-gray-400 text-center pt-8">No messages yet.</div>}
-                      {chatBusy && <div className="text-sm text-gray-400 text-center pt-8">Loading chat…</div>}
-                    </div>
-                    <div className="pt-3 border-t border-gray-100 space-y-3">
                       {chatError && <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">{chatError}</div>}
-                      <div className="flex gap-2">
-                        <textarea value={chatDraft} onChange={e => setChatDraft(e.target.value)} rows={2} placeholder="Write a message…"
-                          className={`${inp} resize-none flex-1`} />
-                        <button onClick={sendChatMessage} disabled={chatBusy || !chatDraft.trim()}
-                          className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm disabled:opacity-40">
-                          Send
-                        </button>
-                      </div>
+                      {!chatBusy && sharedChatMessages.length === 0 && <div className="text-sm text-gray-400 text-center pt-8">No shared reports yet.</div>}
+                      {chatBusy && <div className="text-sm text-gray-400 text-center pt-8">Loading shared reports...</div>}
                     </div>
                   </>
                 )}

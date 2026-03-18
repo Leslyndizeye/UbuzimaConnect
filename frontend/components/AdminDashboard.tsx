@@ -400,7 +400,7 @@ export default function AdminDashboard() {
   const fileRef=useRef<HTMLInputElement>(null);
 
   // uploadedByLabel: files staged this session (local tracking)
-  const [rtLabel,setRtLabel]=useState("Normal");
+  const [rtLabel,setRtLabel]=useState("");
   const [rtFiles,setRtFiles]=useState<File[]>([]);
   const [uploading,setUploading]=useState(false);
   const [rtMsg,setRtMsg]=useState(""); const [rtOk,setRtOk]=useState(true);
@@ -484,6 +484,9 @@ export default function AdminDashboard() {
     if(job.status==="completed"){
       setRtMsg(`Retraining job #${job.id} completed successfully.`);
       setRtOk(true);
+      setRtLabel("");
+      setRtFiles([]);
+      setStagedC({});
       activeRtJobRef.current=null;
       if(typeof window!=="undefined") window.localStorage.removeItem(ACTIVE_RETRAIN_JOB_KEY);
       return;
@@ -577,6 +580,7 @@ export default function AdminDashboard() {
   };
 
   const uploadForRetrain=async()=>{
+    if(!rtLabel){setRtMsg("Choose a class label first");setRtOk(false);return;}
     if(!rtFiles.length){setRtMsg("Select files first");setRtOk(false);return;}
     setUploading(true);setRtMsg("");
     try{
@@ -600,7 +604,7 @@ export default function AdminDashboard() {
     setClearing(true);setRtMsg("");
     try{
       await adminFetch("/retrain/staged",{method:"DELETE"});
-      setStagedC({});setRtMsg("All staged images cleared.");setRtOk(true);
+      setStagedC({});setRtFiles([]);setRtLabel("");setRtMsg("All staged images cleared.");setRtOk(true);
     }catch(e:any){setRtMsg(e.message);setRtOk(false);}finally{setClearing(false);}
   };
 
@@ -1154,24 +1158,24 @@ export default function AdminDashboard() {
                     <div className="space-y-3">
                       <div className="flex items-center gap-3">
                         <div className="step-ring active">2</div>
-                        <div><p className="text-sm font-bold text-slate-800">Upload images for <span style={{color:DARK_GREEN}}>"{rtLabel}"</span></p><p className="text-[11px] text-slate-400">Minimum {RT_MIN} images - selected images are packed into a ZIP before upload</p></div>
+                        <div><p className="text-sm font-bold text-slate-800">Upload images{rtLabel?<> for <span style={{color:DARK_GREEN}}>"{rtLabel}"</span></>:""}</p><p className="text-[11px] text-slate-400">{rtLabel?`Minimum ${RT_MIN} images - selected images are packed into a ZIP before upload`:"Choose a class label before uploading images"}</p></div>
                       </div>
                       <div
-                        onDragOver={e=>{e.preventDefault();setRtDrag(true);}}
+                        onDragOver={e=>{if(!rtLabel)return;e.preventDefault();setRtDrag(true);}}
                         onDragLeave={()=>setRtDrag(false)}
-                        onDrop={e=>{e.preventDefault();setRtDrag(false);setRtFiles(Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/")||f.name.toLowerCase().endsWith(".zip")));}}
-                        onClick={()=>rtRef.current?.click()}
+                        onDrop={e=>{if(!rtLabel)return;e.preventDefault();setRtDrag(false);setRtFiles(Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith("image/")||f.name.toLowerCase().endsWith(".zip")));}}
+                        onClick={()=>{if(rtLabel)rtRef.current?.click();}}
                         className="border-2 border-dashed rounded-3xl p-7 text-center cursor-pointer transition-all"
-                        style={{borderColor:rtDrag?DARK_GREEN:rtFiles.length>0?BRAND:"#E2E8F0",backgroundColor:rtDrag||rtFiles.length>0?"#F0FDF4":"#FAFAFA"}}>
+                        style={{borderColor:rtDrag?DARK_GREEN:rtFiles.length>0?BRAND:"#E2E8F0",backgroundColor:rtDrag||rtFiles.length>0?"#F0FDF4":"#FAFAFA",opacity:rtLabel?1:.6,cursor:rtLabel?"pointer":"not-allowed"}}>
                         {rtFiles.length>0
                           ?<div><p className="text-base font-bold" style={{color:DARK_GREEN}}>{rtFiles.length} file{rtFiles.length!==1?"s":""} selected</p><p className="text-xs text-slate-400 mt-1">{rtFiles.some(f=>f.name.toLowerCase().endsWith(".zip"))?"ZIP archive ready":"Will be packed into a ZIP on upload"}</p></div>
-                          :<div className="float-it"><p className="text-sm font-bold text-slate-500">Drop files here or click to browse</p><p className="text-xs text-slate-400 mt-1">Multiple images or one ZIP archive</p></div>}
+                          :<div className="float-it"><p className="text-sm font-bold text-slate-500">{rtLabel?"Drop files here or click to browse":"Select a class first"}</p><p className="text-xs text-slate-400 mt-1">{rtLabel?"Multiple images or one ZIP archive":"No class label selected yet"}</p></div>}
                         <input ref={rtRef} type="file" accept="image/*,.zip" multiple onChange={e=>setRtFiles(Array.from(e.target.files||[]))} className="hidden"/>
                       </div>
-                      <button onClick={uploadForRetrain} disabled={uploading||!rtFiles.length}
+                      <button onClick={uploadForRetrain} disabled={uploading||!rtFiles.length||!rtLabel}
                         className="btn-s w-full py-3.5 rounded-full text-white font-bold text-sm disabled:opacity-40"
                         style={{backgroundColor:DARK_GREEN,boxShadow:`0 6px 18px ${DARK_GREEN}33`}}>
-                        {uploading?"Uploading...":rtFiles.length?`Upload ${rtFiles.length} file${rtFiles.length!==1?"s":""} as "${rtLabel}"`:"Select files first"}
+                        {uploading?"Uploading...":!rtLabel?"Choose class first":rtFiles.length?`Upload ${rtFiles.length} file${rtFiles.length!==1?"s":""} as "${rtLabel}"`:"Select files first"}
                       </button>
                     </div>
 
