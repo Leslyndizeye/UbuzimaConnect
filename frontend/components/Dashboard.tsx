@@ -24,12 +24,12 @@ interface Diagnosis {
   tb_probability: number; pneumonia_probability: number; normal_probability: number;
   unknown_probability?: number; radiologist_verified: boolean;
   radiologist_override?: string; radiologist_notes?: string;
-  xray_filename?: string; xray_storage_path?: string; heatmap_b64?: string; ai_explanation?: string; created_at: string;
+  xray_filename?: string; xray_storage_path?: string; xray_b64?: string; heatmap_b64?: string; ai_explanation?: string; created_at: string;
 }
 interface Prediction {
   classification: string; confidence_score: number; tb_probability: number;
   pneumonia_probability: number; normal_probability: number; unknown_probability?: number;
-  explanation?: string; gradcam_b64?: string; xray_storage_path?: string;
+  explanation?: string; gradcam_b64?: string; xray_storage_path?: string; xray_b64?: string;
 }
 interface ChatContact {
   id: number; full_name: string; email: string; specialization?: string; hospital_id?: number; status?: string; phone_number?: string; years_experience?: number;
@@ -45,6 +45,9 @@ interface SharedDiagnosisPayload {
   classification: string;
   ai_classification?: string;
   confidence_score: number;
+  xray_b64?: string;
+  heatmap_b64?: string;
+  xray_filename?: string;
   radiologist_name?: string;
   hospital?: string;
   shared_note?: string;
@@ -445,6 +448,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
         body: JSON.stringify({
           patient_id: patient.id, xray_filename: currentFile.name,
           xray_storage_path: result.xray_storage_path,
+          xray_b64: result.xray_b64,
           ai_classification: toDbClass(result.classification), confidence_score: result.confidence_score,
           tb_probability: result.tb_probability, pneumonia_probability: result.pneumonia_probability,
           normal_probability: result.normal_probability, unknown_probability: result.unknown_probability ?? 0,
@@ -581,8 +585,12 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   };
 
   const fetchDiagnosisImageUrl = useCallback(async (diagnosis: Diagnosis) => {
-    if (!diagnosis.xray_storage_path) return null;
+    if (!diagnosis.xray_storage_path && !diagnosis.xray_b64) return null;
     if (diagImageUrls[diagnosis.id]) return diagImageUrls[diagnosis.id];
+    if (diagnosis.xray_b64) {
+      setDiagImageUrls(prev => prev[diagnosis.id] ? prev : { ...prev, [diagnosis.id]: diagnosis.xray_b64! });
+      return diagnosis.xray_b64;
+    }
     const token = await getToken().catch(() => null);
     const res = await fetch(`${API_BASE}/diagnoses/${diagnosis.id}/image`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -597,7 +605,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   useEffect(() => {
     if (tab !== 'history' || expanded == null) return;
     diagnoses
-      .filter(d => d.patient_id === expanded && d.xray_storage_path && !diagImageUrls[d.id])
+      .filter(d => d.patient_id === expanded && (d.xray_storage_path || d.xray_b64) && !diagImageUrls[d.id])
       .forEach(d => { fetchDiagnosisImageUrl(d).catch(() => {}); });
   }, [tab, expanded, diagnoses, diagImageUrls, fetchDiagnosisImageUrl]);
 
@@ -637,6 +645,49 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
         <div class="card"><div class="label">Final Result</div><div class="value">${displayClass(finalResult || 'Unknown')}</div></div>
         <div class="card"><div class="label">Confidence</div><div class="value">${diagnosis.confidence_score?.toFixed(1) || '0.0'}%</div></div>
       </div>
+      <div class="images">
+        <div class="card"><h3>Diagnosed Image</h3>${original}</div>
+        <div class="card"><h3>AI Heatmap</h3>${heatmap}</div>
+      </div>
+    </body></html>`);
+    reportWindow.document.close();
+    reportWindow.focus();
+    setTimeout(() => reportWindow.print(), 250);
+  };
+
+  const exportSharedReportPdf = (shared: SharedDiagnosisPayload, sentAt?: string | null) => {
+    const reportWindow = window.open('', '_blank', 'width=960,height=900');
+    if (!reportWindow) return;
+    const original = shared.xray_b64
+      ? `<img src="${shared.xray_b64}" alt="Diagnosed X-ray" style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;" />`
+      : '<p style="color:#6b7280;">Diagnosed image was not attached to this shared report.</p>';
+    const heatmap = shared.heatmap_b64
+      ? `<img src="${shared.heatmap_b64}" alt="Heatmap" style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;" />`
+      : '<p style="color:#6b7280;">No heatmap available.</p>';
+    reportWindow.document.write(`<!doctype html><html><head><title>Ubuzima Shared Report</title><style>
+      body{font-family:Arial,sans-serif;padding:32px;color:#111827}
+      h1,h2,h3{margin:0 0 12px}
+      .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:20px 0}
+      .card{border:1px solid #e5e7eb;border-radius:14px;padding:16px;background:#fff}
+      .label{font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:700;letter-spacing:.08em}
+      .value{font-size:15px;font-weight:700;margin-top:6px}
+      .images{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:18px}
+      .note{margin-top:18px}
+    </style></head><body>
+      <h1>Ubuzima Shared Report</h1>
+      <p style="color:#6b7280;margin-bottom:20px;">Generated ${new Date().toLocaleString('en-RW')}</p>
+      <div class="meta">
+        <div class="card"><div class="label">Patient</div><div class="value">${shared.patient_name}</div></div>
+        <div class="card"><div class="label">National ID</div><div class="value">${shared.patient_ref_masked || '—'}</div></div>
+        <div class="card"><div class="label">Radiologist</div><div class="value">${shared.radiologist_name || '—'}</div></div>
+        <div class="card"><div class="label">Hospital</div><div class="value">${shared.hospital || '—'}</div></div>
+        <div class="card"><div class="label">Final Result</div><div class="value">${displayClass(shared.classification || 'Unknown')}</div></div>
+        <div class="card"><div class="label">Confidence</div><div class="value">${shared.confidence_score?.toFixed(1) || '0.0'}%</div></div>
+        <div class="card"><div class="label">Shared At</div><div class="value">${sentAt ? fmt(sentAt) : (shared.created_at ? fmt(shared.created_at) : '—')}</div></div>
+        <div class="card"><div class="label">X-ray File</div><div class="value">${shared.xray_filename || '—'}</div></div>
+      </div>
+      ${shared.shared_note ? `<div class="card note"><div class="label">Shared Note</div><div class="value" style="font-size:14px;font-weight:500">${shared.shared_note}</div></div>` : ''}
+      ${shared.radiologist_notes ? `<div class="card note"><div class="label">Clinical Note</div><div class="value" style="font-size:14px;font-weight:500">${shared.radiologist_notes}</div></div>` : ''}
       <div class="images">
         <div class="card"><h3>Diagnosed Image</h3>${original}</div>
         <div class="card"><h3>AI Heatmap</h3>${heatmap}</div>
@@ -1224,7 +1275,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                                     </div>
                                     <div><div className="text-[8px] font-bold uppercase text-gray-400 mb-0.5">Date</div><div className="text-[10px] text-gray-400">{fmt(d.created_at)}</div></div>
                                   </div>
-                                  {d.xray_storage_path && (
+                                  {(d.xray_storage_path || d.xray_b64) && (
                                     diagImageUrls[d.id]
                                       ? <img src={diagImageUrls[d.id]} alt="Diagnosis X-ray" className="w-14 h-14 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
                                       : <div className="w-14 h-14 rounded-lg object-cover border border-gray-200 flex items-center justify-center text-[9px] text-gray-400 bg-gray-50 flex-shrink-0">Loading</div>
@@ -1365,6 +1416,30 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                                         <strong>Clinical note:</strong> {shared.radiologist_notes}
                                       </div>
                                     )}
+                                    {(shared.xray_b64 || shared.heatmap_b64) && (
+                                      <div className="mt-3 grid sm:grid-cols-2 gap-3">
+                                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                                          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Diagnosed Image</div>
+                                          {shared.xray_b64
+                                            ? <img src={shared.xray_b64} alt="Shared diagnosed X-ray" className="w-full h-40 rounded-lg object-cover border border-gray-200 bg-white" />
+                                            : <div className="h-40 rounded-lg border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-400 bg-white">Image not attached</div>}
+                                        </div>
+                                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                                          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">AI Heatmap</div>
+                                          {shared.heatmap_b64
+                                            ? <img src={shared.heatmap_b64} alt="Shared heatmap" className="w-full h-40 rounded-lg object-cover border border-gray-200 bg-white" />
+                                            : <div className="h-40 rounded-lg border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-400 bg-white">Heatmap not attached</div>}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <div className="mt-3 flex justify-end">
+                                      <button
+                                        onClick={() => exportSharedReportPdf(shared, msg.created_at)}
+                                        className="px-3 py-2 rounded-xl bg-gray-900 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-black"
+                                      >
+                                        Download Report
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                             </div>
