@@ -265,6 +265,7 @@ export default function AdminDashboard() {
   const [health,setHealth]=useState<any>(null);
   const [retrainJobs,setRetrainJobs]=useState<RetrainJob[]>([]);
   const [loading,setLoading]=useState(true);
+  const [refreshing,setRefreshing]=useState(false);
   const [error,setError]=useState("");
   const [search,setSearch]=useState("");
   const [pwUser,setPwUser]=useState<ApiUser|null>(null);
@@ -285,6 +286,7 @@ export default function AdminDashboard() {
   const [myPwdModal,setMyPwdModal]=useState(false);
   const [myPwd,setMyPwd]=useState(""); const [myPwdLoading,setMyPwdLoading]=useState(false);
   const [myPwdMsg,setMyPwdMsg]=useState(""); const [myPwdOk,setMyPwdOk]=useState(true);
+  const [showScrollNav,setShowScrollNav]=useState(false);
   // Hospital assignment for middle admin
   const [hospitals,setHospitals]=useState<HospitalOption[]>([]);
   const [assignUser,setAssignUser]=useState<ApiUser|null>(null);
@@ -302,6 +304,7 @@ export default function AdminDashboard() {
   const [savedDx,setSavedDx]=useState<Diagnosis|null>(null); const [savedPt,setSavedPt]=useState<Patient|null>(null);
   const [predErr,setPredErr]=useState(""); const [predInfo,setPredInfo]=useState("");
   const fileRef=useRef<HTMLInputElement>(null);
+  const mainRef=useRef<HTMLElement|null>(null);
 
   // ── Retrain state ──
   // uploadedByLabel: files staged this session (local tracking)
@@ -312,14 +315,16 @@ export default function AdminDashboard() {
   const [stagedC,setStagedC]=useState<Record<string,number>>({});
   const [rtDrag,setRtDrag]=useState(false); const rtRef=useRef<HTMLInputElement>(null);
 
-  const loadAll=useCallback(async(currentMe?:ApiUser|null)=>{
+  const loadAll=useCallback(async(currentMe?:ApiUser|null, opts?:{silent?:boolean})=>{
     setError("");
-    setLoading(true);
+    const hasData = !!(apiUsers.length || diagnoses.length || patients.length || auditLogs.length || myHospital);
+    const silent = !!opts?.silent && hasData;
+    if(silent) setRefreshing(true); else setLoading(true);
     const resolvedMe = currentMe !== undefined ? currentMe : meRef.current;
     if(!resolvedMe?.is_admin || !resolvedMe?.hospital_id){
       setApiUsers([]); setDiagnoses([]); setPatients([]); setAuditLogs([]); setPwLogs([]); setStagedC({});
       setMyHospital(null); setLogoPreview(null);
-      setLoading(false);
+      setLoading(false); setRefreshing(false);
       return;
     }
     try{
@@ -339,9 +344,8 @@ export default function AdminDashboard() {
       adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
       adminFetch(`/hospitals/${hid}`).then(hosp=>{setMyHospital(hosp);if(hosp.logo_base64)setLogoPreview(hosp.logo_base64);}).catch(()=>{});
     }catch(e:any){setError(e.message);}
-    finally{setLoading(false);}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+    finally{setLoading(false);setRefreshing(false);}
+  },[apiUsers.length, diagnoses.length, patients.length, auditLogs.length, myHospital]);
 
   // On mount: get session → fetch /me → load data scoped to role
   useEffect(()=>{
@@ -359,12 +363,21 @@ export default function AdminDashboard() {
   },[]);
   useEffect(()=>{
     if(!isHospitalAdmin) return;
-    const refresh=()=>loadAll();
+    const refresh=()=>loadAll(undefined,{silent:true});
     const id=setInterval(refresh,10000);
     window.addEventListener("focus",refresh);
-    document.addEventListener("visibilitychange",refresh);
-    return()=>{clearInterval(id);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
+    const onVisibility=()=>{ if(!document.hidden) refresh(); };
+    document.addEventListener("visibilitychange",onVisibility);
+    return()=>{clearInterval(id);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",onVisibility);};
   },[isHospitalAdmin,loadAll]);
+  useEffect(()=>{
+    const el = mainRef.current;
+    if(!el) return;
+    const onScroll=()=>setShowScrollNav(el.scrollTop>48);
+    onScroll();
+    el.addEventListener("scroll",onScroll);
+    return()=>el.removeEventListener("scroll",onScroll);
+  },[]);
   useEffect(()=>{
     const active=retrainJobs.some(j=>j.status==="processing"||j.status==="pending"); if(!active)return;
     const id=setInterval(async()=>{const jobs=await adminFetch("/retrain/jobs").catch(()=>null);if(jobs)setRetrainJobs(jobs);},5000);
@@ -643,32 +656,26 @@ export default function AdminDashboard() {
 
         {/* ════════ MAIN ════════ */}
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-[90px] flex items-center justify-between px-10 sticky top-0 z-20 relative">
-            {/* <div className="flex items-center gap-3 bg-white rounded-full px-5 py-3 border border-slate-100 shadow-sm w-[320px]">
-              <svg width="16" height="16" fill="none" stroke="#A0AEC0" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
-              <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search patients, users…" className="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"/>
-              {search&&<button onClick={()=>setSearch("")} className="text-slate-400 hover:text-slate-700">✕</button>}
-            </div> */}
-            <div className="flex items-center gap-4 absolute top-5 right-10 flex ">
-              {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
-              {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>
-                <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor:SOFT_GREY}}/>{pending} pending
-              </div>}
-              <div className="flex items-center gap-3 bg-white rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 shadow-sm min-w-[250px]">
-                <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
-                  {headerLogo
-                    ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
-                    : <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{me?.full_name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"HA"}</div>}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[12px] font-bold text-slate-800 leading-tight">{myHospital?.name||"Hospital Admin"}</p>
-                  <p className="text-[10px] text-slate-400 truncate">{me?.email||"—"}</p>
+          <main ref={mainRef} className="flex-1 px-10 pb-10 overflow-y-auto">
+            <div className={`sticky top-4 z-20 mb-6 flex justify-end transition-all duration-300 ${showScrollNav ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 -translate-y-4 pointer-events-none"}`}>
+              <div className="flex items-center gap-4">
+                {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
+                {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor:SOFT_GREY}}/>{pending} pending
+                </div>}
+                <div className="flex items-center gap-3 bg-white/95 backdrop-blur-sm rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 shadow-sm min-w-[250px]">
+                  <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
+                    {headerLogo
+                      ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
+                      : <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{(myHospital?.name||me?.full_name||"HA").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}</div>}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-bold text-slate-800 leading-tight">{myHospital?.name||"Hospital Admin"}</p>
+                    <p className="text-[10px] text-slate-400 truncate">{me?.email||"—"}</p>
+                  </div>
                 </div>
               </div>
             </div>
-          </header>
-
-          <main className="flex-1 px-10 pb-10 overflow-y-auto">
 
             {/* ══ OVERVIEW ══ */}
             {tab==="overview"&&(
@@ -676,7 +683,7 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div><h1 className="text-3xl font-bold text-slate-900">Dashboard</h1><p className="text-slate-500 mt-1 text-sm">Ubuzima Connect — AI-powered chest X-ray diagnostics.</p></div>
                   <div className="flex gap-3">
-                    <button onClick={loadAll} className="btn-s px-5 py-2.5 rounded-full text-slate-700 text-sm font-bold bg-white border border-slate-200">Refresh</button>
+                    <button onClick={()=>loadAll(undefined,{silent:true})} className="btn-s px-5 py-2.5 rounded-full text-slate-700 text-sm font-bold bg-white border border-slate-200">{refreshing?"Refreshing…":"Refresh"}</button>
                   </div>
                 </div>
                 {showInitialSkeleton ? (
@@ -768,7 +775,7 @@ export default function AdminDashboard() {
                     <h3 className="text-sm font-bold absolute top-6 left-6 text-white/70">Kigali Time (CAT)</h3>
                     <div className="text-[28px] font-black tracking-widest mt-4 drop-shadow font-mono">{rwandaTime}</div>
                     {stats&&<p className="text-[10px] text-white/50 mt-1">Uptime: {uptimeFmt(stats.uptime_seconds)}</p>}
-                    <button onClick={loadAll} className="mt-5 px-5 py-2 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors">Refresh</button>
+                    <button onClick={()=>loadAll(undefined,{silent:true})} className="mt-5 px-5 py-2 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors">{refreshing?"Refreshing…":"Refresh"}</button>
                   </div>
                 </div>
               </div>
@@ -1098,7 +1105,7 @@ export default function AdminDashboard() {
                   <Panel className="p-8 space-y-4">
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Retrain Job History</p>
-                      <button onClick={loadAll} className="text-[11px] text-slate-400 hover:text-slate-700 font-semibold">Refresh</button>
+                      <button onClick={()=>loadAll(undefined,{silent:true})} className="text-[11px] text-slate-400 hover:text-slate-700 font-semibold">{refreshing?"Refreshing…":"Refresh"}</button>
                     </div>
                     {retrainJobs.length===0
                       ?<div className="h-40 flex flex-col items-center justify-center text-slate-300 gap-2 float-it"><svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg><p className="text-sm">No retrain jobs yet</p></div>
