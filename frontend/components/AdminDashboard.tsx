@@ -532,6 +532,7 @@ export default function AdminDashboard() {
     ["audit","Audit Log"],
     ["profile","My Hospital"],
   ];
+  const activeNavLabel = navItems.find(([id])=>id===tab)?.[1] || "Dashboard";
   const headerLogo = logoPreview || myHospital?.logo_base64 || null;
   const showInitialSkeleton = loading && !apiUsers.length && !patients.length && !diagnoses.length;
 
@@ -656,14 +657,18 @@ export default function AdminDashboard() {
 
         {/* ════════ MAIN ════════ */}
         <div className="flex-1 flex flex-col min-w-0">
-          <main ref={mainRef} className="flex-1 px-10 pb-10 overflow-y-auto">
-            <div className={`sticky top-4 z-20 mb-6 flex justify-end transition-all duration-300 ${showScrollNav ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 -translate-y-4 pointer-events-none"}`}>
-              <div className="flex items-center gap-4">
+          <main ref={mainRef} onScroll={e=>setShowScrollNav((e.currentTarget as HTMLElement).scrollTop>48)} className="flex-1 px-10 pb-10 overflow-y-auto">
+            <div className={`sticky top-4 z-20 mb-6 transition-all duration-300 ${showScrollNav ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 -translate-y-4 pointer-events-none"}`}>
+              <div className="w-full max-w-[1400px] mx-auto flex items-center justify-between gap-4 rounded-[26px] border border-slate-200 bg-white/95 backdrop-blur-sm shadow-[0_10px_30px_rgba(0,0,0,0.05)] px-5 py-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Hospital Workspace</p>
+                  <p className="text-sm font-bold text-slate-900 mt-1">{activeNavLabel}</p>
+                </div>
                 {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
                 {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>
                   <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor:SOFT_GREY}}/>{pending} pending
                 </div>}
-                <div className="flex items-center gap-3 bg-white/95 backdrop-blur-sm rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 shadow-sm min-w-[250px]">
+                <div className="ml-auto flex items-center gap-3 rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 bg-slate-50/80 min-w-[250px]">
                   <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
                     {headerLogo
                       ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
