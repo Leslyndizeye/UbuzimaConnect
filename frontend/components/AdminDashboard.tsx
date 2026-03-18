@@ -134,6 +134,20 @@ const CSS = `
   animation: shimmer 1.25s ease infinite;
 }
 
+@keyframes cardSweep { from{transform:translateX(-120%)} to{transform:translateX(120%)} }
+.card-refresh {
+  position: relative;
+  overflow: hidden;
+}
+.card-refresh::after {
+  content:'';
+  position:absolute;
+  inset:0;
+  background:linear-gradient(90deg, transparent 0%, rgba(255,255,255,.55) 50%, transparent 100%);
+  animation: cardSweep 1.1s ease-in-out infinite;
+  pointer-events:none;
+}
+
 .wavy-bg {
   background: linear-gradient(135deg, ${VERY_DARK} 0%, #17422B 100%);
   position: relative;
@@ -286,7 +300,6 @@ export default function AdminDashboard() {
   const [myPwdModal,setMyPwdModal]=useState(false);
   const [myPwd,setMyPwd]=useState(""); const [myPwdLoading,setMyPwdLoading]=useState(false);
   const [myPwdMsg,setMyPwdMsg]=useState(""); const [myPwdOk,setMyPwdOk]=useState(true);
-  const [showScrollNav,setShowScrollNav]=useState(false);
   // Hospital assignment for middle admin
   const [hospitals,setHospitals]=useState<HospitalOption[]>([]);
   const [assignUser,setAssignUser]=useState<ApiUser|null>(null);
@@ -304,7 +317,6 @@ export default function AdminDashboard() {
   const [savedDx,setSavedDx]=useState<Diagnosis|null>(null); const [savedPt,setSavedPt]=useState<Patient|null>(null);
   const [predErr,setPredErr]=useState(""); const [predInfo,setPredInfo]=useState("");
   const fileRef=useRef<HTMLInputElement>(null);
-  const mainRef=useRef<HTMLElement|null>(null);
 
   // ── Retrain state ──
   // uploadedByLabel: files staged this session (local tracking)
@@ -370,14 +382,6 @@ export default function AdminDashboard() {
     document.addEventListener("visibilitychange",onVisibility);
     return()=>{clearInterval(id);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",onVisibility);};
   },[isHospitalAdmin,loadAll]);
-  useEffect(()=>{
-    const el = mainRef.current;
-    if(!el) return;
-    const onScroll=()=>setShowScrollNav(el.scrollTop>48);
-    onScroll();
-    el.addEventListener("scroll",onScroll);
-    return()=>el.removeEventListener("scroll",onScroll);
-  },[]);
   useEffect(()=>{
     const active=retrainJobs.some(j=>j.status==="processing"||j.status==="pending"); if(!active)return;
     const id=setInterval(async()=>{const jobs=await adminFetch("/retrain/jobs").catch(()=>null);if(jobs)setRetrainJobs(jobs);},5000);
@@ -532,6 +536,7 @@ export default function AdminDashboard() {
     ["audit","Audit Log"],
     ["profile","My Hospital"],
   ];
+  const activeNavLabel = navItems.find(([id])=>id===tab)?.[1] || "Dashboard";
   const headerLogo = logoPreview || myHospital?.logo_base64 || null;
   const showInitialSkeleton = loading && !apiUsers.length && !patients.length && !diagnoses.length;
 
@@ -656,32 +661,30 @@ export default function AdminDashboard() {
 
         {/* ════════ MAIN ════════ */}
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-[90px] flex items-center justify-between px-10 sticky top-0 z-20 relative">
-            {/* <div className="flex items-center gap-3 bg-white rounded-full px-5 py-3 border border-slate-100 shadow-sm w-[320px]">
-              <svg width="16" height="16" fill="none" stroke="#A0AEC0" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
-              <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search patients, users…" className="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"/>
-              {search&&<button onClick={()=>setSearch("")} className="text-slate-400 hover:text-slate-700">✕</button>}
-            </div> */}
-            <div className="flex items-center gap-4 absolute top-5 right-10 flex ">
-              {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
-              {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>
-                <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor:SOFT_GREY}}/>{pending} pending
-              </div>}
-              <div className="flex items-center gap-3 bg-white rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 shadow-sm min-w-[250px]">
-                <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
-                  {headerLogo
-                    ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
-                    : <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{me?.full_name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"HA"}</div>}
-                </div>
+          <main className="flex-1 px-10 pb-10 overflow-y-auto">
+            <div className="mb-6 pt-4">
+              <div className="w-full max-w-[1400px] mx-auto flex items-center justify-between gap-4 rounded-[26px] border border-slate-200 bg-white/95 backdrop-blur-sm shadow-[0_10px_30px_rgba(0,0,0,0.05)] px-5 py-3">
                 <div className="min-w-0">
-                  <p className="text-[12px] font-bold text-slate-800 leading-tight">{myHospital?.name||"Hospital Admin"}</p>
-                  <p className="text-[10px] text-slate-400 truncate">{me?.email||"—"}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Hospital Workspace</p>
+                  <p className="text-sm font-bold text-slate-900 mt-1">{activeNavLabel}</p>
+                </div>
+                {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
+                {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor:SOFT_GREY}}/>{pending} pending
+                </div>}
+                <div className="ml-auto flex items-center gap-3 rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 bg-slate-50/80 min-w-[250px]">
+                  <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
+                    {headerLogo
+                      ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
+                      : <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{(myHospital?.name||me?.full_name||"HA").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}</div>}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-bold text-slate-800 leading-tight">{myHospital?.name||"Hospital Admin"}</p>
+                    <p className="text-[10px] text-slate-400 truncate">{me?.email||"—"}</p>
+                  </div>
                 </div>
               </div>
             </div>
-          </header>
-
-          <main className="flex-1 px-10 pb-10 overflow-y-auto">
 
             {/* ══ OVERVIEW ══ */}
             {tab==="overview"&&(
@@ -711,12 +714,12 @@ export default function AdminDashboard() {
                   </>
                 ) : (
                 <div className="grid grid-cols-4 gap-5">
-                  <div className="anim-in-1 rounded-[28px] p-6 flex flex-col justify-between" style={{backgroundColor:DARK_GREEN,color:"white",minHeight:160}}>
+                  <div className={`anim-in-1 rounded-[28px] p-6 flex flex-col justify-between ${refreshing?"card-refresh":""}`} style={{backgroundColor:DARK_GREEN,color:"white",minHeight:160}}>
                     <div className="flex justify-between items-start"><span className="text-sm font-medium text-white/90">Radiologists</span><div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">↗</div></div>
                     <div><div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??visibleUsers.filter(u=>u.status==="approved").length}</div><div className="text-[11px] text-white/70"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending} pending</span></div></div>
                   </div>
                   {[{l:"Total Patients",v:visiblePatients.length},{l:"Audit Events",v:auditLogs.length},{l:"Pending Reviews",v:pending}].map((c,i)=>(
-                    <div key={c.l} className={`anim-in-${i+2} panel-card p-6 flex flex-col justify-between`} style={{minHeight:160}}>
+                    <div key={c.l} className={`anim-in-${i+2} panel-card p-6 flex flex-col justify-between ${refreshing?"card-refresh":""}`} style={{minHeight:160}}>
                       <div className="flex justify-between items-start"><span className="text-sm font-semibold text-slate-700">{c.l}</span><div className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500">↗</div></div>
                       <div><div className="text-5xl font-bold tracking-tight text-slate-900 mb-2">{c.v}</div><div className="text-[11px] text-slate-400">{i===2?"Awaiting approval":"Hospital summary"}</div></div>
                     </div>
@@ -724,7 +727,7 @@ export default function AdminDashboard() {
                 </div>
                 )}
                 <div className="grid grid-cols-12 gap-5">
-                  <Panel className="col-span-5 p-7 flex flex-col anim-in">
+                  <Panel className={`col-span-5 p-7 flex flex-col anim-in ${refreshing?"card-refresh":""}`}>
                     <h3 className="text-base font-bold text-slate-800 mb-5">Privacy Notice</h3>
                     <div className="space-y-4 text-sm text-slate-600 leading-relaxed">
                       <p>Diagnosis details stay on the radiologist side. Hospital admins manage access, radiologists, patient counts, retraining and audit activity.</p>
@@ -734,7 +737,7 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </Panel>
-                  <Panel className="col-span-4 p-7 flex flex-col justify-between anim-in">
+                  <Panel className={`col-span-4 p-7 flex flex-col justify-between anim-in ${refreshing?"card-refresh":""}`}>
                     <div>
                       <h3 className="text-base font-bold text-slate-800 mb-3">Hospital Overview</h3>
                       <p className="text-[13px] text-slate-500 leading-relaxed">Linked hospital: <strong>{myHospital?.name || me?.hospital || "Your hospital"}</strong></p>
@@ -744,7 +747,7 @@ export default function AdminDashboard() {
                     </div>
                     <button onClick={()=>setTab("profile")} className="btn-s w-full py-3.5 rounded-full text-white text-sm font-bold mt-4" style={{backgroundColor:DARK_GREEN}}>My Hospital</button>
                   </Panel>
-                  <Panel className="col-span-3 p-7 anim-in">
+                  <Panel className={`col-span-3 p-7 anim-in ${refreshing?"card-refresh":""}`}>
                     <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Quick Actions</h3></div>
                     <div className="space-y-3">
                       <button onClick={()=>setTab("users")} className="btn-s w-full py-3 rounded-2xl text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>Manage Radiologists</button>
@@ -754,7 +757,7 @@ export default function AdminDashboard() {
                   </Panel>
                 </div>
                 <div className="grid grid-cols-12 gap-5">
-                  <Panel className="col-span-5 p-7 anim-in">
+                  <Panel className={`col-span-5 p-7 anim-in ${refreshing?"card-refresh":""}`}>
                     <div className="flex justify-between items-center mb-5"><h3 className="text-base font-bold text-slate-800">Radiologists</h3><button onClick={()=>setTab("users")} className="text-[11px] border border-slate-200 px-3 py-1.5 rounded-full text-slate-600 font-medium">Manage</button></div>
                     <div className="space-y-4">
                       {visibleUsers.slice(0,4).map((u,i)=>{const emojis=["👨‍⚕️","👩‍⚕️","🧑‍⚕️","👨‍💼"];return(
@@ -766,7 +769,7 @@ export default function AdminDashboard() {
                       {apiUsers.length===0&&<p className="text-sm text-slate-400 text-center py-4">No team members yet</p>}
                     </div>
                   </Panel>
-                  <Panel className="col-span-4 p-7 anim-in flex flex-col items-center">
+                  <Panel className={`col-span-4 p-7 anim-in flex flex-col items-center ${refreshing?"card-refresh":""}`}>
                     <h3 className="text-base font-bold text-slate-800 self-start mb-5">Patient Overview</h3>
                     <div className="w-full space-y-3">
                       {[{label:"Registered Patients",value:visiblePatients.length},{label:"Patients With Scans",value:visiblePatients.filter(p=>visibleDiagnoses.some(d=>d.patient_id===p.id)).length},{label:"Audit Events",value:auditLogs.length}].map(item=>(
@@ -777,7 +780,7 @@ export default function AdminDashboard() {
                       ))}
                     </div>
                   </Panel>
-                  <div className="col-span-3 anim-in wavy-bg rounded-[28px] p-7 text-white flex flex-col items-center justify-center shadow-lg relative overflow-hidden">
+                  <div className={`col-span-3 anim-in wavy-bg rounded-[28px] p-7 text-white flex flex-col items-center justify-center shadow-lg relative overflow-hidden ${refreshing?"card-refresh":""}`}>
                     <h3 className="text-sm font-bold absolute top-6 left-6 text-white/70">Kigali Time (CAT)</h3>
                     <div className="text-[28px] font-black tracking-widest mt-4 drop-shadow font-mono">{rwandaTime}</div>
                     {stats&&<p className="text-[10px] text-white/50 mt-1">Uptime: {uptimeFmt(stats.uptime_seconds)}</p>}
