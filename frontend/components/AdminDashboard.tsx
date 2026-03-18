@@ -132,9 +132,13 @@ interface RetrainJob { id:number; status:string; created_at:string; error_messag
 interface PredictionResult { classification:string; confidence_score:number; tb_probability:number; pneumonia_probability:number; normal_probability:number; unknown_probability?:number; explanation?:string; gradcam_b64?:string; xray_storage_path?:string; }
 interface EditPatient { id:number; name:string; patient_ref_id:string; hospital:string; clinical_notes:string; }
 type Tab = "overview"|"users"|"passwords"|"predictions"|"patients"|"diagnose"|"retrain"|"model"|"audit"|"profile";
+const ACTIVE_RETRAIN_JOB_KEY = "ubuzima_active_retrain_job";
 
 const fmt = (iso:string) => new Date(iso).toLocaleString("en-RW",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Kigali"});
 const validateRwandaId = (id:string) => /^\d{16}$/.test(id.replace(/\s/g,""));
+const normalizeStatus = (status?:string) => ((status || "").split(".").pop() || "").toLowerCase();
+const isApprovedStatus = (status?:string) => normalizeStatus(status) === "approved";
+const isPendingStatus = (status?:string) => normalizeStatus(status) === "pending";
 const maskNationalId = (value?:string) => {
   if(!value) return "-";
   const id = value.replace(/\s/g,"");
@@ -271,11 +275,12 @@ function Panel({children,className=""}:{children:React.ReactNode;className?:stri
   return <div className={`panel-card ${className}`}>{children}</div>;
 }
 function StatusBadge({status}:{status:string}) {
-  const good = status==="approved"||status==="verified"||status==="completed"||status==="healthy"||status==="Verified"||status==="active";
-  const pend = status==="pending"||status==="processing"||status==="Pending";
+  const normalized = normalizeStatus(status);
+  const good = normalized==="approved"||normalized==="verified"||normalized==="completed"||normalized==="healthy"||normalized==="active";
+  const pend = normalized==="pending"||normalized==="processing";
   const bg   = good?"#E6F4EC":pend?"#EEF1F4":"#F7E7E3";
   const tx   = good?DARK_GREEN:pend?"#4A5A68":"#8D4A3A";
-  return <span className="inline-flex items-center text-[10px] font-bold px-2.5 py-1 rounded-full capitalize" style={{backgroundColor:bg,color:tx}}>{status}</span>;
+  return <span className="inline-flex items-center text-[10px] font-bold px-2.5 py-1 rounded-full capitalize" style={{backgroundColor:bg,color:tx}}>{normalized || status}</span>;
 }
 function ClsBadge({cls}:{cls:string}) {
   const c=CLS_META[cls]||CLS_META["Unknown"];
@@ -311,7 +316,7 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
   const [pw,setPw]=useState(""); const [show,setShow]=useState(false);
   const [loading,setLoading]=useState(false); const [gen,setGen]=useState("");
   const [msg,setMsg]=useState(""); const [ok,setOk]=useState(true); const [copied,setCopied]=useState(false);
-  const hasAuth=user.status==="approved";
+  const hasAuth=isApprovedStatus(user.status);
   const generate=async()=>{setLoading(true);setMsg("");setGen("");try{const r=await adminFetch(`/users/${user.id}/generate-password`,{method:"POST"});setGen(r.password);setMsg(`Set for ${r.email}`);setOk(true);}catch(e:any){setMsg(e.message);setOk(false);}finally{setLoading(false);}};
   const setManual=async()=>{if(pw.length<8){setMsg("Min 8 chars");setOk(false);return;}setLoading(true);setMsg("");try{await adminFetch(`/users/${user.id}/set-password`,{method:"POST",body:JSON.stringify({password:pw})});setMsg("Updated!");setOk(true);setPw("");}catch(e:any){setMsg(e.message);setOk(false);}finally{setLoading(false);}};
   return (
@@ -452,6 +457,11 @@ export default function AdminDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
   useEffect(()=>{
+    if(typeof window==="undefined") return;
+    const storedJobId = Number(window.localStorage.getItem(ACTIVE_RETRAIN_JOB_KEY) || "");
+    if(Number.isFinite(storedJobId) && storedJobId > 0) activeRtJobRef.current = storedJobId;
+  },[]);
+  useEffect(()=>{
     if(!isHospitalAdmin) return;
     const refresh=()=>loadAll(undefined,{silent:true});
     const id=setInterval(refresh,10000);
@@ -467,13 +477,23 @@ export default function AdminDashboard() {
   },[retrainJobs]);
   useEffect(()=>{
     const jobId=activeRtJobRef.current;
-    if(!jobId) return;
-    const job=retrainJobs.find(j=>j.id===jobId);
+    const job=jobId ? retrainJobs.find(j=>j.id===jobId) : retrainJobs[0];
     if(!job) return;
     if(job.status==="pending"){setRtMsg(`Retraining job #${job.id} is queued and preparing data...`);setRtOk(true);return;}
     if(job.status==="processing"){setRtMsg(`Retraining job #${job.id} is running...`);setRtOk(true);return;}
-    if(job.status==="completed"){setRtMsg(`Retraining job #${job.id} completed successfully.`);setRtOk(true);activeRtJobRef.current=null;return;}
-    if(job.status==="failed"){setRtMsg(job.error_message?`Retraining failed: ${job.error_message}`:`Retraining job #${job.id} failed.`);setRtOk(false);activeRtJobRef.current=null;}
+    if(job.status==="completed"){
+      setRtMsg(`Retraining job #${job.id} completed successfully.`);
+      setRtOk(true);
+      activeRtJobRef.current=null;
+      if(typeof window!=="undefined") window.localStorage.removeItem(ACTIVE_RETRAIN_JOB_KEY);
+      return;
+    }
+    if(job.status==="failed"){
+      setRtMsg(job.error_message?`Retraining failed: ${job.error_message}`:`Retraining job #${job.id} failed.`);
+      setRtOk(false);
+      activeRtJobRef.current=null;
+      if(typeof window!=="undefined") window.localStorage.removeItem(ACTIVE_RETRAIN_JOB_KEY);
+    }
   },[retrainJobs]);
 
   const approveUser=async(id:number)=>{await adminFetch(`/users/${id}/status`,{method:"PATCH",body:JSON.stringify({status:"approved"})});loadAll();};
@@ -531,7 +551,7 @@ export default function AdminDashboard() {
   const deleteDx=async(id:number)=>{if(!confirm("Delete?"))return;try{await adminFetch(`/diagnoses/${id}`,{method:"DELETE"});loadAll();}catch(e:any){setError(e.message);}};
   const handleFile=(e:React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files?.[0];if(!f)return;setXFile(f);setXPrev(URL.createObjectURL(f));setPred(null);setSavedDx(null);setPredErr("");setPredInfo("");};
 
-  const radiologists = apiUsers.filter(u=>u.status==="approved"&&(u.role==="radiologist"||u.role==="user"));
+  const radiologists = apiUsers.filter(u=>isApprovedStatus(u.status)&&(u.role==="radiologist"||u.role==="user"));
   // patients belonging to the selected radiologist (or all if admin chose no filter)
   const filteredPatients = dxRadiologist
     ? patients.filter(p=>p.radiologist_id===dxRadiologist)
@@ -591,6 +611,7 @@ export default function AdminDashboard() {
     try{
       const job=await adminFetch("/retrain/trigger",{method:"POST"});
       activeRtJobRef.current=job.id;
+      if(typeof window!=="undefined") window.localStorage.setItem(ACTIVE_RETRAIN_JOB_KEY, String(job.id));
       setRetrainJobs(prev=>[job,...prev.filter(j=>j.id!==job.id)]);
       setRtMsg(`Job #${job.id} started. Preparing retraining data...`);setRtOk(true);setStagedC({});loadAll();
     }
@@ -605,7 +626,7 @@ export default function AdminDashboard() {
     ? diagnoses.filter(d=>apiUsers.some(u=>u.id===d.radiologist_id))
     : diagnoses;
 
-  const pending=visibleUsers.filter((u:ApiUser)=>u.status==="pending").length;
+  const pending=visibleUsers.filter((u:ApiUser)=>isPendingStatus(u.status)).length;
   const dist=["Normal","Tuberculosis","Pneumonia","Unknown"].map(cls=>({cls,count:visibleDiagnoses.filter((d:Diagnosis)=>d.ai_classification===cls).length,pct:visibleDiagnoses.length?Math.round((visibleDiagnoses.filter((d:Diagnosis)=>d.ai_classification===cls).length/visibleDiagnoses.length)*100):0,color:CLS_META[cls].bar}));
 
   // Retrain summary helpers
@@ -802,7 +823,7 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                     <div>
-                      <div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??visibleUsers.filter(u=>u.status==="approved").length}</div>
+                      <div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??visibleUsers.filter(u=>isApprovedStatus(u.status)).length}</div>
                       <div className="text-[11px] text-white/70"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending} pending</span></div>
                     </div>
                   </div>
@@ -837,7 +858,7 @@ export default function AdminDashboard() {
                     <div>
                       <h3 className="text-base font-bold text-slate-800 mb-3">Hospital Overview</h3>
                       <p className="text-[13px] text-slate-500 leading-relaxed">Linked hospital: <strong>{myHospital?.name || me?.hospital || "Your hospital"}</strong></p>
-                      <p className="text-[13px] text-slate-500 mt-2">Approved radiologists: <strong>{visibleUsers.filter(u=>u.status==="approved").length}</strong></p>
+                      <p className="text-[13px] text-slate-500 mt-2">Approved radiologists: <strong>{visibleUsers.filter(u=>isApprovedStatus(u.status)).length}</strong></p>
                       <p className="text-[13px] text-slate-500 mt-1">Pending approval: <strong>{pending}</strong></p>
                       <p className="text-[13px] text-slate-500 mt-1">Registered patients: <strong>{visiblePatients.length}</strong></p>
                     </div>
@@ -906,8 +927,8 @@ export default function AdminDashboard() {
                       <TD><StatusBadge status={u.status}/></TD>
                       <TD mono>{fmt(u.created_at)}</TD>
                       <TD><div className="flex items-center gap-2 flex-nowrap whitespace-nowrap">
-                        {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-600 text-white hover:bg-red-700">Reject</button></>}
-                        {u.status==="approved"&&<><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full border" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Password</button><button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-600 text-white hover:bg-red-700">Delete</button></>}
+                        {isPendingStatus(u.status)&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-600 text-white hover:bg-red-700">Reject</button></>}
+                        {isApprovedStatus(u.status)&&<><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full border" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Password</button><button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-600 text-white hover:bg-red-700">Delete</button></>}
                         {(u.status==="rejected"||u.status==="revoked")&&<button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Re-Approve</button>}
                       </div></TD>
                     </TR>
@@ -1252,8 +1273,8 @@ export default function AdminDashboard() {
             {tab==="passwords"&&(
               <div className="space-y-5 max-w-[1400px] mx-auto anim-in">
                 <PageHead title="Password Management" sub="Set or generate passwords for approved radiologists"/>
-                <Tbl heads={["User","Email","Status","Last Action","Actions"]} empty={apiUsers.filter(u=>u.status==="approved").length===0?"No approved users yet":undefined}>
-                  {apiUsers.filter(u=>u.status==="approved").map(u=>{const last=pwLogs.filter(l=>l.entity_id===u.id).sort((a,b)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime())[0];return(
+                <Tbl heads={["User","Email","Status","Last Action","Actions"]} empty={apiUsers.filter(u=>isApprovedStatus(u.status)).length===0?"No approved users yet":undefined}>
+                  {apiUsers.filter(u=>isApprovedStatus(u.status)).map(u=>{const last=pwLogs.filter(l=>l.entity_id===u.id).sort((a,b)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime())[0];return(
                     <TR key={u.id}>
                       <TD><span className="font-bold text-slate-800">{u.full_name}</span></TD>
                       <TD mono>{u.email}</TD>
