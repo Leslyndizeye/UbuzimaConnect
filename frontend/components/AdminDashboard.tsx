@@ -650,6 +650,16 @@ export default function AdminDashboard() {
                 <div className="ml-auto flex items-center gap-3 min-w-0">
                   {error&&<div className="text-xs font-medium text-red-700 truncate max-w-xs">{error}</div>}
                   <button onClick={()=>loadAll(undefined,{silent:true})} className="btn-s px-4 py-2.5 rounded-full text-slate-700 text-sm font-bold bg-white border border-slate-200">Refresh</button>
+                  <div className="flex items-center gap-3 rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 bg-slate-50/80 min-w-[220px]">
+                    <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
+                      {headerLogo
+                        ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
+                        : <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{(myHospital?.name||me?.full_name||"HA").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}</div>}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-bold text-slate-800 leading-tight">{myHospital?.name||"Hospital Admin"}</p>
+                    </div>
+                  </div>
                 </div>
 
 
@@ -665,12 +675,6 @@ export default function AdminDashboard() {
             {/* ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â OVERVIEW ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â */}
             {tab==="overview"&&(
               <div className="space-y-6 max-w-[1400px]">
-                <div className="flex items-center justify-between">
-                  <div><h1 className="text-3xl font-bold text-slate-900">Dashboard</h1><p className="text-slate-500 mt-1 text-sm">Ubuzima Connect ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â AI-powered chest X-ray diagnostics.</p></div>
-                  <div className="flex gap-3">
-                    <button onClick={()=>loadAll(undefined,{silent:true})} className="btn-s px-5 py-2.5 rounded-full text-slate-700 text-sm font-bold bg-white border border-slate-200">Refresh</button>
-                  </div>
-                </div>
                 {showInitialSkeleton ? (
                   <>
                     <div className="grid grid-cols-4 gap-5">
@@ -775,9 +779,9 @@ export default function AdminDashboard() {
             {/* ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â USERS ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â */}
             {tab==="users"&&(
               <div className="space-y-5 max-w-[1200px] anim-in">
-                <PageHead title="Radiologists" sub={`${visibleUsers.length} hospital radiologists`} right={
+                <div className="flex justify-end">
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search team..." className={INP+" w-[220px]"}/>
-                }/>
+                </div>
                 <Tbl heads={["Name","Email","Hospital","License","Role","Status","Joined","Actions"]} empty={apiUsers.length===0?"No users yet":undefined}>
                   {apiUsers.filter(u=>!search||u.full_name.toLowerCase().includes(search.toLowerCase())||u.email.toLowerCase().includes(search.toLowerCase())).map(u=>(
                     <TR key={u.id}>
@@ -1277,18 +1281,6 @@ export default function AdminDashboard() {
             )}
 
           </main>
-        </div>
-        <div className="hidden xl:flex fixed right-5 top-1/2 -translate-y-1/2 z-20 pointer-events-none">
-          <div className="pointer-events-auto bg-white/96 backdrop-blur-sm border border-slate-200 shadow-[0_10px_30px_rgba(0,0,0,0.08)] rounded-[28px] px-4 py-5 w-[92px] flex flex-col items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center">
-              {headerLogo
-                ? <img src={headerLogo} alt="Hospital logo" className="w-full h-full object-contain p-1.5"/>
-                : <div className="w-full h-full flex items-center justify-center text-white text-sm font-bold" style={{backgroundColor:DARK_GREEN}}>{(myHospital?.name||me?.full_name||"HA").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}</div>}
-            </div>
-            <div className="text-center">
-              <p className="text-[10px] font-bold text-slate-700 leading-tight">{myHospital?.name||"Hospital"}</p>
-            </div>
-          </div>
         </div>
       </div>
     </>
