@@ -8,6 +8,23 @@ const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:800
 type Mode = 'login' | 'register' | 'forgot' | 'reset';
 type Language = 'En' | 'Fr';
 
+const RW_PHONE_RE = /^(?:\+?250|0)?7\d{8}$/;
+const RW_NATIONAL_ID_RE = /^\d{16}$/;
+const NAME_RE = /^[A-Za-z][A-Za-z .'-]{1,98}[A-Za-z]$/;
+const LICENSE_RE = /^[A-Za-z0-9][A-Za-z0-9/-]{3,29}$/;
+
+const normalizePhone = (value: string) => {
+  const cleaned = value.replace(/[^\d+]/g, '');
+  if (cleaned.startsWith('+250')) return `+250${cleaned.slice(4).replace(/\D/g, '').slice(0, 9)}`;
+  if (cleaned.startsWith('250')) return `+250${cleaned.slice(3).replace(/\D/g, '').slice(0, 9)}`;
+  if (cleaned.startsWith('0')) return `0${cleaned.slice(1).replace(/\D/g, '').slice(0, 9)}`;
+  return cleaned.replace(/\D/g, '').slice(0, 10);
+};
+
+const normalizeNationalId = (value: string) => value.replace(/\D/g, '').slice(0, 16);
+const normalizeLicense = (value: string) => value.toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, 30);
+const normalizeName = (value: string) => value.replace(/[^A-Za-z .'-]/g, '');
+
 const T = {
   En: {
     brand: 'Ubuzima Connect',
@@ -69,9 +86,9 @@ const T = {
   }
 };
 
-function InputField({ label, type = 'text', value, onChange, placeholder, required = true }: {
+function InputField({ label, type = 'text', value, onChange, placeholder, required = true, maxLength, inputMode, pattern }: {
   label: string; type?: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; required?: boolean;
+  placeholder?: string; required?: boolean; maxLength?: number; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']; pattern?: string;
 }) {
   const [show, setShow] = useState(false);
   const isPw = type === 'password';
@@ -83,6 +100,9 @@ function InputField({ label, type = 'text', value, onChange, placeholder, requir
           type={isPw ? (show ? 'text' : 'password') : type}
           value={value} onChange={e => onChange(e.target.value)}
           placeholder={placeholder} required={required}
+          maxLength={maxLength}
+          inputMode={inputMode}
+          pattern={pattern}
           className="w-full px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-gray-900 text-xs font-medium outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 transition-all placeholder:text-gray-300 pr-10"
         />
         {isPw && (
@@ -123,6 +143,7 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
   const [fullName, setFullName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [hospitalId, setHospitalId] = useState<number | ''>('');
+  const [nationalId, setNationalId] = useState('');
   const [hospitals, setHospitals] = useState<{ id: number; name: string; district: string; province: string }[]>([]);
   const [licenseNumber, setLicenseNumber] = useState('');
   const [phone, setPhone] = useState('');
@@ -194,9 +215,23 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault(); setError('');
-    if (!fullName.trim()) { setError('Full name is required'); return; }
-    if (!licenseNumber.trim()) { setError('License number is required'); return; }
-    if (!phone.trim()) { setError('Phone number is required'); return; }
+    const cleanName = fullName.trim().replace(/\s+/g, ' ');
+    const cleanNationalId = normalizeNationalId(nationalId);
+    const cleanLicense = normalizeLicense(licenseNumber);
+    const cleanPhone = normalizePhone(phone);
+    const expYears = Number(yearsExp);
+    const cleanSpecialization = specialization.trim().replace(/\s+/g, ' ');
+    if (!cleanName) { setError('Full name is required'); return; }
+    if (!NAME_RE.test(cleanName)) { setError('Enter a real name using letters only.'); return; }
+    if (!cleanNationalId) { setError('National ID is required'); return; }
+    if (!RW_NATIONAL_ID_RE.test(cleanNationalId)) { setError('National ID must have exactly 16 digits.'); return; }
+    if (!cleanLicense) { setError('License number is required'); return; }
+    if (!LICENSE_RE.test(cleanLicense)) { setError('License number must use letters, numbers, slash or hyphen only.'); return; }
+    if (!cleanPhone) { setError('Phone number is required'); return; }
+    if (!RW_PHONE_RE.test(cleanPhone)) { setError('Enter a valid Rwanda mobile number, for example +25078XXXXXXX or 07XXXXXXXX.'); return; }
+    if (!yearsExp.trim()) { setError('Years of experience is required'); return; }
+    if (!Number.isInteger(expYears) || expYears < 0 || expYears > 50) { setError('Years of experience must be between 0 and 50.'); return; }
+    if (cleanSpecialization && !NAME_RE.test(cleanSpecialization)) { setError('Specialization should use letters only.'); return; }
     setLoading(true);
     try {
       if (!hospitalId) { setError('Please select your hospital'); setLoading(false); return; }
@@ -205,10 +240,13 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           firebase_uid: `pending_${regEmail.replace('@', '_').replace('.', '_')}_${Date.now()}`,
-          email: regEmail, full_name: fullName,
+          email: regEmail, full_name: cleanName,
           hospital_id: hospitalId,
-          license_number: licenseNumber, phone_number: phone,
-          specialization, years_experience: yearsExp ? parseInt(yearsExp) : null,
+          national_id: cleanNationalId,
+          license_number: cleanLicense,
+          phone_number: cleanPhone,
+          specialization: cleanSpecialization || null,
+          years_experience: expYears,
         }),
       });
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Registration failed'); }
@@ -396,7 +434,7 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="col-span-2">
-                      <InputField label="Full Name" value={fullName} onChange={setFullName} placeholder="Dr. Jean Uwimana" />
+                      <InputField label="Full Name" value={fullName} onChange={v => setFullName(normalizeName(v))} placeholder="Jean Uwimana" maxLength={100} />
                     </div>
                     <InputField label="Work Email" type="email" value={regEmail} onChange={setRegEmail} placeholder="doctor@hospital.rw" />
                     <div className="space-y-1 auth-fade">
@@ -413,11 +451,15 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
                         ))}
                       </select>
                     </div>
-                    <InputField label="RBC License ID" value={licenseNumber} onChange={setLicenseNumber} placeholder="4356-6487" />
-                    <InputField label="Phone Number" type="tel" value={phone} onChange={setPhone} placeholder="+250 7XX XXX XXX" required />
-                    <InputField label="Specialization" value={specialization} onChange={setSpecialization} placeholder="Radiology" required={false} />
-                    <InputField label="Years Experience" type="number" value={yearsExp} onChange={setYearsExp} placeholder="5" required={false} />
+                    <InputField label="National ID" value={nationalId} onChange={v => setNationalId(normalizeNationalId(v))} placeholder="16 digits" maxLength={16} inputMode="numeric" pattern="\\d{16}" />
+                    <InputField label="License Number" value={licenseNumber} onChange={v => setLicenseNumber(normalizeLicense(v))} placeholder="RMDC-12345" maxLength={30} />
+                    <InputField label="Phone Number" type="tel" value={phone} onChange={v => setPhone(normalizePhone(v))} placeholder="+25078XXXXXXX" required maxLength={13} inputMode="tel" />
+                    <InputField label="Specialization" value={specialization} onChange={v => setSpecialization(normalizeName(v))} placeholder="Radiology" required={false} maxLength={100} />
+                    <InputField label="Years Experience" type="number" value={yearsExp} onChange={v => setYearsExp(v.replace(/[^\d]/g, '').slice(0, 2))} placeholder="0-50" inputMode="numeric" />
                   </div>
+                  <p className="text-[9px] text-gray-400 leading-relaxed auth-fade">
+                    Use a Rwanda mobile number, a 16-digit national ID, and your professional license number.
+                  </p>
                   <button type="submit" disabled={loading}
                     className="w-full py-3 bg-gray-900 text-white font-bold uppercase tracking-[0.2em] text-[10px] rounded-xl hover:bg-black transition-all shadow-lg shadow-gray-200 auth-fade mt-2 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-60">
                     {loading ? <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : t.submitApp}
