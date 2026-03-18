@@ -32,7 +32,7 @@ interface Prediction {
   explanation?: string; gradcam_b64?: string; xray_storage_path?: string;
 }
 interface ChatContact {
-  id: number; full_name: string; email: string; specialization?: string; hospital_id?: number;
+  id: number; full_name: string; email: string; specialization?: string; hospital_id?: number; status?: string; phone_number?: string; years_experience?: number;
 }
 interface ChatMessage {
   id: number; hospital_id: number; sender_id: number; recipient_id: number; message: string; created_at: string;
@@ -89,6 +89,7 @@ const displayClass = (c: string) => c === 'TB' ? 'Tuberculosis' : c;
 const toDbClass = (c: string) => c === 'Tuberculosis' ? 'TB' : c;
 const SHARED_DIAGNOSIS_PREFIX = '__UBUZIMA_SHARED_DIAGNOSIS__:';
 const fmt = (iso: string) => new Date(iso).toLocaleString('en-RW', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const isApprovedStatus = (status?: string) => (status || '').toLowerCase() === 'approved';
 const maskNationalId = (value?: string) => {
   if (!value) return '—';
   const id = value.replace(/\s/g, '');
@@ -277,6 +278,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
   const [chatError, setChatError] = useState('');
+  const [contactsError, setContactsError] = useState('');
   const [shareDiag, setShareDiag] = useState<Diagnosis | null>(null);
   const [sharePatient, setSharePatient] = useState<Patient | null>(null);
   const [shareTargetId, setShareTargetId] = useState<number | null>(null);
@@ -308,15 +310,29 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
 
   const loadData = useCallback(async () => {
     setBusy(true);
-    const [pr, dr, cr] = await Promise.allSettled([apiFetch('/patients'), apiFetch('/diagnoses'), apiFetch('/chat/contacts')]);
+    setContactsError('');
+    const contactsRequest = user.hospital_id
+      ? apiFetch(`/hospitals/${user.hospital_id}/radiologists`)
+      : Promise.resolve([]);
+    const [pr, dr, cr] = await Promise.allSettled([apiFetch('/patients'), apiFetch('/diagnoses'), contactsRequest]);
     if (pr.status === 'fulfilled') setPatients(pr.value);
     if (dr.status === 'fulfilled') setDiagnoses(dr.value);
     if (cr.status === 'fulfilled') {
-      setChatContacts(cr.value);
-      setActiveChatId(prev => prev ?? cr.value[0]?.id ?? null);
+      const contacts = (cr.value || [])
+        .filter((contact: ChatContact) => contact.id !== user.id && isApprovedStatus(contact.status))
+        .sort((a: ChatContact, b: ChatContact) => a.full_name.localeCompare(b.full_name));
+      setChatContacts(contacts);
+      setActiveChatId(prev => {
+        if (prev && contacts.some((contact: ChatContact) => contact.id === prev)) return prev;
+        return contacts[0]?.id ?? null;
+      });
+    } else {
+      setChatContacts([]);
+      setActiveChatId(null);
+      setContactsError(user.hospital_id ? 'Could not load approved radiologists in your hospital.' : 'Your hospital is not linked yet.');
     }
     setBusy(false);
-  }, []);
+  }, [user.hospital_id, user.id]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -689,6 +705,8 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   );
   const selectedReportContact = chatContacts.find(c => c.id === activeChatId) || null;
   const sharedChatMessages = chatMessages.filter(msg => parseSharedDiagnosisMessage(msg.message));
+  const sentReportsCount = sharedChatMessages.filter(msg => msg.sender_id === user.id).length;
+  const receivedReportsCount = sharedChatMessages.filter(msg => msg.recipient_id === user.id).length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1248,68 +1266,120 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
           <div className="space-y-5">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Shared Reports</h1>
-              <p className="text-sm text-gray-400 mt-1">Review diagnosis reports shared with approved radiologists in your hospital.</p>
+              <p className="text-sm text-gray-400 mt-1">Choose an approved colleague, then review every report you have shared with that radiologist.</p>
             </div>
-            <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-5">
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Available Radiologists</div>
+                <div className="mt-2 text-2xl font-black text-gray-900">{chatContacts.length}</div>
+                <div className="text-xs text-gray-400 mt-1">Approved colleagues in your hospital</div>
+              </div>
+              <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Sent Reports</div>
+                <div className="mt-2 text-2xl font-black text-emerald-700">{sentReportsCount}</div>
+                <div className="text-xs text-gray-400 mt-1">Reports you sent in this thread</div>
+              </div>
+              <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Received Reports</div>
+                <div className="mt-2 text-2xl font-black text-gray-700">{receivedReportsCount}</div>
+                <div className="text-xs text-gray-400 mt-1">Reports received in this thread</div>
+              </div>
+            </div>
+            <div className="grid lg:grid-cols-[320px_minmax(0,1fr)] gap-5">
               <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 text-[10px] font-bold uppercase tracking-widest text-gray-400">Radiologists</div>
-                <div className="max-h-[520px] overflow-y-auto">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Radiologists</div>
+                  <div className="text-xs text-gray-400 mt-1">Only approved radiologists from your hospital appear here.</div>
+                </div>
+                {contactsError && <div className="mx-4 mt-4 p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">{contactsError}</div>}
+                <div className="max-h-[560px] overflow-y-auto p-3 space-y-2">
                   {chatContacts.map(contact => (
                     <button key={contact.id} onClick={() => setActiveChatId(contact.id)}
-                      className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-colors ${activeChatId === contact.id ? 'bg-emerald-50' : 'hover:bg-gray-50'}`}>
-                      <div className="text-sm font-bold text-gray-900">{contact.full_name}</div>
-                      <div className="text-[11px] text-gray-400">{contact.specialization || contact.email}</div>
+                      className={`w-full text-left rounded-2xl border px-4 py-3 transition-all ${activeChatId === contact.id ? 'border-emerald-300 bg-emerald-50 shadow-sm' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-gray-900 truncate">{contact.full_name}</div>
+                          <div className="text-[11px] text-gray-400 mt-0.5 truncate">{contact.specialization || 'Radiologist'}</div>
+                          <div className="text-[11px] text-gray-400 mt-1 truncate">{contact.email}</div>
+                        </div>
+                        <span className="shrink-0 text-[9px] font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">Approved</span>
+                      </div>
                     </button>
                   ))}
-                  {chatContacts.length === 0 && <div className="p-6 text-sm text-gray-400 text-center">No approved hospital radiologists available yet.</div>}
+                  {!contactsError && chatContacts.length === 0 && <div className="p-6 text-sm text-gray-400 text-center">No approved radiologists are available in your hospital yet.</div>}
                 </div>
               </div>
-              <div className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-col min-h-[520px]">
+              <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col min-h-[560px]">
                 {!activeChatId ? (
-                  <div className="flex-1 flex items-center justify-center text-sm text-gray-400">Select a radiologist to view shared reports.</div>
+                  <div className="flex-1 flex flex-col items-center justify-center text-center">
+                    <div className="text-base font-bold text-gray-700">Select a radiologist</div>
+                    <div className="text-sm text-gray-400 mt-2 max-w-md">After you share a diagnosis, the full handoff report and attached clinical note will appear here.</div>
+                  </div>
                 ) : (
                   <>
-                    <div className="pb-3 border-b border-gray-100">
-                      <div className="text-sm font-bold text-gray-900">{selectedReportContact?.full_name || 'Shared Reports'}</div>
-                      <div className="text-[11px] text-gray-400">{selectedReportContact?.email || ''}</div>
+                    <div className="pb-4 border-b border-gray-100 flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-base font-bold text-gray-900">{selectedReportContact?.full_name || 'Shared Reports'}</div>
+                        <div className="text-sm text-gray-400 mt-1">{selectedReportContact?.specialization || 'Radiologist'}</div>
+                        <div className="text-xs text-gray-400 mt-1">{selectedReportContact?.email || ''}</div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Thread Summary</div>
+                        <div className="text-xs text-gray-500 mt-2">{sharedChatMessages.length} shared report{sharedChatMessages.length === 1 ? '' : 's'}</div>
+                      </div>
                     </div>
                     <div className="flex-1 overflow-y-auto py-4 space-y-3">
                       {sharedChatMessages.map(msg => {
                         const shared = parseSharedDiagnosisMessage(msg.message);
                         if (!shared) return null;
+                        const outgoing = msg.sender_id === user.id;
                         return (
-                          <div key={msg.id} className={`flex ${msg.sender_id === user.id ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${msg.sender_id === user.id ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                          <div key={msg.id} className={`flex ${outgoing ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`w-full max-w-[760px] rounded-2xl border px-4 py-4 text-sm ${outgoing ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
                               <div className="space-y-2">
-                                  <div className={`text-[10px] font-bold uppercase tracking-widest ${msg.sender_id === user.id ? 'text-emerald-100' : 'text-gray-400'}`}>{msg.sender_id === user.id ? 'Sent Report' : 'Received Report'}</div>
-                                  <div className={`rounded-xl border p-3 ${msg.sender_id === user.id ? 'border-emerald-300/40 bg-emerald-500/20' : 'border-gray-200 bg-white'}`}>
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className={`text-[10px] font-bold uppercase tracking-widest ${outgoing ? 'text-emerald-700' : 'text-gray-500'}`}>{outgoing ? 'Sent Report' : 'Received Report'}</div>
+                                    <div className="text-[10px] text-gray-400">{fmt(msg.created_at)}</div>
+                                  </div>
+                                  <div className="rounded-xl border border-gray-200 bg-white p-3">
                                     <div className="font-bold">{shared.patient_name}</div>
                                     <div className={`inline-flex mt-2 text-[10px] font-bold px-2 py-1 rounded-full ${classBadge(shared.classification)}`}>
                                       {displayClass(shared.classification)}
                                     </div>
-                                    <div className={`text-[11px] mt-2 ${msg.sender_id === user.id ? 'text-emerald-50' : 'text-gray-500'}`}>
+                                    <div className="text-[11px] mt-2 text-gray-500">
                                       {shared.confidence_score.toFixed(1)}% confidence
                                       {shared.patient_ref_masked ? ` • ${shared.patient_ref_masked}` : ''}
                                     </div>
+                                    {shared.radiologist_name && (
+                                      <div className="mt-2 text-[11px] text-gray-500">
+                                        Reviewed by {shared.radiologist_name}{shared.hospital ? ` • ${shared.hospital}` : ''}
+                                      </div>
+                                    )}
                                     {shared.shared_note && (
-                                      <div className={`mt-2 text-xs ${msg.sender_id === user.id ? 'text-white' : 'text-gray-700'}`}>
+                                      <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-gray-700">
                                         <strong>Shared note:</strong> {shared.shared_note}
                                       </div>
                                     )}
                                     {shared.radiologist_notes && (
-                                      <div className={`mt-2 text-xs ${msg.sender_id === user.id ? 'text-emerald-50' : 'text-gray-500'}`}>
+                                      <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
                                         <strong>Clinical note:</strong> {shared.radiologist_notes}
                                       </div>
                                     )}
                                   </div>
                                 </div>
-                              <div className={`text-[10px] mt-1 ${msg.sender_id === user.id ? 'text-emerald-100' : 'text-gray-400'}`}>{fmt(msg.created_at)}</div>
                             </div>
                           </div>
                         );
                       })}
                       {chatError && <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">{chatError}</div>}
-                      {!chatBusy && sharedChatMessages.length === 0 && <div className="text-sm text-gray-400 text-center pt-8">No shared reports yet.</div>}
+                      {!chatBusy && !chatError && sharedChatMessages.length === 0 && (
+                        <div className="h-full flex items-center justify-center text-center">
+                          <div>
+                            <div className="text-base font-bold text-gray-700">No shared reports yet</div>
+                            <div className="text-sm text-gray-400 mt-2">Use the Share action from patient history after reviewing or verifying a diagnosis.</div>
+                          </div>
+                        </div>
+                      )}
                       {chatBusy && <div className="text-sm text-gray-400 text-center pt-8">Loading shared reports...</div>}
                     </div>
                   </>
