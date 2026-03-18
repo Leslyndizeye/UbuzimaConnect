@@ -1019,7 +1019,7 @@ export default function AdminDashboard() {
                     <div className="space-y-3">
                       <div className="flex items-center gap-3">
                         <div className={`step-ring ${canTrigger?"active":"idle"}`}>3</div>
-                        <div><p className="text-sm font-bold text-slate-800">Start Retraining</p><p className="text-[11px] text-slate-400">Need >= {RT_MIN} images in at least 1 class</p></div>
+                        <div><p className="text-sm font-bold text-slate-800">Start Retraining</p><p className="text-[11px] text-slate-400">Need at least {RT_MIN} images in at least 1 class</p></div>
                       </div>
 
                       <div className="rounded-2xl p-4 space-y-2" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
