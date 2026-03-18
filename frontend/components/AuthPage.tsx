@@ -196,6 +196,7 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
     e.preventDefault(); setError('');
     if (!fullName.trim()) { setError('Full name is required'); return; }
     if (!licenseNumber.trim()) { setError('License number is required'); return; }
+    if (!phone.trim()) { setError('Phone number is required'); return; }
     setLoading(true);
     try {
       if (!hospitalId) { setError('Please select your hospital'); setLoading(false); return; }
@@ -413,7 +414,7 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
                       </select>
                     </div>
                     <InputField label="RBC License ID" value={licenseNumber} onChange={setLicenseNumber} placeholder="4356-6487" />
-                    <InputField label="Phone" type="tel" value={phone} onChange={setPhone} placeholder="+250 7XX XXX XXX" required={false} />
+                    <InputField label="Phone Number" type="tel" value={phone} onChange={setPhone} placeholder="+250 7XX XXX XXX" required />
                     <InputField label="Specialization" value={specialization} onChange={setSpecialization} placeholder="Radiology" required={false} />
                     <InputField label="Years Experience" type="number" value={yearsExp} onChange={setYearsExp} placeholder="5" required={false} />
                   </div>

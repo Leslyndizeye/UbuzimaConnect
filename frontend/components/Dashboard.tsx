@@ -519,6 +519,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
   // ── Profile ─────────────────────────────────────────────────────────────────
   const saveProfile = async () => {
     if (!pFullName.trim()) { setProfMsg('Full name is required'); return; }
+    if (!pPhone.trim()) { setProfMsg('Phone number is required'); return; }
     setProfSaving(true); setProfMsg('');
     try {
       const updated = await apiFetch(`/users/${user.id}/profile`, {
@@ -637,7 +638,24 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
     setShareDiag(diagnosis);
     setShareTargetId(activeChatId ?? chatContacts[0]?.id ?? null);
     setShareNote('');
-    setShareError(chatContacts.length ? '' : 'No approved radiologists are available in your hospital yet.');
+    setShareError(chatContacts.length ? '' : 'No other approved radiologists are available in your hospital yet.');
+  };
+
+  const deletePatientForever = async (patient: Patient) => {
+    if (!window.confirm(`Delete ${patient.name} permanently? This removes the patient and all saved diagnoses.`)) return;
+    setBusy(true);
+    try {
+      await apiFetch(`/patients/${patient.id}`, { method: 'DELETE' });
+      setPatients(prev => prev.filter(p => p.id !== patient.id));
+      setDiagnoses(prev => prev.filter(d => d.patient_id !== patient.id));
+      if (expanded === patient.id) setExpanded(null);
+      if (savedPat?.id === patient.id) { setSavedPat(null); setSavedDiag(null); }
+      setPredInfo('Patient deleted permanently.');
+    } catch (e: any) {
+      setPredErr(e.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const sendSharedDiagnosis = async () => {
@@ -763,7 +781,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
               </div>
               <div>
                 <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Clinical Notes</label>
-                <textarea value={verNotes} onChange={e => setVerNotes(e.target.value)} rows={3} className={`${inp} resize-none`} placeholder="Add your clinical observations…" />
+                className="w-8 h-8 rounded-lg border flex items-center justify-center text-sm hover:bg-gray-50">X</button>
               </div>
             </div>
             <div className="flex gap-2 pt-1">
@@ -781,8 +799,8 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-lg font-bold">Share Diagnosis</h2>
-              <button onClick={() => { setShareDiag(null); setSharePatient(null); setShareError(''); }}
-                className="w-8 h-8 rounded-lg border flex items-center justify-center text-sm hover:bg-gray-50">âœ•</button>
+              <button onClick={() => { setShareDiag(null); setSharePatient(null); setShareError(""); }}
+                className="w-8 h-8 rounded-lg border flex items-center justify-center text-sm hover:bg-gray-50">X</button>
             </div>
             <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 space-y-2">
               <div className="text-[9px] font-bold uppercase tracking-widest text-gray-400">Shared Result</div>
@@ -797,28 +815,30 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
             </div>
             <div>
               <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Send To</label>
-              <select value={shareTargetId ?? ''} onChange={e => setShareTargetId(e.target.value ? Number(e.target.value) : null)} className={inp}>
-                <option value="">Select radiologistâ€¦</option>
+              <select value={shareTargetId ?? ""} onChange={e => setShareTargetId(e.target.value ? Number(e.target.value) : null)} className={inp}>
+                <option value="">Select radiologist...</option>
                 {chatContacts.map(contact => (
-                  <option key={contact.id} value={contact.id}>{contact.full_name} {contact.specialization ? `â€¢ ${contact.specialization}` : ''}</option>
+                  <option key={contact.id} value={contact.id}>{contact.full_name}{contact.specialization ? ` - ${contact.specialization}` : ""}</option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Note (optional)</label>
               <textarea value={shareNote} onChange={e => setShareNote(e.target.value)} rows={3}
-                className={`${inp} resize-none`} placeholder="Add a short handoff note for this diagnosisâ€¦" />
+                className={`${inp} resize-none`} placeholder="Add a short handoff note for this diagnosis..." />
             </div>
             {shareError && <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 text-xs font-semibold">{shareError}</div>}
             <div className="flex gap-2 pt-1">
-              <button onClick={() => { setShareDiag(null); setSharePatient(null); setShareError(''); }}
+              <button onClick={() => { setShareDiag(null); setSharePatient(null); setShareError(""); }}
                 className="flex-1 py-2.5 rounded-xl border text-xs font-bold uppercase tracking-widest hover:bg-gray-50">Cancel</button>
               <button onClick={sendSharedDiagnosis} disabled={shareBusy || !shareTargetId}
                 className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-widest disabled:opacity-40">
-                {shareBusy ? 'Sharingâ€¦' : 'Share'}
+                {shareBusy ? "Sharing..." : "Share"}
               </button>
             </div>
           </div>
+        </div>
+      )}
         </div>
       )}
 
@@ -1170,6 +1190,10 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                         className="flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
                         Edit
                       </button>
+                      <button onClick={() => deletePatientForever(p)}
+                        className="flex-shrink-0 text-[9px] font-bold uppercase px-2.5 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100">
+                        Delete
+                      </button>
                     </div>
 
                     {isOpen && (
@@ -1288,7 +1312,12 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
                                     </div>
                                     {shared.shared_note && (
                                       <div className={`mt-2 text-xs ${msg.sender_id === user.id ? 'text-white' : 'text-gray-700'}`}>
-                                        {shared.shared_note}
+                                        <strong>Shared note:</strong> {shared.shared_note}
+                                      </div>
+                                    )}
+                                    {shared.radiologist_notes && (
+                                      <div className={`mt-2 text-xs ${msg.sender_id === user.id ? 'text-emerald-50' : 'text-gray-500'}`}>
+                                        <strong>Clinical note:</strong> {shared.radiologist_notes}
                                       </div>
                                     )}
                                   </div>

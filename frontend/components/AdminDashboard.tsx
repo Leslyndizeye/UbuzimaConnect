@@ -21,7 +21,7 @@ interface Diagnosis { id:number; patient_id:number; radiologist_id?:number; ai_c
 interface Patient { id:number; name:string; patient_ref_id?:string; age?:number; sex?:string; hospital?:string; clinical_notes?:string; radiologist_id?:number; created_at:string; }
 interface Stats { total_radiologists:number; pending_requests:number; total_patients:number; total_diagnoses:number; model_status:string; uptime_seconds:number; }
 interface ModelInfo { status:string; path:string; size_mb:number; last_modified:string; classes:string[]; architecture:string; input_shape:number[]; }
-interface AuditLog { id:number; user_id:number; action:string; entity?:string; entity_id?:number; timestamp:string; }
+interface AuditLog { id:number; user_id:number; action:string; entity?:string; entity_id?:number; detail?:Record<string,any>; timestamp:string; }
 interface RetrainJob { id:number; status:string; created_at:string; error_message?:string; final_val_acc?:number; }
 interface PredictionResult { classification:string; confidence_score:number; tb_probability:number; pneumonia_probability:number; normal_probability:number; unknown_probability?:number; explanation?:string; gradcam_b64?:string; xray_storage_path?:string; }
 interface EditPatient { id:number; name:string; patient_ref_id:string; hospital:string; clinical_notes:string; }
@@ -46,6 +46,31 @@ function parseDuplicateError(msg:string):{type:"NATIONAL_ID"|"NAME"|null;existin
   if(msg.startsWith("DUPLICATE_NAME|")){const p=msg.split("|");return{type:"NAME",existingId:parseInt(p[1])||null,message:p[2]||msg};}
   return{type:null,existingId:null,message:msg};
 }
+const prettyAuditAction=(action:string)=>{
+  const map:Record<string,string>={
+    approve_user:"Approved radiologist",
+    rejected_user:"Rejected radiologist",
+    reject_user:"Rejected radiologist",
+    revoked_user:"Revoked radiologist access",
+    revoke_user:"Revoked radiologist access",
+    delete_patient:"Deleted patient",
+    save_diagnosis:"Saved diagnosis",
+    create_patient:"Registered patient",
+    reuse_patient:"Updated existing patient",
+    update_patient:"Updated patient details",
+    send_chat_message:"Sent chat message",
+    admin_generate_password:"Generated password",
+    admin_set_password:"Set password",
+    change_own_password:"Changed password",
+    trigger_retrain:"Started retraining",
+    upload_retrain_data:"Uploaded retraining images",
+  };
+  return map[action] || action.replace(/_/g," ");
+};
+const prettyAuditEntity=(entity?:string)=>{
+  const map:Record<string,string>={patient:"Patient",diagnosis:"Diagnosis",user:"Radiologist",chat_message:"Chat message",xray_upload:"Training image"};
+  return entity ? (map[entity] || entity) : "System";
+};
 
 // ─── Design Tokens ────────────────────────────────
 const DARK_GREEN   = "#214D3B";
@@ -334,6 +359,14 @@ export default function AdminDashboard() {
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
+  useEffect(()=>{
+    if(!isHospitalAdmin) return;
+    const refresh=()=>loadAll();
+    const id=setInterval(refresh,10000);
+    window.addEventListener("focus",refresh);
+    document.addEventListener("visibilitychange",refresh);
+    return()=>{clearInterval(id);window.removeEventListener("focus",refresh);document.removeEventListener("visibilitychange",refresh);};
+  },[isHospitalAdmin,loadAll]);
   useEffect(()=>{
     const active=retrainJobs.some(j=>j.status==="processing"||j.status==="pending"); if(!active)return;
     const id=setInterval(async()=>{const jobs=await adminFetch("/retrain/jobs").catch(()=>null);if(jobs)setRetrainJobs(jobs);},5000);
@@ -694,7 +727,7 @@ export default function AdminDashboard() {
                   <Panel className="col-span-4 p-7 flex flex-col justify-between anim-in">
                     <div>
                       <h3 className="text-base font-bold text-slate-800 mb-3">Hospital Overview</h3>
-                      <p className="text-[13px] text-slate-500 leading-relaxed">Hospital ID: <strong>#{me?.hospital_id}</strong></p>
+                      <p className="text-[13px] text-slate-500 leading-relaxed">Linked hospital: <strong>{myHospital?.name || me?.hospital || "Your hospital"}</strong></p>
                       <p className="text-[13px] text-slate-500 mt-2">Approved radiologists: <strong>{visibleUsers.filter(u=>u.status==="approved").length}</strong></p>
                       <p className="text-[13px] text-slate-500 mt-1">Pending approval: <strong>{pending}</strong></p>
                       <p className="text-[13px] text-slate-500 mt-1">Registered patients: <strong>{visiblePatients.length}</strong></p>
@@ -1151,17 +1184,26 @@ export default function AdminDashboard() {
             {/* ══ AUDIT ══ */}
             {tab==="audit"&&(
               <div className="space-y-5 max-w-[1100px] anim-in">
-                <PageHead title="Audit Log" sub={`Last ${auditLogs.length} system events`}/>
-                <Tbl heads={["#","User","Action","Entity","ID","Timestamp"]} empty={auditLogs.length===0?"No audit logs yet":undefined}>
+                <PageHead title="Activity Log" sub={`Last ${auditLogs.length} recorded actions`}/>
+                <Tbl heads={["Team member","Activity","Area","Record","Time","Details"]} empty={auditLogs.length===0?"No activity recorded yet":undefined}>
                   {auditLogs.map(l=>{
                     const col=l.action.includes("delete")||l.action.includes("reject")||l.action.includes("revoke")?SOFT_RED:l.action.includes("approve")||l.action.includes("verify")||l.action.includes("retrain")?DARK_GREEN:SOFT_GREY;
+                    const actor=l.user_id===me?.id?me?.full_name:(apiUsers.find(u=>u.id===l.user_id)?.full_name||l.detail?.performed_by||"Team member");
+                    const detailText=
+                      l.action==="delete_patient"
+                        ? `${l.detail?.patient_name||"Patient"} deleted by ${l.detail?.performed_by||actor}.`
+                        : l.detail?.target_email
+                          ? `Account: ${l.detail.target_email}`
+                          : l.entity_id
+                            ? `Record ${l.entity_id}`
+                            : "�";
                     return <TR key={l.id}>
-                      <TD mono>#{l.id}</TD>
-                      <TD>{apiUsers.find(u=>u.id===l.user_id)?.full_name??`User ${l.user_id}`}</TD>
-                      <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:col}}>{l.action}</span></TD>
-                      <TD mono>{l.entity||"—"}</TD>
-                      <TD mono>{l.entity_id??"—"}</TD>
+                      <TD>{actor}</TD>
+                      <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:col}}>{prettyAuditAction(l.action)}</span></TD>
+                      <TD>{prettyAuditEntity(l.entity)}</TD>
+                      <TD>{l.detail?.patient_name||l.entity_id||"�"}</TD>
                       <TD mono>{fmt(l.timestamp)}</TD>
+                      <TD>{detailText}</TD>
                     </TR>;
                   })}
                 </Tbl>
@@ -1200,7 +1242,7 @@ export default function AdminDashboard() {
                 <Panel className="p-8 space-y-5">
                   <h3 className="text-base font-bold text-slate-800">Account</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    {[{l:"Name",v:me?.full_name},{l:"Email",v:me?.email},{l:"Role",v:"Hospital Admin"},{l:"Hospital ID",v:`#${me?.hospital_id}`}].map(f=>(
+                    {[{l:"Name",v:me?.full_name},{l:"Email",v:me?.email},{l:"Role",v:"Hospital Admin"},{l:"Linked Hospital",v:myHospital?.name||me?.hospital||"Your hospital"}].map(f=>(
                       <div key={f.l} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
                         <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">{f.l}</div>
                         <div className="font-semibold text-slate-800">{f.v||"—"}</div>
