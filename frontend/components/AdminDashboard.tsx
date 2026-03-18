@@ -401,6 +401,7 @@ export default function AdminDashboard() {
   const [rtMsg,setRtMsg]=useState(""); const [rtOk,setRtOk]=useState(true);
   const [stagedC,setStagedC]=useState<Record<string,number>>({});
   const [rtDrag,setRtDrag]=useState(false); const rtRef=useRef<HTMLInputElement>(null);
+  const activeRtJobRef=useRef<number|null>(null);
 
   const loadAll=useCallback(async(currentMe?:ApiUser|null, opts?:{silent?:boolean})=>{
     setError("");
@@ -410,24 +411,27 @@ export default function AdminDashboard() {
     const resolvedMe = currentMe !== undefined ? currentMe : meRef.current;
     if(!resolvedMe?.is_admin || !resolvedMe?.hospital_id){
       setApiUsers([]); setDiagnoses([]); setPatients([]); setAuditLogs([]); setPwLogs([]); setStagedC({});
+      setRetrainJobs([]);
       setMyHospital(null); setLogoPreview(null);
       setLoading(false); setRefreshing(false);
       return;
     }
     try{
       const hid = resolvedMe.hospital_id;
-      const [u,d,p,h,a] = await Promise.allSettled([
+      const [u,d,p,h,a,rj] = await Promise.allSettled([
         adminFetch(`/hospitals/${hid}/radiologists`),
         adminFetch("/diagnoses"),
         adminFetch("/patients"),
         adminFetch("/health"),
         adminFetch("/audit?limit=100"),
+        adminFetch("/retrain/jobs"),
       ]);
       if(u.status==="fulfilled")setApiUsers(u.value);
       if(d.status==="fulfilled")setDiagnoses(d.value);
       if(p.status==="fulfilled")setPatients(p.value);
       if(h.status==="fulfilled")setHealth(h.value);
       if(a.status==="fulfilled"){setAuditLogs(a.value);setPwLogs(a.value.filter((l:AuditLog)=>l.action.includes("password")||l.action.includes("Password")));}
+      if(rj.status==="fulfilled")setRetrainJobs(rj.value);
       adminFetch("/retrain/staged").then(r=>setStagedC(r.counts||{})).catch(()=>{});
       adminFetch(`/hospitals/${hid}`).then(hosp=>{setMyHospital(hosp);if(hosp.logo_base64)setLogoPreview(hosp.logo_base64);}).catch(()=>{});
     }catch(e:any){setError(e.message);}
@@ -460,6 +464,16 @@ export default function AdminDashboard() {
     const active=retrainJobs.some(j=>j.status==="processing"||j.status==="pending"); if(!active)return;
     const id=setInterval(async()=>{const jobs=await adminFetch("/retrain/jobs").catch(()=>null);if(jobs)setRetrainJobs(jobs);},5000);
     return()=>clearInterval(id);
+  },[retrainJobs]);
+  useEffect(()=>{
+    const jobId=activeRtJobRef.current;
+    if(!jobId) return;
+    const job=retrainJobs.find(j=>j.id===jobId);
+    if(!job) return;
+    if(job.status==="pending"){setRtMsg(`Retraining job #${job.id} is queued and preparing data...`);setRtOk(true);return;}
+    if(job.status==="processing"){setRtMsg(`Retraining job #${job.id} is running...`);setRtOk(true);return;}
+    if(job.status==="completed"){setRtMsg(`Retraining job #${job.id} completed successfully.`);setRtOk(true);activeRtJobRef.current=null;return;}
+    if(job.status==="failed"){setRtMsg(job.error_message?`Retraining failed: ${job.error_message}`:`Retraining job #${job.id} failed.`);setRtOk(false);activeRtJobRef.current=null;}
   },[retrainJobs]);
 
   const approveUser=async(id:number)=>{await adminFetch(`/users/${id}/status`,{method:"PATCH",body:JSON.stringify({status:"approved"})});loadAll();};
@@ -574,7 +588,12 @@ export default function AdminDashboard() {
     const cls=Object.keys(stagedC).filter(k=>stagedC[k]>=RT_MIN);
     if(cls.length<RT_MIN_CLASSES){setRtMsg(`For best retraining, prepare at least ${RT_MIN_CLASSES} classes with ${RT_MIN}+ images each`);setRtOk(false);return;}
     if(!window.confirm(`Start retraining with ${cls.length} ready class${cls.length!==1?"es":""}? (${cls.join(", ")})`))return;
-    try{const job=await adminFetch("/retrain/trigger",{method:"POST"});setRtMsg(`Job #${job.id} started!`);setRtOk(true);setStagedC({});loadAll();}
+    try{
+      const job=await adminFetch("/retrain/trigger",{method:"POST"});
+      activeRtJobRef.current=job.id;
+      setRetrainJobs(prev=>[job,...prev.filter(j=>j.id!==job.id)]);
+      setRtMsg(`Job #${job.id} started. Preparing retraining data...`);setRtOk(true);setStagedC({});loadAll();
+    }
     catch(e:any){setRtMsg(e.message);setRtOk(false);}
   };
 
@@ -1202,6 +1221,7 @@ export default function AdminDashboard() {
                               </div>
                               <StatusBadge status={j.status}/>
                             </div>
+                            {isRun&&<p className="text-sm mb-1" style={{color:textCol}}>{j.status==="pending"?"Preparing retraining data...":"Training in progress..."}</p>}
                             {j.final_val_acc&&<p className="text-sm mb-1" style={{color:textCol}}>Validation accuracy: <strong>{(j.final_val_acc*100).toFixed(1)}%</strong></p>}
                             {j.error_message&&<div className="mt-2 p-2.5 rounded-xl text-xs font-semibold bg-red-100 text-red-700 break-words">{j.error_message}</div>}
                             <p className="text-[9px] mt-2 text-slate-400">{fmt(j.created_at)}</p>
