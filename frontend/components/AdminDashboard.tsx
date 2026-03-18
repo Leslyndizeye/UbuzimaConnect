@@ -106,14 +106,12 @@ const CSS = `
 @keyframes popIn   { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }
 @keyframes floatY  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
 @keyframes barIn   { from{width:0} to{width:var(--w)} }
-@keyframes pdot    { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.6)} }
 
 .anim-in   { animation:slideUp .38s cubic-bezier(.22,1,.36,1) both; }
 .anim-in-1 { animation-delay:.05s } .anim-in-2 { animation-delay:.10s }
 .anim-in-3 { animation-delay:.15s } .anim-in-4 { animation-delay:.20s }
 .anim-pop  { animation:popIn .3s cubic-bezier(.22,1,.36,1) both; }
 .float-it  { animation:floatY 3s ease-in-out infinite; }
-.pdot      { animation:pdot 1.8s ease-in-out infinite; }
 
 .panel-card { background:#fff; border-radius:28px; border:1px solid #F1F5F9; box-shadow:0 4px 30px rgba(0,0,0,.03); }
 
@@ -645,17 +643,16 @@ export default function AdminDashboard() {
 
         {/* ════════ MAIN ════════ */}
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-[90px] flex items-center justify-between px-10 z-20 relative">
+          <header className="h-[90px] flex items-center justify-between px-10 sticky top-0 z-20 relative">
             {/* <div className="flex items-center gap-3 bg-white rounded-full px-5 py-3 border border-slate-100 shadow-sm w-[320px]">
               <svg width="16" height="16" fill="none" stroke="#A0AEC0" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
               <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search patients, users…" className="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"/>
               {search&&<button onClick={()=>setSearch("")} className="text-slate-400 hover:text-slate-700">✕</button>}
             </div> */}
-            <div className="flex items-center gap-4 absolute top-5 right-10 ">
+            <div className="flex items-center gap-4 absolute top-5 right-10 flex ">
               {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
-              {loading&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-white border border-slate-200 text-slate-500"><span className="w-2 h-2 rounded-full pdot" style={{backgroundColor:ACCENT_GREEN}}/> Loading</div>}
               {pending>0&&<div className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{backgroundColor:SOFT_GREY}}/>{pending} pending
+                <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor:SOFT_GREY}}/>{pending} pending
               </div>}
               <div className="flex items-center gap-3 bg-white rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 shadow-sm min-w-[250px]">
                 <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
@@ -770,7 +767,6 @@ export default function AdminDashboard() {
                   <div className="col-span-3 anim-in wavy-bg rounded-[28px] p-7 text-white flex flex-col items-center justify-center shadow-lg relative overflow-hidden">
                     <h3 className="text-sm font-bold absolute top-6 left-6 text-white/70">Kigali Time (CAT)</h3>
                     <div className="text-[28px] font-black tracking-widest mt-4 drop-shadow font-mono">{rwandaTime}</div>
-                    <div className="flex items-center gap-1.5 mt-2"><div className="w-2 h-2 rounded-full pdot" style={{backgroundColor:"#4ADE80"}}/><span className="text-xs text-white/70 font-semibold">{health?.status==="healthy"?"System operational":"Checking…"}</span></div>
                     {stats&&<p className="text-[10px] text-white/50 mt-1">Uptime: {uptimeFmt(stats.uptime_seconds)}</p>}
                     <button onClick={loadAll} className="mt-5 px-5 py-2 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors">Refresh</button>
                   </div>
@@ -1114,8 +1110,7 @@ export default function AdminDashboard() {
                         return(
                           <div key={j.id} className="p-5 rounded-2xl" style={{backgroundColor:bgCol,border:`1.5px solid ${borderCol}`}}>
                             <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                {isRun&&<div className="w-3 h-3 rounded-full pdot" style={{backgroundColor:SOFT_GREY}}/>}
+                            <div className="flex items-center gap-2">
                                 <span className="text-base font-bold" style={{color:textCol}}>Job #{j.id}</span>
                               </div>
                               <StatusBadge status={j.status}/>
