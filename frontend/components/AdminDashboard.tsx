@@ -646,11 +646,11 @@ export default function AdminDashboard() {
         {/* ════════ MAIN ════════ */}
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-[90px] flex items-center justify-between px-10 sticky top-0 z-20">
-            <div className="flex items-center gap-3 bg-white rounded-full px-5 py-3 border border-slate-100 shadow-sm w-[320px]">
+            {/* <div className="flex items-center gap-3 bg-white rounded-full px-5 py-3 border border-slate-100 shadow-sm w-[320px]">
               <svg width="16" height="16" fill="none" stroke="#A0AEC0" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
               <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search patients, users…" className="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"/>
               {search&&<button onClick={()=>setSearch("")} className="text-slate-400 hover:text-slate-700">✕</button>}
-            </div>
+            </div> */}
             <div className="flex items-center gap-4">
               {error&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 max-w-xs truncate">⚠ {error}<button onClick={()=>setError("")} className="ml-1 shrink-0">✕</button></div>}
               {loading&&<div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold bg-white border border-slate-200 text-slate-500"><span className="w-2 h-2 rounded-full pdot" style={{backgroundColor:ACCENT_GREEN}}/> Loading</div>}
@@ -1196,12 +1196,12 @@ export default function AdminDashboard() {
                           ? `Account: ${l.detail.target_email}`
                           : l.entity_id
                             ? `Record ${l.entity_id}`
-                            : "�";
+                            : "�";
                     return <TR key={l.id}>
                       <TD>{actor}</TD>
                       <TD><span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:col}}>{prettyAuditAction(l.action)}</span></TD>
                       <TD>{prettyAuditEntity(l.entity)}</TD>
-                      <TD>{l.detail?.patient_name||l.entity_id||"�"}</TD>
+                      <TD>{l.detail?.patient_name||l.entity_id||"�"}</TD>
                       <TD mono>{fmt(l.timestamp)}</TD>
                       <TD>{detailText}</TD>
                     </TR>;
