@@ -72,7 +72,7 @@ const VERY_DARK    = "#16352A";
 const ACCENT_GREEN = "#4F8A73";
 const BG_APP       = "#FFFFFF";
 const BRAND        = "#A8D5BA";
-const SOFT_RED     = "#D14B4B";
+const SOFT_RED     = "#DC2626";
 const SOFT_GREY    = "#8092A3";
 
 const CLS_META: Record<string,{bg:string;border:string;text:string;bar:string}> = {
@@ -617,7 +617,7 @@ export default function AdminDashboard() {
 
         <div className="flex-1 flex flex-col min-w-0">
           <main className="flex-1 px-10 pb-10 overflow-y-auto">
-            <div className="sticky top-4 z-20 mb-6 pt-4">
+            <div className="sticky top-4 z-20 mb-10 pt-4">
               <div className="w-full max-w-[1400px] mx-auto flex items-center justify-between gap-4 rounded-[22px] border border-slate-200 bg-white shadow-sm px-5 py-3.5">
                 <div className="min-w-0">
                   <p className="text-base font-bold text-slate-900">{activeNavLabel}</p>
@@ -625,7 +625,6 @@ export default function AdminDashboard() {
                 </div>
                 <div className="ml-auto flex items-center gap-3 min-w-0">
                   {error&&<div className="text-xs font-medium text-red-700 truncate max-w-xs">{error}</div>}
-                  <button onClick={()=>loadAll(undefined,{silent:true})} className="btn-s px-4 py-2.5 rounded-full text-slate-700 text-sm font-bold bg-white border border-slate-200">Refresh</button>
                   <div className="flex items-center gap-3 rounded-[22px] px-2.5 py-2 pr-5 border border-slate-100 bg-slate-50/80 min-w-[220px]">
                     <div className="w-11 h-11 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0">
                       {headerLogo
@@ -649,7 +648,7 @@ export default function AdminDashboard() {
             </div>
 
             {tab==="overview"&&(
-              <div className="space-y-6 max-w-[1400px]">
+              <div className="space-y-6 max-w-[1400px] pt-2">
                 {showInitialSkeleton ? (
                   <>
                     <div className="grid grid-cols-4 gap-5">
@@ -668,15 +667,31 @@ export default function AdminDashboard() {
                     </div>
                   </>
                 ) : (
-                <div className="grid grid-cols-4 gap-5">
-                  <div className="anim-in-1 rounded-[28px] p-6 flex flex-col justify-between" style={{backgroundColor:DARK_GREEN,color:"white",minHeight:160}}>
-                    <div className="flex justify-between items-start"><span className="text-sm font-medium text-white/90">Radiologists</span><div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">+</div></div>
-                    <div><div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??visibleUsers.filter(u=>u.status==="approved").length}</div><div className="text-[11px] text-white/70"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending} pending</span></div></div>
+                <div className="grid grid-cols-3 gap-5">
+                  <div className="anim-in-1 rounded-[28px] p-6 flex flex-col justify-between shadow-sm" style={{backgroundColor:DARK_GREEN,color:"white",minHeight:160}}>
+                    <div className="flex justify-between items-start">
+                      <span className="text-sm font-medium text-white/90">Radiologists</span>
+                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-5xl font-bold tracking-tight mb-2">{stats?.total_radiologists??visibleUsers.filter(u=>u.status==="approved").length}</div>
+                      <div className="text-[11px] text-white/70"><span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{pending} pending</span></div>
+                    </div>
                   </div>
                   {[{l:"Total Patients",v:visiblePatients.length},{l:"Pending Reviews",v:pending}].map((c,i)=>(
                     <div key={c.l} className={`anim-in-${i+2} panel-card p-6 flex flex-col justify-between`} style={{minHeight:160}}>
-                      <div className="flex justify-between items-start"><span className="text-sm font-semibold text-slate-700">{c.l}</span><div className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500">+</div></div>
-                      <div><div className="text-5xl font-bold tracking-tight text-slate-900 mb-2">{c.v}</div><div className="text-[11px] text-slate-400">{c.l==="Pending Reviews"?"Awaiting approval":"Hospital summary"}</div></div>
+                      <div className="flex justify-between items-start">
+                        <span className="text-sm font-semibold text-slate-700">{c.l}</span>
+                        <div className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500">
+                          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-5xl font-bold tracking-tight text-slate-900 mb-2">{c.v}</div>
+                        <div className="text-[11px] text-slate-400">{c.l==="Pending Reviews"?"Awaiting approval":"Hospital summary"}</div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -765,8 +780,8 @@ export default function AdminDashboard() {
                       <TD><StatusBadge status={u.status}/></TD>
                       <TD mono>{fmt(u.created_at)}</TD>
                       <TD><div className="flex gap-1.5 flex-wrap">
-                        {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-700 border border-red-200">Reject</button></>}
-                        {u.status==="approved"&&<><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full border" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Password</button><button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:SOFT_RED}}>Delete</button></>}
+                        {u.status==="pending"&&<><button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Approve</button><button onClick={()=>rejectUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-600 text-white hover:bg-red-700">Reject</button></>}
+                        {u.status==="approved"&&<><button onClick={()=>setPwUser(u)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full border" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Password</button><button onClick={()=>deleteUser(u.id,u.full_name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-600 text-white hover:bg-red-700">Delete</button></>}
                         {(u.status==="rejected"||u.status==="revoked")&&<button onClick={()=>approveUser(u.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:DARK_GREEN}}>Re-Approve</button>}
                       </div></TD>
                     </TR>
@@ -806,7 +821,7 @@ export default function AdminDashboard() {
                           </div>
                           <div className="flex gap-2 shrink-0">
                             <button onClick={()=>openEdit(p)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full border" style={{background:"#EEF1F4",color:"#4A5A68",borderColor:"#D7DEE5"}}>Edit</button>
-                            <button onClick={()=>deletePt(p.id,p.name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{backgroundColor:SOFT_RED}}>Delete</button>
+                            <button onClick={()=>deletePt(p.id,p.name)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-600 text-white hover:bg-red-700">Delete</button>
                           </div>
                         </div>
                         {isExp&&(
@@ -1052,7 +1067,7 @@ export default function AdminDashboard() {
                         </button>
                         {stagedClasses.length>0&&(
                           <button onClick={clearStaged} disabled={clearing}
-                            className="btn-s px-5 py-4 rounded-full font-bold text-sm border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 whitespace-nowrap"
+                            className="btn-s px-5 py-4 rounded-full font-bold text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 whitespace-nowrap"
                             title="Clear all staged images">
                             {clearing?"...":"Clear"}
                           </button>
@@ -1067,7 +1082,6 @@ export default function AdminDashboard() {
                   <Panel className="p-8 space-y-4">
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Retrain Job History</p>
-                      <button onClick={()=>loadAll(undefined,{silent:true})} className="text-[11px] text-slate-400 hover:text-slate-700 font-semibold">Refresh</button>
                     </div>
                     {retrainJobs.length===0
                       ?<div className="h-40 flex flex-col items-center justify-center text-slate-300 gap-2 float-it"><svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg><p className="text-sm">No retrain jobs yet</p></div>
