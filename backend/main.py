@@ -7,8 +7,11 @@ load_dotenv()
 import os
 import time
 import uuid
+import io
+import json
 import shutil
 import asyncio
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
@@ -17,12 +20,13 @@ from fastapi import (
     FastAPI, File, UploadFile, HTTPException, Depends,
     BackgroundTasks, Query
 )
+from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from database import (
     get_db, init_db,
-    User, Patient, Diagnosis, XrayUpload, RetrainJob, AuditLog,
+    User, Patient, Diagnosis, XrayUpload, RetrainJob, AuditLog, ChatMessage,
     UserStatus, UserRole, DiagnosisClass, RetrainStatus,
 )
 from schemas import (
@@ -109,6 +113,12 @@ def register_user(body: UserCreate, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.firebase_uid == body.firebase_uid).first()
     if existing:
         return existing   # idempotent
+    existing_email = db.query(User).filter(User.email == body.email).first()
+    if existing_email:
+        raise HTTPException(400, "A user with this email already exists.")
+    existing_national_id = db.query(User).filter(User.national_id == body.national_id).first()
+    if existing_national_id:
+        raise HTTPException(400, "A user with this national ID already exists.")
 
     user = User(
         firebase_uid=body.firebase_uid,
@@ -116,6 +126,7 @@ def register_user(body: UserCreate, db: Session = Depends(get_db)):
         full_name=body.full_name,
         hospital=body.hospital,
         hospital_id=body.hospital_id if hasattr(body, 'hospital_id') else None,
+        national_id=body.national_id,
         license_number=body.license_number,
         years_experience=body.years_experience,
         phone_number=body.phone_number,
@@ -131,8 +142,10 @@ def register_user(body: UserCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/auth/me", response_model=UserOut, tags=["Auth"])
-def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    payload = UserOut.model_validate(current_user).model_dump()
+    payload["hospital"] = _resolve_hospital_name(db, current_user) or payload.get("hospital")
+    return payload
 
 
 
@@ -266,6 +279,8 @@ async def predict_endpoint(
     image_bytes = await file.read()
     if len(image_bytes) > 15 * 1024 * 1024:
         raise HTTPException(400, "File too large (max 15 MB)")
+    xray_storage_path = _store_diagnosis_image(image_bytes, file.filename)
+    xray_b64 = _image_data_uri(image_bytes, file.content_type)
 
     model = load_production_model()
     if model is None:
@@ -285,7 +300,12 @@ async def predict_endpoint(
 
     _audit_simple(current_user.id, "predict_xray")
 
-    return PredictionResponse(**result, gradcam_b64=gradcam_b64)
+    return PredictionResponse(
+        **result,
+        gradcam_b64=gradcam_b64,
+        xray_storage_path=xray_storage_path,
+        xray_b64=xray_b64,
+    )
 
 
 
@@ -307,6 +327,7 @@ def save_diagnosis(
         radiologist_id=current_user.id,
         xray_filename=body.xray_filename,
         xray_storage_path=body.xray_storage_path,
+        xray_b64=body.xray_b64,
         heatmap_b64=body.heatmap_b64,
         ai_classification=body.ai_classification,
         tb_probability=body.tb_probability,
@@ -338,7 +359,15 @@ def list_diagnoses(
         q = q.filter(Diagnosis.radiologist_id.in_(rad_ids))
     if patient_id:
         q = q.filter(Diagnosis.patient_id == patient_id)
-    return q.order_by(Diagnosis.created_at.desc()).all()
+    diagnoses = q.order_by(Diagnosis.created_at.desc()).all()
+    changed = False
+    for diag in diagnoses:
+        changed = _hydrate_diagnosis_media(db, diag) or changed
+    if changed:
+        db.commit()
+        for diag in diagnoses:
+            db.refresh(diag)
+    return diagnoses
 
 
 @app.get("/diagnoses/{diag_id}", response_model=DiagnosisOut, tags=["Diagnoses"])
@@ -349,7 +378,40 @@ def get_diagnosis(
 ):
     diag = _get_or_404(db, Diagnosis, diag_id)
     _check_owner_or_admin(diag.radiologist_id, current_user)
+    if _hydrate_diagnosis_media(db, diag):
+        db.commit()
+        db.refresh(diag)
     return diag
+
+
+@app.get("/diagnoses/{diag_id}/image", tags=["Diagnoses"])
+def get_diagnosis_image(
+    diag_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    diag = _get_or_404(db, Diagnosis, diag_id)
+    _check_owner_or_admin(diag.radiologist_id, current_user)
+    if _hydrate_diagnosis_media(db, diag):
+        db.commit()
+        db.refresh(diag)
+    if diag.xray_storage_path:
+        path = Path(diag.xray_storage_path)
+        if path.exists() and path.is_file():
+            media_type = "image/jpeg"
+            suffix = path.suffix.lower()
+            if suffix == ".png":
+                media_type = "image/png"
+            elif suffix == ".webp":
+                media_type = "image/webp"
+            return FileResponse(path, media_type=media_type, filename=path.name)
+    if diag.xray_b64:
+        try:
+            media_type, image_bytes = _decode_image_data_uri(diag.xray_b64)
+            return Response(content=image_bytes, media_type=media_type)
+        except Exception:
+            raise HTTPException(404, "Stored diagnosis image could not be decoded.")
+    raise HTTPException(404, "No stored image for this diagnosis.")
 
 
 @app.patch("/diagnoses/{diag_id}/verify", response_model=DiagnosisOut, tags=["Diagnoses"])
@@ -387,6 +449,183 @@ def delete_diagnosis(
     return {"detail": "deleted"}
 
 
+@app.get("/chat/contacts", tags=["Chat"])
+def list_chat_contacts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.hospital_id:
+        return []
+    users = db.query(User).filter(
+        User.hospital_id == current_user.hospital_id,
+        User.is_admin == False,
+        User.id != current_user.id,
+    ).all()
+    contacts = []
+    for user in users:
+        if _user_status_value(user) != "approved":
+            continue
+        contacts.append({
+            "id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+            "specialization": user.specialization,
+            "hospital_id": user.hospital_id,
+            "status": _user_status_value(user),
+            "phone_number": user.phone_number,
+            "years_experience": user.years_experience,
+        })
+    contacts.sort(key=lambda item: item["full_name"].lower())
+    return contacts
+
+
+@app.get("/chat/messages/{other_user_id}", tags=["Chat"])
+def list_chat_messages(
+    other_user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    other_user = _get_or_404(db, User, other_user_id)
+    _require_same_hospital_colleague(current_user, other_user)
+    messages = db.query(ChatMessage).filter(
+        ChatMessage.hospital_id == current_user.hospital_id,
+        (
+            ((ChatMessage.sender_id == current_user.id) & (ChatMessage.recipient_id == other_user_id)) |
+            ((ChatMessage.sender_id == other_user_id) & (ChatMessage.recipient_id == current_user.id))
+        )
+    ).order_by(ChatMessage.created_at.asc()).all()
+    return [
+        {
+            "id": msg.id,
+            "hospital_id": msg.hospital_id,
+            "sender_id": msg.sender_id,
+            "recipient_id": msg.recipient_id,
+            "message": msg.message,
+            "created_at": msg.created_at.isoformat() if msg.created_at else None,
+        }
+        for msg in messages
+    ]
+
+
+@app.post("/chat/messages/{other_user_id}", tags=["Chat"])
+def create_chat_message(
+    other_user_id: int,
+    body: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    other_user = _get_or_404(db, User, other_user_id)
+    _require_same_hospital_colleague(current_user, other_user)
+
+    shared_diagnosis_id = body.get("shared_diagnosis_id")
+    forwarded_report = body.get("forwarded_report")
+    free_text = (body.get("message") or "").strip()
+
+    if shared_diagnosis_id:
+        diag = _get_or_404(db, Diagnosis, int(shared_diagnosis_id))
+        _check_owner_or_admin(diag.radiologist_id, current_user)
+        if _hydrate_diagnosis_media(db, diag):
+            db.commit()
+            db.refresh(diag)
+        patient = _get_or_404(db, Patient, diag.patient_id)
+        hospital_name = _resolve_hospital_name(db, current_user)
+        hospital_logo = _resolve_hospital_logo(db, current_user)
+        final_class = diag.radiologist_override or (
+            diag.ai_classification.value if hasattr(diag.ai_classification, "value") else str(diag.ai_classification)
+        )
+        payload = {
+            "type": "diagnosis_report",
+            "diagnosis_id": diag.id,
+            "patient_name": patient.name,
+            "patient_ref_masked": _mask_national_id(patient.patient_ref_id) if patient.patient_ref_id else None,
+            "classification": final_class,
+            "ai_classification": diag.ai_classification.value if hasattr(diag.ai_classification, "value") else str(diag.ai_classification),
+            "confidence_score": float(diag.confidence_score or 0.0),
+            "xray_b64": diag.xray_b64,
+            "heatmap_b64": diag.heatmap_b64,
+            "xray_filename": diag.xray_filename,
+            "radiologist_name": current_user.full_name,
+            "hospital": hospital_name,
+            "hospital_logo_base64": hospital_logo,
+            "shared_note": free_text or None,
+            "radiologist_notes": diag.radiologist_notes,
+            "created_at": diag.created_at.isoformat() if diag.created_at else None,
+        }
+        raw_message = "__UBUZIMA_SHARED_DIAGNOSIS__:" + json.dumps(payload)
+    elif forwarded_report:
+        if not isinstance(forwarded_report, dict):
+            raise HTTPException(400, "forwarded_report must be an object.")
+        payload = {
+            "type": "diagnosis_report",
+            "diagnosis_id": int(forwarded_report.get("diagnosis_id") or 0),
+            "patient_name": str(forwarded_report.get("patient_name") or "Shared diagnosis"),
+            "patient_ref_masked": forwarded_report.get("patient_ref_masked"),
+            "classification": str(forwarded_report.get("classification") or "Unknown"),
+            "ai_classification": forwarded_report.get("ai_classification"),
+            "confidence_score": float(forwarded_report.get("confidence_score") or 0.0),
+            "xray_b64": forwarded_report.get("xray_b64"),
+            "heatmap_b64": forwarded_report.get("heatmap_b64"),
+            "xray_filename": forwarded_report.get("xray_filename"),
+            "radiologist_name": forwarded_report.get("radiologist_name") or current_user.full_name,
+            "hospital": forwarded_report.get("hospital") or _resolve_hospital_name(db, current_user),
+            "hospital_logo_base64": forwarded_report.get("hospital_logo_base64") or _resolve_hospital_logo(db, current_user),
+            "shared_note": free_text or forwarded_report.get("shared_note"),
+            "radiologist_notes": forwarded_report.get("radiologist_notes"),
+            "created_at": forwarded_report.get("created_at") or datetime.now(timezone.utc).isoformat(),
+        }
+        raw_message = "__UBUZIMA_SHARED_DIAGNOSIS__:" + json.dumps(payload)
+    else:
+        if not free_text:
+            raise HTTPException(400, "Message cannot be empty.")
+        raw_message = free_text
+
+    msg = ChatMessage(
+        hospital_id=current_user.hospital_id,
+        sender_id=current_user.id,
+        recipient_id=other_user_id,
+        message=raw_message,
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+
+    _audit(db, current_user.id, "send_chat_message", "chat_message", msg.id, {
+        "recipient_id": other_user_id,
+        "recipient_email": other_user.email,
+        "shared_diagnosis_id": int(shared_diagnosis_id) if shared_diagnosis_id else None,
+        "forwarded": bool(forwarded_report),
+    })
+
+    return {
+        "id": msg.id,
+        "hospital_id": msg.hospital_id,
+        "sender_id": msg.sender_id,
+        "recipient_id": msg.recipient_id,
+        "message": msg.message,
+        "created_at": msg.created_at.isoformat() if msg.created_at else None,
+    }
+
+
+@app.delete("/chat/messages/{message_id}", tags=["Chat"])
+def delete_chat_message(
+    message_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    msg = _get_or_404(db, ChatMessage, message_id)
+    if msg.hospital_id != current_user.hospital_id:
+        raise HTTPException(403, "You can only manage reports from your hospital.")
+    if current_user.id not in {msg.sender_id, msg.recipient_id}:
+        raise HTTPException(403, "You can only delete reports you sent or received.")
+    db.delete(msg)
+    db.commit()
+    _audit(db, current_user.id, "delete_chat_message", "chat_message", message_id, {
+        "sender_id": msg.sender_id,
+        "recipient_id": msg.recipient_id,
+    })
+    return {"detail": "Report deleted"}
+
+
 
 # RETRAIN — upload + trigger
 
@@ -394,7 +633,8 @@ def delete_diagnosis(
 @app.post("/retrain/upload", tags=["Retrain"])
 async def upload_for_retrain(
     label: str,
-    files: List[UploadFile] = File(...),
+    files: Optional[List[UploadFile]] = File(None),
+    archive: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -405,20 +645,26 @@ async def upload_for_retrain(
     valid_labels = ["Normal", "Pneumonia", "Tuberculosis", "Unknown"]
     if label not in valid_labels:
         raise HTTPException(400, f"label must be one of: {valid_labels}")
+    if not files and archive is None:
+        raise HTTPException(400, "Upload image files or one ZIP archive.")
 
     batch_id  = str(uuid.uuid4())[:8]
     dest_dir  = UPLOAD_DIR / "retrain" / label
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     saved = []
-    for f in files:
-        _validate_image(f)
-        fname    = f"{batch_id}_{f.filename}"
-        fpath    = dest_dir / fname
-        contents = await f.read()
+
+    def _supported_retrain_name(name: str) -> bool:
+        return Path(name).suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+
+    def _save_retrain_bytes(raw_name: str, contents: bytes) -> str | None:
+        safe_name = Path(raw_name or "image").name
+        if not safe_name or not _supported_retrain_name(safe_name):
+            return None
+        fname = f"{batch_id}_{safe_name}"
+        fpath = dest_dir / fname
         with open(fpath, "wb") as out:
             out.write(contents)
-
         record = XrayUpload(
             uploaded_by_id=current_user.id,
             filename=fname,
@@ -428,6 +674,34 @@ async def upload_for_retrain(
         )
         db.add(record)
         saved.append(fname)
+        return fname
+
+    if files:
+        for f in files:
+            if not f.filename or not _supported_retrain_name(f.filename):
+                raise HTTPException(400, "Only JPG, PNG, WebP or BMP images are allowed for retraining.")
+            contents = await f.read()
+            _save_retrain_bytes(f.filename, contents)
+
+    if archive is not None:
+        archive_name = archive.filename or ""
+        if not archive_name.lower().endswith(".zip"):
+            raise HTTPException(400, "Archive upload must be a ZIP file.")
+        archive_bytes = await archive.read()
+        try:
+            with zipfile.ZipFile(io.BytesIO(archive_bytes)) as zf:
+                for member in zf.infolist():
+                    if member.is_dir():
+                        continue
+                    member_name = Path(member.filename).name
+                    if not member_name or not _supported_retrain_name(member_name):
+                        continue
+                    _save_retrain_bytes(member_name, zf.read(member))
+        except zipfile.BadZipFile:
+            raise HTTPException(400, "Invalid ZIP archive.")
+
+    if not saved:
+        raise HTTPException(400, "No valid retraining images were found in the upload.")
 
     db.commit()
     _audit(db, current_user.id, "upload_retrain_data", "xray_upload", None,
@@ -559,7 +833,7 @@ def _run_retrain_job(job_id: int):
         job.image_counts = counts
         db.commit()
 
-        # Validate: need at least 1 class with images
+        # Validate: require a meaningful multi-class retrain for stable promotion.
         uploaded_classes = {k: v for k, v in counts.items() if v > 0}
         if not uploaded_classes:
             raise ValueError("No images found. Upload X-rays first before triggering retraining.")
@@ -568,6 +842,12 @@ def _run_retrain_job(job_id: int):
         if short:
             details = ", ".join(f"{k}: {v} (need {MIN_PER_CLASS-v} more)" for k, v in short.items())
             raise ValueError(f"Need at least {MIN_PER_CLASS} images per uploaded class: {details}")
+        if len(uploaded_classes) < 2:
+            only_class = next(iter(uploaded_classes))
+            raise ValueError(
+                f"For best retraining results, prepare at least 2 classes with {MIN_PER_CLASS}+ images. "
+                f"Only '{only_class}' is currently ready."
+            )
         total = sum(uploaded_classes.values())
 
         # 2. Build TF datasets
@@ -589,6 +869,10 @@ def _run_retrain_job(job_id: int):
         db.query(XrayUpload).filter(XrayUpload.used_in_retrain == False).update(
             {"used_in_retrain": True}
         )
+        if upload_src.exists():
+            import shutil as _shutil
+            _shutil.rmtree(str(upload_src))
+            upload_src.mkdir(parents=True, exist_ok=True)
         print(f"  [Job {job_id}]  Retraining complete.")
 
     except Exception as exc:
@@ -619,6 +903,84 @@ def _validate_image(file: UploadFile):
     allowed = {"image/jpeg", "image/png", "image/webp"}
     if file.content_type not in allowed:
         raise HTTPException(400, f"Unsupported file type: {file.content_type}. Use JPG or PNG images.")
+
+
+def _store_diagnosis_image(image_bytes: bytes, original_name: str | None) -> str:
+    suffix = Path(original_name or "xray.jpg").suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        suffix = ".jpg"
+    dest_dir = UPLOAD_DIR / "diagnoses"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"{uuid.uuid4().hex}{suffix}"
+    with open(dest, "wb") as fh:
+        fh.write(image_bytes)
+    return str(dest)
+
+
+def _image_data_uri(image_bytes: bytes, content_type: str | None) -> str:
+    media_type = content_type or "image/jpeg"
+    return f"data:{media_type};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
+
+
+def _decode_data_uri(data_uri: str) -> tuple[str, bytes]:
+    if not data_uri.startswith("data:") or ";base64," not in data_uri:
+        raise ValueError("Invalid data URI")
+    header, encoded = data_uri.split(",", 1)
+    media_type = header[5:].split(";")[0] or "application/octet-stream"
+    return media_type, base64.b64decode(encoded)
+
+
+def _decode_image_data_uri(data_uri: str) -> tuple[str, bytes]:
+    media_type, raw = _decode_data_uri(data_uri)
+    return media_type or "image/jpeg", raw
+
+
+def _mask_national_id(value: str | None) -> str | None:
+    if not value:
+        return None
+    raw = str(value).replace(" ", "")
+    if len(raw) < 6:
+        return raw
+    return f"{raw[:4]}**********{raw[-2:]}"
+
+
+def _resolve_hospital_name(db: Session, user: User) -> str | None:
+    if user.hospital_id:
+        hospital = db.query(Hospital).filter(Hospital.id == user.hospital_id).first()
+        if hospital and hospital.name:
+            return hospital.name
+    return user.hospital
+
+
+def _resolve_hospital_logo(db: Session, user: User) -> str | None:
+    if not user.hospital_id:
+        return None
+    hospital = db.query(Hospital).filter(Hospital.id == user.hospital_id).first()
+    return hospital.logo_base64 if hospital else None
+
+
+def _hydrate_diagnosis_media(db: Session, diag: Diagnosis) -> bool:
+    if diag.xray_b64:
+        return False
+    if not diag.xray_storage_path:
+        return False
+    path = Path(diag.xray_storage_path)
+    if not (path.exists() and path.is_file()):
+        return False
+    suffix = path.suffix.lower()
+    media_type = "image/jpeg"
+    if suffix == ".png":
+        media_type = "image/png"
+    elif suffix == ".webp":
+        media_type = "image/webp"
+    elif suffix == ".bmp":
+        media_type = "image/bmp"
+    image_bytes = path.read_bytes()
+    diag.xray_b64 = _image_data_uri(image_bytes, media_type)
+    if not diag.xray_filename:
+        diag.xray_filename = path.name
+    db.add(diag)
+    return True
 
 
 def _audit(db: Session, user_id: int, action: str, entity: str, entity_id, detail: dict = None):
@@ -700,6 +1062,22 @@ def submit_hospital_application(
     db.commit()
     db.refresh(app_obj)
     return app_obj
+
+
+@app.get("/hospital/applications/{app_id}/license-document", tags=["Hospital"])
+def get_hospital_application_license_document(
+    app_id: int,
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    app_obj = db.query(HospitalApplication).filter(HospitalApplication.id == app_id).first()
+    if not app_obj:
+        raise HTTPException(404, "Application not found")
+    if not app_obj.license_document_base64 or not app_obj.license_document_name:
+        raise HTTPException(404, "No health facility license document uploaded.")
+    media_type, raw = _decode_data_uri(app_obj.license_document_base64)
+    headers = {"Content-Disposition": f'inline; filename="{app_obj.license_document_name}"'}
+    return Response(content=raw, media_type=media_type, headers=headers)
 
 
 # ── Super admin: list all hospital applications
@@ -1021,7 +1399,10 @@ async def approve_hospital_application(
     else:
         hospital = Hospital(
             name=obj.name, type=obj.type, email=obj.email, phone=obj.phone,
-            moh_license=obj.moh_license, website=obj.website,
+            moh_license=obj.moh_license,
+            license_document_name=obj.license_document_name,
+            license_document_base64=obj.license_document_base64,
+            website=obj.website,
             province=obj.province, district=obj.district, sector=obj.sector,
             address=obj.address, contact_name=obj.contact_name, contact_role=obj.contact_role,
             logo_base64=obj.logo_base64, num_radiologists=obj.num_radiologists,
@@ -1058,6 +1439,100 @@ def _require_hospital_access(hospital_id: int, current_user: User):
     if current_user.hospital_id == hospital_id and current_user.is_admin:
         return
     raise HTTPException(403, "Access denied to this hospital.")
+
+
+def _ensure_user_password_access(target_user: User, admin: User):
+    from auth import SUPER_ADMIN
+    admin_email = (admin.email or "").lower()
+    if admin_email == SUPER_ADMIN and admin.is_admin:
+        return
+    if not admin.is_admin or not admin.hospital_id:
+        raise HTTPException(403, "Only hospital admins can manage user passwords.")
+    if target_user.hospital_id != admin.hospital_id or target_user.is_admin:
+        raise HTTPException(403, "You can only manage approved radiologists in your own hospital.")
+
+def _require_same_hospital_colleague(current_user: User, other_user: User):
+    if not current_user.hospital_id:
+        raise HTTPException(400, "Your account is not linked to a hospital.")
+    if other_user.hospital_id != current_user.hospital_id:
+        raise HTTPException(403, "You can only access radiologists in your own hospital.")
+    if other_user.is_admin:
+        raise HTTPException(403, "Hospital admins are not available in radiologist reports.")
+    if _user_status_value(other_user).lower() != "approved":
+        raise HTTPException(400, "The selected radiologist is not approved.")
+
+
+def _user_status_value(user: User) -> str:
+    status = getattr(user, "status", "")
+    raw = status.value if hasattr(status, "value") else str(status)
+    return str(raw).split(".")[-1].lower()
+
+
+def _is_valid_uuid(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+async def _ensure_supabase_auth_user(db: Session, target_user: User, password: str) -> tuple[str | None, bool]:
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not service_key:
+        raise HTTPException(500, "Password management is not configured on the server.")
+
+    if _is_valid_uuid(target_user.firebase_uid):
+        return target_user.firebase_uid, False
+
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            f"{os.getenv('SUPABASE_URL', 'https://omoinlmgsdtlzfasydgw.supabase.co')}/auth/v1/admin/users",
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "apikey": service_key,
+                "Content-Type": "application/json",
+            },
+            json={"email": target_user.email, "password": password, "email_confirm": True},
+            timeout=10,
+        )
+
+    if res.status_code not in (200, 201):
+        detail = res.json().get("message", res.text) if res.headers.get("content-type", "").startswith("application/json") else res.text
+        raise HTTPException(400, f"Failed to create auth user: {detail}")
+
+    supabase_uid = res.json().get("id")
+    if not _is_valid_uuid(supabase_uid):
+        raise HTTPException(500, "Supabase did not return a valid user ID.")
+
+    target_user.firebase_uid = supabase_uid
+    db.add(target_user)
+    db.commit()
+    db.refresh(target_user)
+    return supabase_uid, True
+
+
+async def _update_supabase_password(db: Session, target_user: User, new_password: str):
+    supabase_uid, created = await _ensure_supabase_auth_user(db, target_user, new_password)
+    if created or not supabase_uid:
+        return
+
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if service_key:
+        async with httpx.AsyncClient() as client:
+            res = await client.put(
+                f"{os.getenv('SUPABASE_URL', 'https://omoinlmgsdtlzfasydgw.supabase.co')}/auth/v1/admin/users/{supabase_uid}",
+                headers={
+                    "Authorization": f"Bearer {service_key}",
+                    "apikey": service_key,
+                    "Content-Type": "application/json",
+                },
+                json={"password": new_password},
+                timeout=10,
+            )
+        if res.status_code not in (200, 201):
+            raise HTTPException(400, f"Password update failed: {res.json().get('message', res.text)}")
 
 
 # Public: list approved hospitals for registration dropdown (no auth required)
@@ -1125,6 +1600,23 @@ def get_hospital(
     if not h:
         raise HTTPException(404, "Hospital not found")
     return h
+
+
+@app.get("/hospitals/{hospital_id}/license-document", tags=["Hospital"])
+def get_hospital_license_document(
+    hospital_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_hospital_access(hospital_id, current_user)
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    if not hospital:
+        raise HTTPException(404, "Hospital not found")
+    if not hospital.license_document_base64 or not hospital.license_document_name:
+        raise HTTPException(404, "No health facility license document uploaded.")
+    media_type, raw = _decode_data_uri(hospital.license_document_base64)
+    headers = {"Content-Disposition": f'inline; filename="{hospital.license_document_name}"'}
+    return Response(content=raw, media_type=media_type, headers=headers)
 
 
 @app.patch("/users/{user_id}/assign-hospital", response_model=UserOut, tags=["Admin"])
@@ -1209,13 +1701,7 @@ def get_hospital_stats(
         ).count()
     else:
         total_patients = 0
-    diagnoses = db.query(Diagnosis).filter(Diagnosis.radiologist_id.in_(rad_ids)).all() if rad_ids else []
-    total_dx = len(diagnoses)
-    verified_dx = sum(1 for d in diagnoses if d.radiologist_verified)
-    breakdown: dict = {}
-    for d in diagnoses:
-        cls = d.ai_classification or "Unknown"
-        breakdown[cls] = breakdown.get(cls, 0) + 1
+    total_dx = db.query(Diagnosis).filter(Diagnosis.radiologist_id.in_(rad_ids)).count() if rad_ids else 0
 
     last_dx = (
         db.query(Diagnosis)
@@ -1236,9 +1722,6 @@ def get_hospital_stats(
         "patients": {"total": total_patients},
         "diagnoses": {
             "total": total_dx,
-            "verified": verified_dx,
-            "verification_rate": round(verified_dx / total_dx * 100, 1) if total_dx else 0,
-            "breakdown": breakdown,
         },
         "last_activity": last_dx.created_at.isoformat() if last_dx else None,
     }
@@ -1250,7 +1733,13 @@ def get_hospital_radiologists(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _require_hospital_access(hospital_id, current_user)
+    from auth import SUPER_ADMIN
+    email = (current_user.email or "").lower()
+    if not (
+        (email == SUPER_ADMIN and current_user.is_admin) or
+        current_user.hospital_id == hospital_id
+    ):
+        raise HTTPException(403, "Access denied to this hospital.")
     users = db.query(User).filter(User.hospital_id == hospital_id, User.is_admin == False).all()
     result = []
     for u in users:
@@ -1439,26 +1928,55 @@ async def change_hospital_admin_password(
     if not ha:
         raise HTTPException(404, "No admin found for this hospital")
 
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    if service_key and ha.firebase_uid and not ha.firebase_uid.startswith("hosp_"):
-        async with httpx.AsyncClient() as client:
-            res = await client.put(
-                f"{os.getenv('SUPABASE_URL', 'https://omoinlmgsdtlzfasydgw.supabase.co')}/auth/v1/admin/users/{ha.firebase_uid}",
-                headers={
-                    "Authorization": f"Bearer {service_key}",
-                    "apikey": service_key,
-                    "Content-Type": "application/json",
-                },
-                json={"password": new_password},
-                timeout=10,
-            )
-        if res.status_code not in (200, 201):
-            raise HTTPException(400, f"Supabase error: {res.json().get('message', res.text)}")
+    await _update_supabase_password(db, ha, new_password)
 
     _audit(db, admin.id, "change_admin_password", "user", ha.id, {
         "hospital_id": hospital_id, "target_email": ha.email
     })
     return {"detail": "Password updated successfully", "admin_email": ha.email}
+
+
+@app.post("/users/{user_id}/generate-password", tags=["Admin"])
+async def generate_user_password(
+    user_id: int,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    target_user = _get_or_404(db, User, user_id)
+    _ensure_user_password_access(target_user, admin)
+    if _user_status_value(target_user) != "approved":
+        raise HTTPException(400, "Approve the user before generating a password.")
+
+    alphabet = string.ascii_letters + string.digits
+    password = "".join(random.SystemRandom().choice(alphabet) for _ in range(12))
+    await _update_supabase_password(db, target_user, password)
+    _audit(db, admin.id, "admin_generate_password", "user", target_user.id, {
+        "target_email": target_user.email
+    })
+    return {"detail": "Password generated successfully", "email": target_user.email, "password": password}
+
+
+@app.post("/users/{user_id}/set-password", tags=["Admin"])
+async def set_user_password(
+    user_id: int,
+    body: dict = Body(...),
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    target_user = _get_or_404(db, User, user_id)
+    _ensure_user_password_access(target_user, admin)
+    if _user_status_value(target_user) != "approved":
+        raise HTTPException(400, "Approve the user before setting a password.")
+
+    new_password = (body.get("password") or "").strip()
+    if len(new_password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+
+    await _update_supabase_password(db, target_user, new_password)
+    _audit(db, admin.id, "admin_set_password", "user", target_user.id, {
+        "target_email": target_user.email
+    })
+    return {"detail": "Password updated successfully", "email": target_user.email}
 
 
 # ── Any authenticated user: change own password ──
@@ -1473,21 +1991,7 @@ async def change_my_password(
     if len(new_password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
 
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    if service_key and current_user.firebase_uid and not current_user.firebase_uid.startswith("hosp_"):
-        async with httpx.AsyncClient() as client:
-            res = await client.put(
-                f"{os.getenv('SUPABASE_URL', 'https://omoinlmgsdtlzfasydgw.supabase.co')}/auth/v1/admin/users/{current_user.firebase_uid}",
-                headers={
-                    "Authorization": f"Bearer {service_key}",
-                    "apikey": service_key,
-                    "Content-Type": "application/json",
-                },
-                json={"password": new_password},
-                timeout=10,
-            )
-        if res.status_code not in (200, 201):
-            raise HTTPException(400, f"Password update failed: {res.json().get('message', res.text)}")
+    await _update_supabase_password(db, current_user, new_password)
 
     _audit(db, current_user.id, "change_own_password", "user", current_user.id, {
         "email": current_user.email

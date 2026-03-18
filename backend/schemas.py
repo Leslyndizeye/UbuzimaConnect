@@ -5,6 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, field_validator
+import re
+
+
+NAME_RE = re.compile(r"^[A-Za-z][A-Za-z .'-]{1,98}[A-Za-z]$")
+LICENSE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9/-]{3,29}$")
+RW_PHONE_RE = re.compile(r"^(?:\+?250|0)?7\d{8}$")
+HOSPITAL_TYPE_RE = re.compile(r"^(Public|Private)$")
+LICENSE_DOC_RE = re.compile(r"^data:(application/pdf|image/png|image/jpeg|image/webp);base64,")
 
 
 # USER / AUTH
@@ -15,10 +23,64 @@ class UserCreate(BaseModel):
     full_name:        str
     hospital:         Optional[str] = None
     hospital_id:      Optional[int] = None
-    license_number:   Optional[str] = None
-    years_experience: Optional[int] = None
-    phone_number:     Optional[str] = None
+    national_id:      str
+    license_number:   str
+    years_experience: int
+    phone_number:     str
     specialization:   Optional[str] = None
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        value = " ".join(value.strip().split())
+        if not NAME_RE.fullmatch(value):
+            raise ValueError("Full name must use letters only, without numbers or symbols.")
+        return value
+
+    @field_validator("national_id")
+    @classmethod
+    def validate_national_id(cls, value: str) -> str:
+        value = re.sub(r"\s+", "", value)
+        if not re.fullmatch(r"\d{16}", value):
+            raise ValueError("National ID must be exactly 16 digits.")
+        return value
+
+    @field_validator("license_number")
+    @classmethod
+    def validate_license_number(cls, value: str) -> str:
+        value = value.strip().upper()
+        if not LICENSE_RE.fullmatch(value):
+            raise ValueError("License number must be 4-30 characters using letters, numbers, slash or hyphen.")
+        return value
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone_number(cls, value: str) -> str:
+        value = re.sub(r"[^\d+]", "", value.strip())
+        if not RW_PHONE_RE.fullmatch(value):
+            raise ValueError("Phone number must be a valid Rwanda mobile number.")
+        if value.startswith("0"):
+            return "+250" + value[1:]
+        if value.startswith("250"):
+            return "+" + value
+        return value
+
+    @field_validator("years_experience")
+    @classmethod
+    def validate_years_experience(cls, value: int) -> int:
+        if value < 0 or value > 50:
+            raise ValueError("Years of experience must be between 0 and 50.")
+        return value
+
+    @field_validator("specialization")
+    @classmethod
+    def validate_specialization(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = " ".join(value.strip().split())
+        if value and not NAME_RE.fullmatch(value):
+            raise ValueError("Specialization must use letters only.")
+        return value or None
 
 class UserOut(BaseModel):
     id:               int
@@ -27,6 +89,7 @@ class UserOut(BaseModel):
     full_name:        str
     hospital:         Optional[str]
     hospital_id:      Optional[int]       
+    national_id:      Optional[str]
     license_number:   Optional[str]
     years_experience: Optional[int]
     phone_number:     Optional[str]
@@ -88,6 +151,8 @@ class PredictionResponse(BaseModel):
     unknown_probability:   float
     explanation:           str
     gradcam_b64:           Optional[str]   # data:image/png;base64,...
+    xray_storage_path:     Optional[str] = None
+    xray_b64:              Optional[str] = None
 
 
 class DiagnosisSave(BaseModel):
@@ -95,6 +160,7 @@ class DiagnosisSave(BaseModel):
     patient_id:            int
     xray_filename:         Optional[str]  = None
     xray_storage_path:     Optional[str]  = None
+    xray_b64:              Optional[str]  = None
     heatmap_b64:           Optional[str]  = None
     ai_classification:     str
     tb_probability:        float
@@ -117,6 +183,7 @@ class DiagnosisOut(BaseModel):
     radiologist_id:         int
     xray_filename:          Optional[str]
     xray_storage_path:      Optional[str]
+    xray_b64:               Optional[str]
     ai_classification:      str
     tb_probability:         Optional[float]
     pneumonia_probability:  Optional[float]
@@ -182,7 +249,9 @@ class HospitalApplicationCreate(BaseModel):
     type:        Optional[str] = None
     email:       EmailStr
     phone:       str
-    moh_license: str
+    moh_license: Optional[str] = None
+    license_document_name: str
+    license_document_base64: str
     website:     Optional[str] = None
     logo_base64: Optional[str] = None
     # Location
@@ -201,6 +270,31 @@ class HospitalApplicationCreate(BaseModel):
     heard_from:         Optional[str] = None
     notes:              Optional[str] = None
 
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip().title()
+        if not HOSPITAL_TYPE_RE.fullmatch(value):
+            raise ValueError("Facility type must be Public or Private.")
+        return value
+
+    @field_validator("license_document_name")
+    @classmethod
+    def validate_license_document_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Health facility license document is required.")
+        return value
+
+    @field_validator("license_document_base64")
+    @classmethod
+    def validate_license_document_base64(cls, value: str) -> str:
+        if not LICENSE_DOC_RE.match(value or ""):
+            raise ValueError("Upload a PDF, PNG, JPG, or WebP health facility license.")
+        return value
+
 
 class HospitalApplicationOut(BaseModel):
     id:           int
@@ -210,6 +304,7 @@ class HospitalApplicationOut(BaseModel):
     email:        str
     phone:        Optional[str]
     moh_license:  Optional[str]
+    license_document_name: Optional[str]
     province:     Optional[str]
     district:     Optional[str]
     address:      Optional[str]
@@ -243,6 +338,7 @@ class HospitalOut(BaseModel):
     email:            str
     phone:            Optional[str]
     moh_license:      Optional[str]
+    license_document_name: Optional[str]
     website:          Optional[str]
     province:         Optional[str]
     district:         Optional[str]

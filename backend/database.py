@@ -1,7 +1,7 @@
 # database.py
 # PostgreSQL schema for Ubuzima Connect
 # Tables: users, patients, diagnoses, xray_uploads, audit_logs, retrain_jobs,
-#         hospitals, hospital_applications
+#         hospitals, hospital_applications, chat_messages
 
 import os
 from datetime import datetime
@@ -74,6 +74,8 @@ class Hospital(Base):
     email           = Column(String(255), unique=True, nullable=False)
     phone           = Column(String(50))
     moh_license     = Column(String(100))               # Ministry of Health license number
+    license_document_name   = Column(String(255))
+    license_document_base64 = Column(Text)
     website         = Column(String(255))
     province        = Column(String(100))
     district        = Column(String(100))
@@ -109,6 +111,8 @@ class HospitalApplication(Base):
     email           = Column(String(255), nullable=False)
     phone           = Column(String(50))
     moh_license     = Column(String(100))
+    license_document_name   = Column(String(255))
+    license_document_base64 = Column(Text)
     website         = Column(String(255))
     logo_base64     = Column(Text)
 
@@ -159,6 +163,7 @@ class User(Base):
     full_name        = Column(String(255), nullable=False)
     hospital         = Column(String(255))              # free-text hospital name (legacy)
     hospital_id      = Column(Integer, ForeignKey("hospitals.id"), nullable=True)  # linked hospital
+    national_id      = Column(String(16))
     license_number   = Column(String(100))
     years_experience = Column(Integer)
     phone_number     = Column(String(30))
@@ -205,6 +210,7 @@ class Diagnosis(Base):
     radiologist_id        = Column(Integer, ForeignKey("users.id"), nullable=False)
     xray_filename         = Column(String(500))
     xray_storage_path     = Column(String(1000))
+    xray_b64             = Column(Text)
     heatmap_b64           = Column(Text)
     ai_classification     = Column(SAEnum(DiagnosisClass), nullable=False)
     tb_probability        = Column(Float)
@@ -268,6 +274,17 @@ class AuditLog(Base):
     user = relationship("User", back_populates="audit_logs")
 
 
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    hospital_id   = Column(Integer, ForeignKey("hospitals.id"), nullable=False)
+    sender_id     = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    recipient_id  = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    message       = Column(Text, nullable=False)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+
+
 # ─────────────────────────────────────────────────────────────
 # DB DEPENDENCY and INIT
 # ─────────────────────────────────────────────────────────────
@@ -290,6 +307,12 @@ def _run_migrations():
     """Apply any ALTER TABLE migrations for columns added after initial deploy."""
     migrations = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP WITH TIME ZONE;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS national_id VARCHAR(16);",
+        "ALTER TABLE diagnoses ADD COLUMN IF NOT EXISTS xray_b64 TEXT;",
+        "ALTER TABLE hospital_applications ADD COLUMN IF NOT EXISTS license_document_name VARCHAR(255);",
+        "ALTER TABLE hospital_applications ADD COLUMN IF NOT EXISTS license_document_base64 TEXT;",
+        "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS license_document_name VARCHAR(255);",
+        "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS license_document_base64 TEXT;",
     ]
     with engine.connect() as conn:
         for sql in migrations:
