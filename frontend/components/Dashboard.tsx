@@ -781,7 +781,7 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
               </div>
               <div>
                 <label className="block text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Clinical Notes</label>
-                className="w-8 h-8 rounded-lg border flex items-center justify-center text-sm hover:bg-gray-50">X</button>
+                <textarea value={verNotes} onChange={e => setVerNotes(e.target.value)} rows={3} className={`${inp} resize-none`} placeholder="Add your clinical observations..." />
               </div>
             </div>
             <div className="flex gap-2 pt-1">
@@ -839,9 +839,6 @@ function RadiologistDashboard({ user: init, onSignOut }: { user: BUser; onSignOu
           </div>
         </div>
       )}
-        </div>
-      )}
-
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/90 backdrop-blur-md">
         <div className="max-w-screen-xl mx-auto px-6 h-14 flex items-center justify-between">
