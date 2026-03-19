@@ -426,7 +426,7 @@ export default function HospitalAdminDashboard() {
               <div>
                 <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">Email</label>
                 <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)}
-                  placeholder="byakwelianiela@gmail.com"
+                  placeholder="admin@ubuzimaconnect.rw"
                   className="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-gray-900 text-xs font-medium outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all" />
               </div>
               <div>

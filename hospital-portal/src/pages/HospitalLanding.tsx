@@ -68,12 +68,6 @@ export default function HospitalLanding() {
 
         <div className="relative z-10 w-full max-w-7xl mx-auto px-6 flex flex-col items-center text-center">
 
-          {/* Badge */}
-          <div className="fu mb-8 flex items-center gap-2.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-med-emerald pdot" />
-            <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-gray-500">Now accepting hospital partners · Rwanda 2026</span>
-          </div>
-
           {/* Headline */}
           <h1 className="fu2 font-display font-medium tracking-tight text-gray-900 leading-[1.03] mb-8 max-w-5xl"
             style={{ fontSize: 'clamp(2.8rem, 7vw, 5.5rem)', letterSpacing: '-0.03em' }}>
