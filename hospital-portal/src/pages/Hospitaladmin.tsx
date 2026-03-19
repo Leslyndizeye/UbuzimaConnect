@@ -1,5 +1,5 @@
 // components/HospitalAdminDashboard.tsx
-// Super admin dashboard — manages hospital applications + sees live stats per hospital
+// Hospital partnership dashboard — manages hospital applications + sees live stats per hospital
 // byakwelianiela@gmail.com only
 // Uses localStorage to persist login across refreshes
 import React, { useState, useEffect, useCallback } from 'react';
@@ -8,13 +8,17 @@ import { supabase } from '../supabaseConfig';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
 
-const DARK_GREEN = '#1C5438';
+const DARK_GREEN = '#166534';
+const SLATE = '#475569';
+const SOFT_RED = '#DC2626';
 const BG_APP     = '#F2F4F7';
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 * { box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
 ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
+ .clean-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+ .clean-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
 @keyframes slideUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
 @keyframes pdot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.5)} }
 .anim-in { animation:slideUp .38s cubic-bezier(.22,1,.36,1) both; }
@@ -29,7 +33,8 @@ const CSS = `
 // ── Types ──
 interface Application {
   id: number; ref_number: string; name: string; type: string;
-  email: string; phone: string; moh_license: string;
+  email: string; phone: string; moh_license: string | null;
+  license_document_name: string | null;
   province: string; district: string; address: string;
   contact_name: string; contact_role: string;
   num_radiologists: string; num_machines: string; monthly_volume: string;
@@ -40,7 +45,8 @@ interface Application {
 
 interface Hospital {
   id: number; name: string; type: string; email: string; phone: string;
-  moh_license: string; website: string; province: string; district: string;
+  moh_license: string | null; license_document_name: string | null;
+  website: string; province: string; district: string;
   address: string; contact_name: string; contact_role: string;
   logo_base64: string | null; num_radiologists: string; num_machines: string;
   monthly_volume: string; is_active: boolean; created_at: string; approved_at: string;
@@ -50,7 +56,7 @@ interface HospitalStats {
   hospital_id: number; hospital_name: string;
   radiologists: { total: number; approved: number; pending: number };
   patients: { total: number };
-  diagnoses: { total: number; verified: number; verification_rate: number; breakdown: Record<string, number> };
+  diagnoses: { total: number };
   last_activity: string | null;
 }
 
@@ -66,15 +72,11 @@ interface GlobalStats {
 }
 
 const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
-  pending:   { bg: '#FEF3C7', text: '#92400E' },
-  reviewing: { bg: '#DBEAFE', text: '#1E40AF' },
-  meeting:   { bg: '#EDE9FE', text: '#5B21B6' },
-  approved:  { bg: '#DCFCE7', text: '#166534' },
-  rejected:  { bg: '#FEE2E2', text: '#991B1B' },
-};
-
-const CLS_COLOR: Record<string, string> = {
-  Normal: '#38A169', Pneumonia: '#DD6B20', TB: '#E53E3E', Unknown: '#A0AEC0',
+  pending:   { bg: '#F8FAFC', text: SLATE },
+  reviewing: { bg: '#F8FAFC', text: SLATE },
+  meeting:   { bg: '#ECFDF3', text: DARK_GREEN },
+  approved:  { bg: '#ECFDF3', text: DARK_GREEN },
+  rejected:  { bg: '#FEF2F2', text: SOFT_RED },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -150,6 +152,49 @@ export default function HospitalAdminDashboard() {
   const hdr = useCallback((): Record<string, string> => ({
     Authorization: `Bearer ${token}`,
   }), [token]);
+
+  const openProtectedFile = useCallback(async (path: string, _fallbackName: string) => {
+    try {
+      const res = await fetch(`${API_BASE}${path}`, { headers: hdr() });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || 'File not available');
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const win = window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error('Popup blocked while opening document.');
+      }
+      const revoke = () => URL.revokeObjectURL(objectUrl);
+      win.addEventListener('beforeunload', revoke, { once: true });
+      setTimeout(revoke, 60000);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [hdr]);
+
+  const downloadProtectedFile = useCallback(async (path: string, fallbackName: string) => {
+    try {
+      const res = await fetch(`${API_BASE}${path}`, { headers: hdr() });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail || 'File not available');
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = fallbackName || 'document';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [hdr]);
 
   const fetchData = useCallback(async (t: string) => {
     const h = { Authorization: `Bearer ${t}` };
@@ -235,7 +280,7 @@ export default function HospitalAdminDashboard() {
       if (error || !data.session) { setLoginErr('Invalid credentials.'); return; }
       const t = data.session.access_token;
       const test = await fetch(`${API_BASE}/hospital/applications`, { headers: { Authorization: `Bearer ${t}` } });
-      if (!test.ok) { setLoginErr('Access denied. Super admin credentials required.'); await supabase.auth.signOut(); return; }
+      if (!test.ok) { setLoginErr('Access denied. Authorised admin credentials required.'); await supabase.auth.signOut(); return; }
       localStorage.setItem('hosp_admin_token', t);
       setToken(t); setAuthed(true);
       fetchData(t);
@@ -336,7 +381,7 @@ export default function HospitalAdminDashboard() {
   };
 
   const deleteHospital = async (h: Hospital) => {
-    if (!confirm(`⚠️ PERMANENTLY DELETE "${h.name}"?\n\nThis will delete:\n• The hospital admin account\n• All radiologists\n• All patients and diagnoses\n\nThis CANNOT be undone.`)) return;
+    if (!confirm(`Permanently delete "${h.name}"?\n\nThis will delete:\n- The hospital admin account\n- All radiologists\n- All patients and diagnoses\n\nThis cannot be undone.`)) return;
     setActionLoading(true);
     try {
       const res = await fetch(`${API_BASE}/hospitals/${h.id}`, { method: 'DELETE', headers: hdr() });
@@ -374,7 +419,7 @@ export default function HospitalAdminDashboard() {
               <div className="inline-flex items-center justify-center w-12 h-12 bg-emerald-900 rounded-2xl mb-3">
                 <div className="w-5 h-[1.5px] rounded-full bg-emerald-100" />
               </div>
-              <h2 className="text-xl font-black text-gray-900">Super Admin Portal</h2>
+              <h2 className="text-xl font-black text-gray-900">Admin Portal</h2>
               <p className="text-xs text-gray-400 mt-1">Hospital Partnership Management</p>
             </div>
             <div className="space-y-3">
@@ -405,7 +450,7 @@ export default function HospitalAdminDashboard() {
                 </>
               ) : forgotSent ? (
                 <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-xs text-emerald-700 font-semibold text-center">
-                  ✅ Reset link sent to <strong>{loginEmail}</strong>.<br/>Check your inbox and click the link.
+                  Reset link sent to <strong>{loginEmail}</strong>.<br/>Check your inbox and click the link.
                 </div>
               ) : (
                 <>
@@ -436,6 +481,14 @@ export default function HospitalAdminDashboard() {
     { id: 'hospitals',    label: 'Active Hospitals', badge: hospitals.length || undefined },
     { id: 'audit',        label: 'Audit Log' },
   ];
+  const headerTitle = tab === 'overview' ? 'Overview' : tab === 'applications' ? 'Hospital Applications' : tab === 'audit' ? 'Audit Log' : 'Active Hospitals';
+  const headerSubtitle = tab === 'overview'
+    ? 'Platform-wide hospital partnership status at a glance.'
+    : tab === 'applications'
+      ? 'Review, update, and manage incoming hospital applications.'
+      : tab === 'audit'
+        ? 'Track review actions and operational changes.'
+        : 'Hospital partnership review and onboarding for approved facilities.';
 
   return (
     <>
@@ -444,19 +497,22 @@ export default function HospitalAdminDashboard() {
 
         {/* ── Sidebar ── */}
         <aside className="w-[240px] shrink-0 flex flex-col sticky top-4 h-[calc(100vh-2rem)] bg-white m-4 rounded-[32px] shadow-sm z-30">
-          <div className="h-[80px] flex items-center px-6 gap-2.5">
+          <div className="h-[80px] flex items-center justify-center px-6 gap-2.5 text-center">
             <div className="w-7 h-7 bg-emerald-900 rounded-lg flex items-center justify-center shrink-0">
               <div className="w-3.5 h-[1.5px] rounded-full bg-emerald-100" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="text-xs font-black text-slate-900 leading-tight">Ubuzima Connect</div>
-              <div className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Super Admin</div>
             </div>
           </div>
           <nav className="flex-1 px-4 space-y-1">
             {navItems.map(({ id, label, badge }) => (
-              <button key={id} onClick={() => { setTab(id); if (id === 'audit') loadAudit(); }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all ${tab === id ? 'bg-emerald-50 text-emerald-800 font-bold' : 'text-slate-500 hover:bg-slate-50 font-semibold'} text-[13px]`}>
+              <button
+                key={id}
+                onClick={() => { setTab(id); if (id === 'audit') loadAudit(); }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all text-[13px] ${tab === id ? 'font-bold' : 'text-slate-500 hover:bg-slate-50 font-semibold'}`}
+                style={tab === id ? { backgroundColor: '#ECFDF3', color: DARK_GREEN } : undefined}
+              >
                 {label}
                 {badge !== undefined && badge > 0 && (
                   <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-md text-white" style={{ backgroundColor: DARK_GREEN }}>{badge}</span>
@@ -478,19 +534,40 @@ export default function HospitalAdminDashboard() {
 
         {/* ── Main ── */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <header className="h-[80px] flex items-center justify-between px-8 sticky top-0 z-20">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                {tab === 'overview' ? 'Overview' : tab === 'applications' ? 'Hospital Applications' : tab === 'audit' ? 'Audit Log' : 'Active Hospitals'}
-              </h1>
-              <p className="text-xs text-slate-400 mt-0.5">Hospital Partnership Dashboard · byakwelianiela@gmail.com</p>
-            </div>
-            {error && (
-              <div className="px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 flex items-center gap-2">
-                ⚠ {error}
-                <button onClick={() => setError('')} className="font-bold">✕</button>
+          <header className="sticky top-0 z-20 px-8 pt-6 pb-4" style={{ backgroundColor: BG_APP }}>
+            <div className="rounded-[28px] border border-slate-100 bg-white px-6 py-5 shadow-sm">
+              <div className="flex items-start justify-between gap-6">
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{headerTitle}</h1>
+                  <p className="text-xs text-slate-400 mt-1">{headerSubtitle}</p>
+                </div>
+                {error && (
+                  <div className="px-4 py-2 rounded-full text-xs font-semibold bg-red-50 border border-red-200 text-red-700 flex items-center gap-2">
+                    {error}
+                    <button onClick={() => setError('')} className="font-bold">X</button>
+                  </div>
+                )}
               </div>
-            )}
+              <div className="mt-4 flex flex-wrap gap-2">
+                {navItems.map(({ id, label, badge }) => (
+                  <button
+                    key={id}
+                    onClick={() => { setTab(id); if (id === 'audit') loadAudit(); }}
+                    className={`px-4 py-2 rounded-full text-[11px] font-bold transition-all ${
+                      tab === id ? 'text-white' : 'bg-slate-50 text-slate-500 border border-slate-200'
+                    }`}
+                    style={tab === id ? { backgroundColor: DARK_GREEN } : {}}
+                  >
+                    {label}
+                    {badge !== undefined && badge > 0 && (
+                      <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[9px] ${tab === id ? 'bg-white/20 text-white' : 'bg-white text-slate-500 border border-slate-200'}`}>
+                        {badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           </header>
 
           <main className="flex-1 px-8 pb-8 space-y-6">
@@ -554,12 +631,12 @@ export default function HospitalAdminDashboard() {
                     {hospitals.map(h => {
                       const s = hospitalStats[h.id];
                       return (
-                        <div key={h.id} className="p-4 rounded-2xl border border-slate-100 hover:border-emerald-200 hover:bg-emerald-50/30 transition-all cursor-pointer"
+                        <div key={h.id} className="p-4 rounded-2xl border border-slate-200/80 hover:bg-slate-50 transition-all cursor-pointer"
                           onClick={() => { setSelectedHosp(h); setTab('hospitals'); }}>
                           <div className="flex items-center gap-3 mb-3">
                             {h.logo_base64
                               ? <img src={h.logo_base64} alt="" className="w-9 h-9 rounded-xl object-contain border border-slate-100 p-0.5" />
-                              : <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-black">{h.name.charAt(0)}</div>
+                              : <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black" style={{ backgroundColor: '#ECFDF3', color: DARK_GREEN }}>{h.name.charAt(0)}</div>
                             }
                             <div>
                               <p className="text-sm font-bold text-slate-800">{h.name}</p>
@@ -567,11 +644,10 @@ export default function HospitalAdminDashboard() {
                             </div>
                           </div>
                           {s ? (
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-2 gap-2">
                               {[
                                 { n: s.radiologists.approved, l: 'Radiologists' },
                                 { n: s.patients.total,        l: 'Patients' },
-                                { n: s.diagnoses.total,       l: 'Diagnoses' },
                               ].map(stat => (
                                 <div key={stat.l} className="bg-white rounded-xl p-2.5 text-center border border-slate-50">
                                   <div className="text-lg font-black text-slate-900">{stat.n}</div>
@@ -646,9 +722,7 @@ export default function HospitalAdminDashboard() {
                                 {!['approved','rejected'].includes(a.status) && (
                                   <button onClick={() => approveApp(a.id)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full text-white" style={{ backgroundColor: DARK_GREEN }}>Approve</button>
                                 )}
-                                {a.status === 'rejected' && (
-                                  <button onClick={() => deleteApp(a)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200 hover:bg-red-100">Delete</button>
-                                )}
+                                <button onClick={() => deleteApp(a)} className="btn-s text-[11px] font-bold px-3 py-1.5 rounded-full bg-red-50 border border-red-200 hover:bg-red-100" style={{ color: SOFT_RED }}>Delete</button>
                               </div>
                             </td>
                           </tr>
@@ -675,7 +749,7 @@ export default function HospitalAdminDashboard() {
                   const isExpanded = selectedHosp?.id === h.id;
 
                   return (
-                    <Panel key={h.id} className="overflow-hidden">
+                    <Panel key={h.id} className="overflow-hidden border border-slate-200/80 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
                       {/* Hospital header row */}
                       <div className="flex items-center gap-4 px-6 py-5 cursor-pointer hover:bg-slate-50/50 transition-colors"
                         onClick={() => {
@@ -683,18 +757,18 @@ export default function HospitalAdminDashboard() {
                           if (!s) fetchHospitalStats(h.id);
                         }}>
                         <button className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold border-2 shrink-0 transition-all"
-                          style={isExpanded ? { backgroundColor: DARK_GREEN, color: 'white', borderColor: DARK_GREEN } : { borderColor: '#E2E8F0', color: '#94A3B8' }}>
+                          style={isExpanded ? { backgroundColor: DARK_GREEN, color: 'white', borderColor: DARK_GREEN } : { borderColor: '#CBD5E1', color: SLATE }}>
                           {isExpanded ? '▾' : '▸'}
                         </button>
                         {h.logo_base64
                           ? <img src={h.logo_base64} alt="" className="w-10 h-10 rounded-xl object-contain border border-slate-100 p-0.5 shrink-0" />
-                          : <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 font-black shrink-0">{h.name.charAt(0)}</div>
+                          : <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black shrink-0" style={{ backgroundColor: '#ECFDF3', color: DARK_GREEN }}>{h.name.charAt(0)}</div>
                         }
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 flex-wrap">
                             <p className="text-base font-bold text-slate-900">{h.name}</p>
                             <StatusBadge status="approved" />
-                            <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{h.type}</span>
+                            <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">{h.type}</span>
                           </div>
                           <p className="text-xs text-slate-400 mt-0.5">{h.district}, {h.province} · {h.email} · Active since {fmt(h.approved_at)}</p>
                         </div>
@@ -702,30 +776,28 @@ export default function HospitalAdminDashboard() {
                         {s && (
                           <div className="flex gap-3 shrink-0">
                             {[
-                              { n: s.radiologists.approved, l: 'Radiologists', color: '#1C5438' },
-                              { n: s.patients.total,        l: 'Patients',     color: '#2563EB' },
-                              { n: s.diagnoses.total,       l: 'Diagnoses',    color: '#7C3AED' },
+                              { n: s.radiologists.approved, l: 'Radiologists', color: DARK_GREEN, bg: '#ECFDF3' },
+                              { n: s.patients.total,        l: 'Patients',     color: SLATE, bg: '#F8FAFC' },
                             ].map(stat => (
-                              <div key={stat.l} className="text-center bg-slate-50 rounded-2xl px-4 py-2 border border-slate-100">
+                              <div key={stat.l} className="text-center rounded-2xl px-4 py-2 border border-slate-200/80" style={{ backgroundColor: stat.bg }}>
                                 <div className="text-lg font-black" style={{ color: stat.color }}>{stat.n}</div>
                                 <div className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">{stat.l}</div>
                               </div>
                             ))}
                           </div>
                         )}
-                        {loadingStats === h.id && <div className="w-5 h-5 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin shrink-0" />}
+                        {loadingStats === h.id && <div className="w-5 h-5 border-2 rounded-full animate-spin shrink-0" style={{ borderColor: '#CBD5E1', borderTopColor: DARK_GREEN }} />}
                       </div>
 
                       {/* Expanded details */}
                       {isExpanded && s && (
-                        <div className="border-t border-slate-100 bg-slate-50/50 px-6 py-6 space-y-6">
+                        <div className="border-t border-slate-200/80 bg-slate-50/55 px-6 py-6 space-y-6">
 
                           {/* Hospital info */}
                           <div>
                             <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Hospital Information</p>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                               {[
-                                ['MoH License', h.moh_license],
                                 ['Phone', h.phone],
                                 ['Contact Person', h.contact_name],
                                 ['Contact Role', h.contact_role],
@@ -734,32 +806,34 @@ export default function HospitalAdminDashboard() {
                                 ['Website', h.website || '—'],
                                 ['Address', h.address],
                               ].map(([l, v]) => (
-                                <div key={l} className="bg-white rounded-xl p-3 border border-slate-100">
+                                <div key={l} className="bg-white rounded-xl p-3 border border-slate-200/70">
                                   <p className="text-[9px] text-slate-400 mb-0.5">{l}</p>
                                   <p className="text-xs font-bold text-slate-800 truncate">{v}</p>
                                 </div>
                               ))}
                             </div>
-                          </div>
-
-                          {/* Diagnosis breakdown */}
-                          <div>
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Diagnosis Breakdown</p>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                              {Object.entries(s.diagnoses.breakdown).map(([cls, count]) => (
-                                <div key={cls} className="bg-white rounded-xl p-4 border border-slate-100 text-center">
-                                  <div className="text-2xl font-black mb-1" style={{ color: CLS_COLOR[cls] || '#64748B' }}>{count}</div>
-                                  <div className="text-[10px] font-bold text-slate-500">{cls === 'TB' ? 'Tuberculosis' : cls}</div>
-                                  <div className="text-[9px] text-slate-300 mt-0.5">
-                                    {s.diagnoses.total > 0 ? `${Math.round((count / s.diagnoses.total) * 100)}%` : '0%'}
-                                  </div>
-                                </div>
-                              ))}
-                              <div className="bg-white rounded-xl p-4 border border-slate-100 text-center">
-                                <div className="text-2xl font-black mb-1 text-emerald-600">{s.diagnoses.verification_rate}%</div>
-                                <div className="text-[10px] font-bold text-slate-500">Verified</div>
-                                <div className="text-[9px] text-slate-300 mt-0.5">{s.diagnoses.verified} / {s.diagnoses.total}</div>
+                            <div className="mt-3 bg-white rounded-xl p-4 border border-slate-200/70 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                              <div>
+                                <p className="text-[9px] text-slate-400 mb-0.5">Health Facility License</p>
+                                <p className="text-xs font-bold text-slate-800">{h.license_document_name || 'Not uploaded'}</p>
                               </div>
+                              {h.license_document_name && (
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => openProtectedFile(`/hospitals/${h.id}/license-document`, h.license_document_name || 'health-facility-license')}
+                                    className="btn-s px-3 py-2 rounded-full bg-slate-100 text-slate-600 text-[11px] font-bold"
+                                  >
+                                    View License
+                                  </button>
+                                  <button
+                                    onClick={() => downloadProtectedFile(`/hospitals/${h.id}/license-document`, h.license_document_name || 'health-facility-license')}
+                                    className="btn-s px-3 py-2 rounded-full text-white text-[11px] font-bold"
+                                    style={{ backgroundColor: DARK_GREEN }}
+                                  >
+                                    Download
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -767,7 +841,7 @@ export default function HospitalAdminDashboard() {
                           {rs && rs.length > 0 && (
                             <div>
                               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Radiologists ({rs.length})</p>
-                              <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+                              <div className="bg-white rounded-2xl border border-slate-200/70 overflow-hidden">
                                 <table className="w-full">
                                   <thead>
                                     <tr className="border-b border-slate-100">
@@ -786,7 +860,7 @@ export default function HospitalAdminDashboard() {
                                         <td className="px-4 py-3 text-xs text-slate-500">{r.years_experience ? `${r.years_experience}y` : '—'}</td>
                                         <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                                         <td className="px-4 py-3">
-                                          <span className="text-xs font-bold px-2.5 py-1 rounded-full text-white" style={{ backgroundColor: r.total_diagnoses > 0 ? '#2563EB' : '#94A3B8' }}>
+                                          <span className="text-xs font-bold px-2.5 py-1 rounded-full text-white" style={{ backgroundColor: r.total_diagnoses > 0 ? DARK_GREEN : SLATE }}>
                                             {r.total_diagnoses}
                                           </span>
                                         </td>
@@ -814,9 +888,9 @@ export default function HospitalAdminDashboard() {
                           <div>
                             <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Hospital Admin Account</p>
                             {hospitalAdmins[h.id] ? (
-                              <div className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center justify-between gap-4">
+                              <div className="bg-white rounded-2xl border border-slate-200/70 p-4 flex items-center justify-between gap-4">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 font-black text-sm shrink-0">
+                                  <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0" style={{ backgroundColor: '#ECFDF3', color: DARK_GREEN }}>
                                     {hospitalAdmins[h.id]!.full_name.charAt(0).toUpperCase()}
                                   </div>
                                   <div>
@@ -849,7 +923,7 @@ export default function HospitalAdminDashboard() {
                               </div>
                             ) : (
                               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
-                                <span className="text-amber-500 text-base">⚠</span>
+                                <span className="text-slate-500 text-base">i</span>
                                 <p className="text-xs font-bold text-amber-700">No admin account set for this hospital yet.</p>
                               </div>
                             )}
@@ -924,11 +998,9 @@ export default function HospitalAdminDashboard() {
                         <tbody>
                           {auditLogs.map(l => {
                             const actionColor =
-                              l.action.includes('delete') || l.action.includes('reject') ? '#DC2626'
-                              : l.action.includes('approve') || l.action.includes('create') ? '#166534'
-                              : l.action.includes('password') ? '#7C3AED'
-                              : l.action.includes('meeting') ? '#5B21B6'
-                              : '#475569';
+                              l.action.includes('delete') || l.action.includes('reject') ? SOFT_RED
+                              : l.action.includes('approve') || l.action.includes('create') ? DARK_GREEN
+                              : SLATE;
                             return (
                               <tr key={l.id} className="trow border-b border-slate-50 last:border-0">
                                 <td className="px-5 py-3 text-[11px] font-mono text-slate-400">#{l.id}</td>
@@ -979,7 +1051,7 @@ export default function HospitalAdminDashboard() {
                     <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{hospitalAdmins[changePwdHospId]!.email}</p>
                   )}
                 </div>
-                <button onClick={() => setChangePwdHospId(null)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 font-bold">✕</button>
+                <button onClick={() => setChangePwdHospId(null)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 font-bold">X</button>
               </div>
               {pwdErr     && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 font-medium">{pwdErr}</div>}
               {pwdSuccess && <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs text-emerald-700 font-medium">{pwdSuccess}</div>}
@@ -1013,14 +1085,13 @@ export default function HospitalAdminDashboard() {
                     <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-1">New Admin Account</p>
                     <h2 className="text-lg font-bold text-white">{createAdminHosp.name}</h2>
                   </div>
-                  <button onClick={() => setCreateAdminHosp(null)} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white font-bold">✕</button>
+                  <button onClick={() => setCreateAdminHosp(null)} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white font-bold">X</button>
                 </div>
               </div>
               <div className="p-8 space-y-4">
                 {adminCreated ? (
                   <div className="space-y-4">
                     <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center space-y-2">
-                      <div className="text-2xl">✅</div>
                       <p className="text-sm font-bold text-emerald-800">Admin account created!</p>
                       <p className="text-xs text-emerald-600">Send these credentials to the hospital contact:</p>
                       <div className="bg-white rounded-xl p-3 border border-emerald-100 text-left mt-2 space-y-2">
@@ -1047,7 +1118,7 @@ export default function HospitalAdminDashboard() {
                 ) : (
                   <>
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs text-emerald-700">
-                      <span className="font-bold">✅ Hospital approved!</span> Now set up their admin account. Send credentials to <strong>{createAdminHosp.email}</strong>.
+                      <span className="font-bold">Hospital approved.</span> Now set up their admin account. Send credentials to <strong>{createAdminHosp.email}</strong>.
                     </div>
                     {adminErr && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 font-medium">{adminErr}</div>}
                     <div className="space-y-3">
@@ -1087,9 +1158,9 @@ export default function HospitalAdminDashboard() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
             style={{ backgroundColor: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)' }}
             onClick={e => e.target === e.currentTarget && setSelected(null)}>
-            <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+            <div className="clean-scroll w-full max-w-lg bg-white rounded-[32px] shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
               {/* Header */}
-              <div className="px-8 pt-7 pb-6" style={{ background: `linear-gradient(135deg,${DARK_GREEN},#267347)` }}>
+              <div className="px-8 pt-7 pb-6 border-b border-slate-100" style={{ background: `linear-gradient(135deg,${DARK_GREEN},${SLATE})` }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     {selected.logo_base64
@@ -1098,12 +1169,12 @@ export default function HospitalAdminDashboard() {
                     }
                     <div>
                       <h2 className="text-lg font-bold text-white">{selected.name}</h2>
-                      <p className="text-xs text-white/60 mt-0.5">Ref: {selected.ref_number}</p>
+                      <p className="text-xs text-white/70 mt-0.5">{selected.type || 'Health facility'} · {selected.district}, {selected.province}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={selected.status} />
-                    <button onClick={() => setSelected(null)} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white font-bold ml-2">✕</button>
+                    <button onClick={() => setSelected(null)} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white font-bold ml-2">X</button>
                   </div>
                 </div>
               </div>
@@ -1111,7 +1182,7 @@ export default function HospitalAdminDashboard() {
               <div className="p-8 space-y-5">
                 {/* Details */}
                 {[
-                  { title: 'Organisation', fields: [['Type', selected.type], ['MoH License', selected.moh_license], ['Email', selected.email], ['Phone', selected.phone]] },
+                  { title: 'Organisation', fields: [['Type', selected.type], ['Email', selected.email], ['Phone', selected.phone]] },
                   { title: 'Location', fields: [['Province', selected.province], ['District', selected.district], ['Contact', selected.contact_name], ['Role', selected.contact_role], ['Address', selected.address]] },
                   { title: 'Radiology Capacity', fields: [['Radiologists', selected.num_radiologists], ['X-Ray Machines', selected.num_machines], ['Monthly Volume', selected.monthly_volume]] },
                 ].map(section => (
@@ -1127,65 +1198,99 @@ export default function HospitalAdminDashboard() {
                     </div>
                   </div>
                 ))}
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Health Facility License</p>
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-slate-800 break-words">{selected.license_document_name || 'Not uploaded'}</p>
+                      {selected.moh_license && (
+                        <p className="text-[10px] text-slate-400 mt-1">Legacy license reference: {selected.moh_license}</p>
+                      )}
+                    </div>
+                    {selected.license_document_name && (
+                      <div className="flex gap-1.5 shrink-0">
+                        <button
+                          onClick={() => openProtectedFile(`/hospital/applications/${selected.id}/license-document`, selected.license_document_name || 'health-facility-license')}
+                          className="btn-s px-2.5 py-1.5 rounded-full bg-white text-slate-600 text-[10px] font-bold border border-slate-200"
+                        >
+                          View License
+                        </button>
+                        <button
+                          onClick={() => downloadProtectedFile(`/hospital/applications/${selected.id}/license-document`, selected.license_document_name || 'health-facility-license')}
+                          className="btn-s px-2.5 py-1.5 rounded-full text-white text-[10px] font-bold"
+                          style={{ backgroundColor: DARK_GREEN }}
+                        >
+                          Download
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 {selected.notes && (
-                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
-                    <p className="text-[9px] font-bold uppercase text-amber-500 mb-1">Notes from applicant</p>
-                    <p className="text-xs text-amber-700">{selected.notes}</p>
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    <p className="text-[9px] font-bold uppercase text-slate-500 mb-1">Notes from applicant</p>
+                    <p className="text-xs text-slate-700">{selected.notes}</p>
                   </div>
                 )}
 
-                {/* Delete button for rejected */}
-                {selected.status === 'rejected' && (
-                  <div className="pt-3 border-t border-slate-100">
-                    {selected.rejection_reason && (
-                      <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-3">
-                        <p className="text-[9px] font-bold uppercase text-red-400 mb-1">Rejection reason</p>
-                        <p className="text-xs text-red-700">{selected.rejection_reason}</p>
-                      </div>
-                    )}
-                    <button onClick={() => deleteApp(selected)}
-                      className="btn-s w-full py-3 rounded-full text-red-600 font-bold text-sm bg-red-50 border border-red-200 hover:bg-red-100">
-                      🗑 Delete Application Permanently
-                    </button>
+                {selected.rejection_reason && (
+                  <div className="bg-red-50 border border-red-100 rounded-xl p-3">
+                    <p className="text-[9px] font-bold uppercase text-red-400 mb-1">Rejection reason</p>
+                    <p className="text-xs text-red-700">{selected.rejection_reason}</p>
                   </div>
                 )}
 
                 {/* Action area for pending */}
                 {!['approved', 'rejected'].includes(selected.status) && (
                   <div className="space-y-3 pt-3 border-t border-slate-100">
-                    <div className="space-y-2">
-                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Schedule Google Meet</label>
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-2">Meeting Status</p>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          Save a valid Google Meet link here to move the application to <strong>meeting</strong>. This link is stored internally only and is not emailed to the applicant.
+                        </p>
+                      </div>
                       <div className="relative">
                         <input value={meetLink} onChange={e => { setMeetLink(e.target.value); setMeetLinkErr(''); }}
                           placeholder="https://meet.google.com/abc-defg-hij"
-                          className={`w-full px-3.5 py-2.5 rounded-xl border bg-gray-50 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 transition-all ${meetLinkErr ? 'border-red-300 focus:border-red-400' : meetLink && !meetLinkErr ? 'border-emerald-300' : 'border-gray-100 focus:border-emerald-500'}`} />
+                          className={`w-full px-3.5 py-2.5 rounded-xl border bg-gray-50 text-xs outline-none transition-all ${meetLinkErr ? 'border-red-300' : meetLink && !meetLinkErr ? 'border-green-300' : 'border-gray-200'}`} />
                         {meetLink && !meetLinkErr && /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(meetLink.trim()) && (
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 text-sm">✓</span>
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-700 text-sm">OK</span>
                         )}
                       </div>
                       {meetLinkErr && <p className="text-[10px] text-red-500 font-semibold ml-0.5">{meetLinkErr}</p>}
-                      <p className="text-[9px] text-slate-300 ml-0.5">Format: https://meet.google.com/xxx-xxxx-xxx</p>
+                      <p className="text-[9px] text-slate-400 ml-0.5">Required format: https://meet.google.com/xxx-xxxx-xxx</p>
                       <button onClick={() => { if (validateMeetLink(meetLink)) updateStatus(selected.id, 'meeting', { meet_link: meetLink.trim() }); }}
                         disabled={actionLoading}
-                        className="btn-s w-full py-2.5 rounded-xl text-white text-xs font-bold disabled:opacity-40 flex items-center justify-center gap-2" style={{ backgroundColor: '#7C3AED' }}>
-                        {actionLoading ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Sending…</> : '📅 Send Meeting Invite by Email'}
+                        className="btn-s w-full py-2.5 rounded-xl text-white text-xs font-bold disabled:opacity-40 flex items-center justify-center gap-2"
+                        style={{ backgroundColor: SLATE }}>
+                        {actionLoading ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Saving...</> : 'Mark as Meeting Scheduled'}
                       </button>
                     </div>
                     <input value={rejectReason} onChange={e => setRejectReason(e.target.value)}
-                      placeholder="Rejection reason (optional — sent to applicant)"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-100 bg-gray-50 text-xs outline-none focus:border-emerald-500" />
+                      placeholder="Rejection reason (optional - sent to applicant)"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-xs outline-none" />
                     <div className="flex gap-2">
                       <button onClick={() => approveApp(selected.id)} disabled={actionLoading}
-                        className="btn-s flex-1 py-3 rounded-full text-white font-bold text-sm disabled:opacity-40" style={{ backgroundColor: DARK_GREEN }}>
-                        ✓ Approve & Go Live
+                        className="btn-s flex-1 py-2.5 rounded-full text-white font-bold text-[12px] disabled:opacity-40" style={{ backgroundColor: DARK_GREEN }}>
+                        Approve & Go Live
                       </button>
                       <button onClick={() => updateStatus(selected.id, 'rejected', rejectReason ? { rejection_reason: rejectReason } : {})} disabled={actionLoading}
-                        className="btn-s px-5 py-3 rounded-full text-red-600 font-bold text-sm bg-red-50 border border-red-200 disabled:opacity-40">
+                        className="btn-s px-4 py-2.5 rounded-full font-bold text-[12px] bg-red-50 border border-red-200 disabled:opacity-40"
+                        style={{ color: SOFT_RED }}>
                         Reject
                       </button>
                     </div>
                   </div>
                 )}
+
+                <div className="pt-3 border-t border-slate-100">
+                  <button onClick={() => deleteApp(selected)}
+                    className="btn-s w-full py-2.5 rounded-full font-bold text-[12px] bg-red-50 border border-red-200 hover:bg-red-100"
+                    style={{ color: SOFT_RED }}>
+                    Delete Forever
+                  </button>
+                </div>
               </div>
             </div>
           </div>

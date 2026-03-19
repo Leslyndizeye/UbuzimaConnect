@@ -3,12 +3,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const FACILITY_TYPES = [
-  { value: 'Public Hospital',       icon: '🏛️', desc: 'Government-owned facility' },
-  { value: 'Private Hospital',      icon: '🏥', desc: 'Privately operated hospital' },
-  { value: 'NGO / Mission Hospital',icon: '🤝', desc: 'Non-profit or faith-based' },
-  { value: 'District Hospital',     icon: '📍', desc: 'District-level referral' },
-  { value: 'Referral Hospital',     icon: '⭐', desc: 'National referral centre' },
-  { value: 'Health Centre',         icon: '💊', desc: 'Community health facility' },
+  { value: 'Public', desc: 'Government-owned health facility' },
+  { value: 'Private', desc: 'Privately operated health facility' },
 ];
 
 function FacilityDropdown({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string }) {
@@ -30,12 +26,9 @@ function FacilityDropdown({ value, onChange, error }: { value: string; onChange:
           open ? 'border-med-emerald bg-white ring-2 ring-med-emerald/10' : 'border-gray-100'
         } ${error ? 'border-red-300' : ''}`}>
         {selected ? (
-          <span className="flex items-center gap-2.5">
-            <span className="text-base">{selected.icon}</span>
-            <span className="text-gray-900 font-medium">{selected.value}</span>
-          </span>
+          <span className="text-gray-900 font-medium">{selected.value}</span>
         ) : (
-          <span className="text-gray-300">Select facility type…</span>
+          <span className="text-gray-300">Select facility type...</span>
         )}
         <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -47,11 +40,10 @@ function FacilityDropdown({ value, onChange, error }: { value: string; onChange:
           {FACILITY_TYPES.map(f => (
             <button key={f.value} type="button"
               onClick={() => { onChange(f.value); setOpen(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all hover:bg-gray-50 ${
+              className={`w-full flex items-center px-4 py-3.5 text-left transition-all hover:bg-gray-50 ${
                 value === f.value ? 'bg-med-emerald/5 border-l-2 border-med-emerald' : ''
               }`}>
-              <span className="text-xl w-8 text-center">{f.icon}</span>
-              <div>
+              <div className="flex-1">
                 <div className={`text-sm font-medium ${value === f.value ? 'text-med-emerald' : 'text-gray-900'}`}>{f.value}</div>
                 <div className="text-[11px] text-gray-400">{f.desc}</div>
               </div>
@@ -105,11 +97,20 @@ This agreement is governed by the laws of the Republic of Rwanda.`;
 
 interface FormData {
   name: string; type: string; email: string; phone: string;
-  moh_license: string; website: string;
+  website: string; license_document_name: string; license_document_base64: string;
   province: string; district: string; sector: string;
   address: string; contact_name: string; contact_role: string;
   num_radiologists: string; num_machines: string; monthly_volume: string;
   current_system: string; primary_conditions: string; heard_from: string; notes: string;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 // ── exact same input style as AuthPage.tsx ──
@@ -130,13 +131,13 @@ export default function HospitalApply() {
   const [step, setStep]       = useState(1);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [refNumber, setRefNumber] = useState('');
   const [errors, setErrors]   = useState<Record<string, string>>({});
   const [termsChecked, setTermsChecked] = useState(false);
   const [dataChecked, setDataChecked]   = useState(false);
+  const licenseRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<FormData>({
-    name: '', type: '', email: '', phone: '', moh_license: '', website: '',
+    name: '', type: '', email: '', phone: '', website: '', license_document_name: '', license_document_base64: '',
     province: '', district: '', sector: '', address: '', contact_name: '', contact_role: '',
     num_radiologists: '', num_machines: '', monthly_volume: '',
     current_system: '', primary_conditions: '', heard_from: '', notes: '',
@@ -149,7 +150,7 @@ export default function HospitalApply() {
 
   const validate = (s: number) => {
     const required: Record<number, (keyof FormData)[]> = {
-      1: ['name', 'type', 'email', 'phone', 'moh_license'],
+      1: ['name', 'type', 'email', 'phone', 'license_document_name', 'license_document_base64'],
       2: ['province', 'district', 'address', 'contact_name', 'contact_role'],
       3: ['num_radiologists', 'num_machines', 'monthly_volume'],
       4: [],
@@ -163,6 +164,30 @@ export default function HospitalApply() {
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
+  };
+
+  const onLicensePicked = async (file?: File) => {
+    if (!file) return;
+    const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setErrors(e => ({ ...e, license_document_name: 'Use PDF, PNG, JPG, or WebP.' }));
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setErrors(e => ({ ...e, license_document_name: 'File is too large. Max 8 MB.' }));
+      return;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setForm(f => ({
+        ...f,
+        license_document_name: file.name,
+        license_document_base64: dataUrl,
+      }));
+      setErrors(e => ({ ...e, license_document_name: '', license_document_base64: '' }));
+    } catch (err: any) {
+      setErrors(e => ({ ...e, license_document_name: err.message || 'Failed to read file.' }));
+    }
   };
 
 
@@ -182,8 +207,7 @@ export default function HospitalApply() {
         const err = await res.json();
         throw new Error(err.detail || 'Submission failed');
       }
-      const data = await res.json();
-      setRefNumber(data.ref_number);
+      await res.json();
       setSubmitted(true);
     } catch (err: any) {
       setErrors({ submit: err.message });
@@ -212,10 +236,6 @@ export default function HospitalApply() {
             Check <strong className="text-gray-600">{form.email}</strong> for a confirmation.
             If approved, we'll schedule a Google Meet onboarding call.
           </p>
-          <div className="bg-gray-50 border border-gray-100 rounded-2xl px-6 py-4 inline-block mb-8">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Your Reference</p>
-            <p className="text-lg font-bold text-med-emerald font-mono">{refNumber}</p>
-          </div>
           <button onClick={() => navigate('/')}
             className="w-full py-4 bg-med-emerald hover:bg-black text-white font-bold rounded-2xl transition-all text-sm tracking-wide">
             Back to Home
@@ -287,9 +307,30 @@ export default function HospitalApply() {
                     <Err msg={errors.type} />
                   </div>
                   <div>
-                    <Label text="MoH License Number *" />
-                    <input className={inp} value={form.moh_license} onChange={e => set('moh_license', e.target.value)} placeholder="MoH/RW/2021/0042" />
-                    <Err msg={errors.moh_license} />
+                    <Label text="Health Facility License *" />
+                    <input
+                      ref={licenseRef}
+                      type="file"
+                      accept=".pdf,image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={e => onLicensePicked(e.target.files?.[0])}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (licenseRef.current) licenseRef.current.value = '';
+                        licenseRef.current?.click();
+                      }}
+                      className="w-full px-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-left text-sm text-gray-700 hover:bg-white hover:border-med-emerald transition-all"
+                    >
+                      <span className="block font-medium text-gray-900">
+                        {form.license_document_name || 'Upload valid Rwanda health facility license'}
+                      </span>
+                      <span className="block text-[11px] text-gray-400 mt-1">
+                        Required for all public and private health facilities. PDF, PNG, JPG, or WebP.
+                      </span>
+                    </button>
+                    <Err msg={errors.license_document_name || errors.license_document_base64} />
                   </div>
                   <div>
                     <Label text="Official Email *" />

@@ -49,7 +49,7 @@ export default function ResetPassword() {
 
     if (error) { setMsg(error.message); setIsError(true); return; }
 
-    setMsg('✅ Password updated successfully! Redirecting to login…');
+    setMsg('Password updated successfully. Redirecting to login...');
     setIsError(false);
 
     setTimeout(async () => {
@@ -98,7 +98,7 @@ export default function ResetPassword() {
         )}
 
         {/* Reset form */}
-        {ready && !msg.startsWith('✅') && (
+        {ready && !msg.startsWith('Password updated successfully') && (
           <form onSubmit={handleReset} className="space-y-4">
             {/* New password */}
             <div>

@@ -3,14 +3,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const STEPS = [
-  { num: '01', title: 'Submit Application',    desc: 'Fill in your hospital details, MoH license, and radiology team info. Takes under 10 minutes.' },
+  { num: '01', title: 'Submit Application',    desc: 'Fill in your hospital details, upload your health facility license, and share your radiology team info. Takes under 10 minutes.' },
   { num: '02', title: 'Review & Verification', desc: 'Our team verifies your Ministry of Health registration and credentials within 48 hours.' },
   { num: '03', title: 'Google Meet Onboarding',desc: 'A 30-minute call to walk through the platform and confirm your terms of access.' },
   { num: '04', title: 'Go Live',               desc: 'Receive admin credentials. Your hospital logo appears. Your radiologists register and start diagnosing.' },
 ];
 
 const BENEFITS = [
-  { title: 'AI at Radiologist Level',   desc: 'ResNet-50 trained on 13,000+ chest X-rays. Detects TB and pneumonia with 99% validation accuracy and AUC 1.0.' },
+  { title: 'AI at Radiologist Level',   desc: 'ResNet-50 trained on 13,000+ chest X-rays. Detects TB and pneumonia with 98% validation accuracy and AUC 1.0.' },
   { title: 'Grad-CAM Explanations',     desc: 'Every diagnosis shows a heatmap highlighting which region of the X-ray drove the AI decision — building clinical trust.' },
   { title: 'Your Brand on Platform',    desc: 'Your hospital logo and name appear throughout the platform. Your radiologists see your identity.' },
   { title: 'Full Team Management',      desc: 'Control radiologist access from your admin dashboard — approve, reject, or revoke at any time.' },
@@ -209,8 +209,8 @@ export default function HospitalLanding() {
             </button>
             <p className="text-[12px] text-gray-400 font-medium">
               Questions?{' '}
-              <a href="mailto:hospitals@ubuzimaconnect.rw" className="text-med-emerald font-bold hover:underline">
-                hospitals@ubuzimaconnect.rw
+              <a href="mailto:leslynd@ubuzimaconnect.rw" className="text-med-emerald font-bold hover:underline">
+                leslynd@ubuzimaconnect.rw
               </a>
             </p>
           </div>
@@ -259,7 +259,7 @@ export default function HospitalLanding() {
           <div className="pt-10 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-6 text-[11px] font-bold text-gray-400 uppercase tracking-[0.4em]">
             <div>© 2026 Ubuzima Connect</div>
             <div className="flex items-center gap-10">
-              <a href="mailto:hospitals@ubuzimaconnect.rw" className="hover:text-med-emerald transition-colors">Contact</a>
+              <a href="mailto:leslynd@ubuzimaconnect.rw" className="hover:text-med-emerald transition-colors">Contact</a>
               <span>AI-powered diagnostics · Rwanda</span>
             </div>
           </div>
