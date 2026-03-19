@@ -1,4 +1,6 @@
 // pages/HospitalLanding.tsx
+import AOS from 'aos';
+import 'aos/dist/aos.css';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -29,6 +31,15 @@ const STATS = [
 export default function HospitalLanding() {
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    AOS.init({
+      duration: 700,
+      easing: 'ease-out-cubic',
+      once: true,
+      offset: 72,
+    });
+  }, []);
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 24);
@@ -111,7 +122,7 @@ export default function HospitalLanding() {
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section id="how" className="py-32 px-8 bg-white">
+      <section id="how" className="py-32 px-8 bg-white" data-aos="fade-up">
         <div className="max-w-7xl mx-auto">
           <div className="mb-24 flex flex-col md:flex-row md:items-end justify-between gap-12">
             <div className="max-w-2xl space-y-6">
@@ -130,7 +141,7 @@ export default function HospitalLanding() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             {STEPS.map((s, i) => (
-              <div key={i} className="group relative">
+              <div key={i} className="group relative" data-aos="fade-up" data-aos-delay={i * 70}>
                 <div className="font-display font-bold text-neutral-100 absolute -top-8 -left-2 select-none group-hover:text-med-emerald/10 transition-colors"
                   style={{ fontSize: '5rem', lineHeight: 1 }}>
                   {s.num}
@@ -147,7 +158,7 @@ export default function HospitalLanding() {
       </section>
 
       {/* ── BENEFITS ── */}
-      <section id="benefits" className="py-32 px-8 bg-white border-y border-gray-100">
+      <section id="benefits" className="py-32 px-8 bg-white border-y border-gray-100" data-aos="fade-up">
         <div className="max-w-7xl mx-auto">
           <div className="mb-24 flex flex-col md:flex-row md:items-end justify-between gap-12">
             <div className="max-w-2xl space-y-6">
@@ -165,7 +176,7 @@ export default function HospitalLanding() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-10">
             {BENEFITS.map((b, i) => (
-              <div key={i} className="group p-12 bg-gray-50/50 rounded-[3rem] border border-transparent hover:bg-white hover:border-gray-100 hover:shadow-2xl transition-all duration-700">
+              <div key={i} className="group p-12 bg-gray-50/50 rounded-[3rem] border border-transparent hover:bg-white hover:border-gray-100 hover:shadow-2xl transition-all duration-700" data-aos="fade-up" data-aos-delay={i * 60}>
                 <h3 className="font-display text-2xl font-bold text-gray-900 mb-4 transition-colors group-hover:text-med-emerald">{b.title}</h3>
                 <p className="text-gray-500 text-base leading-relaxed mb-8 font-normal">{b.desc}</p>
                 <div className="w-10 h-px bg-gray-200 group-hover:w-full group-hover:bg-med-emerald transition-all duration-700" />
@@ -176,7 +187,7 @@ export default function HospitalLanding() {
       </section>
 
       {/* ── CTA ── */}
-      <section className="py-32 px-8 bg-white relative overflow-hidden">
+      <section className="py-32 px-8 bg-white relative overflow-hidden" data-aos="fade-up">
         <div className="absolute inset-0 medical-grid opacity-20 pointer-events-none" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full pointer-events-none"
           style={{ background: 'radial-gradient(circle, rgba(6,78,59,0.05) 0%, transparent 65%)', filter: 'blur(80px)' }} />
