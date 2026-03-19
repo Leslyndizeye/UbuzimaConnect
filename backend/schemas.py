@@ -299,6 +299,7 @@ class HospitalApplicationCreate(BaseModel):
 class HospitalApplicationOut(BaseModel):
     id:           int
     ref_number:   str
+    hospital_id:  Optional[int] = None
     name:         str
     type:         Optional[str]
     email:        str
