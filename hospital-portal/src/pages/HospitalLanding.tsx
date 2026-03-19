@@ -23,7 +23,7 @@ const STATS = [
   { n: '15,000+',l: 'Pneumonia cases per year' },
   { n: '17',     l: 'Trained radiologists nationwide' },
   { n: '8s',     l: 'Average AI diagnosis time' },
-  { n: '99%',    l: 'Validation accuracy (AUC 1.0)' },
+  { n: '98%',    l: 'Validation accuracy (AUC 1.0)' },
 ];
 
 export default function HospitalLanding() {
