@@ -5,6 +5,7 @@
 #   Hospital middle admins → credentials set by PLATFORM_ADMIN after hospital approval
 
 import os
+import uuid
 import jwt as pyjwt
 import requests
 from functools import lru_cache
@@ -20,6 +21,16 @@ PLATFORM_ADMIN = "leslyndiz6@gmail.com"        # platform: manages radiologists
 ADMIN_EMAILS = {SUPER_ADMIN, PLATFORM_ADMIN}
 
 security = HTTPBearer(auto_error=False)
+
+
+def _is_valid_uuid(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 
 @lru_cache(maxsize=1)
@@ -90,8 +101,8 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found. Please register first.")
 
-    # Sync firebase_uid with Supabase UUID if missing
-    if not user.firebase_uid and supabase_uid:
+    # Sync firebase_uid with the real Supabase UUID if missing or still a legacy placeholder.
+    if supabase_uid and (not _is_valid_uuid(user.firebase_uid) or user.firebase_uid != supabase_uid):
         user.firebase_uid = supabase_uid
         db.commit()
 

@@ -6,6 +6,7 @@ import os
 import shutil
 import cv2
 import numpy as np
+import math
 import tensorflow as tf
 from pathlib import Path
 from typing import Tuple, List
@@ -81,7 +82,7 @@ def preprocess_bulk_upload(upload_dir: str, output_base_dir: str) -> dict:
 
         cls_count = 0
         for img_file in src_dir.iterdir():
-            if img_file.suffix.lower() not in [".jpg", ".jpeg", ".png"]:
+            if img_file.suffix.lower() not in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]:
                 continue
             try:
                 img = cv2.imread(str(img_file), cv2.IMREAD_GRAYSCALE)
@@ -129,7 +130,9 @@ def build_tf_dataset(
         files = (
             list(cls_dir.glob("*.png")) +
             list(cls_dir.glob("*.jpg")) +
-            list(cls_dir.glob("*.jpeg"))
+            list(cls_dir.glob("*.jpeg")) +
+            list(cls_dir.glob("*.webp")) +
+            list(cls_dir.glob("*.bmp"))
         )
         if len(files) == 0:
             print(f"  {cls}: 0 images (empty folder, skipping)")
@@ -154,9 +157,16 @@ def build_tf_dataset(
     min_samples = min(np.sum(all_labels == c) for c in unique_classes)
     use_stratify = (n_unique > 1) and (min_samples >= 2)
 
+    if use_stratify:
+        min_val_items = n_unique
+        requested_val_items = int(math.ceil(len(all_paths) * validation_split))
+        test_size = max(requested_val_items, min_val_items)
+    else:
+        test_size = validation_split
+
     X_train, X_val, y_train, y_val = train_test_split(
         all_paths, all_labels,
-        test_size=validation_split,
+        test_size=test_size,
         random_state=SEED,
         stratify=all_labels if use_stratify else None,
     )

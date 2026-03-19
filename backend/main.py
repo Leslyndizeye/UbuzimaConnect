@@ -739,6 +739,33 @@ def list_retrain_jobs(
     return db.query(RetrainJob).order_by(RetrainJob.created_at.desc()).limit(20).all()
 
 
+@app.delete("/retrain/jobs", tags=["Retrain"])
+def clear_retrain_jobs(
+    scope: str = "failed",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    valid_scopes = {"failed", "all"}
+    if scope not in valid_scopes:
+        raise HTTPException(400, f"scope must be one of: {sorted(valid_scopes)}")
+
+    query = db.query(RetrainJob)
+    if scope == "failed":
+        query = query.filter(RetrainJob.status == RetrainStatus.failed)
+
+    jobs = query.all()
+    deleted = len(jobs)
+    for job in jobs:
+        db.delete(job)
+    db.commit()
+
+    _audit(db, current_user.id, "clear_retrain_jobs", "retrain_job", None, {
+        "scope": scope,
+        "deleted": deleted,
+    })
+    return {"deleted": deleted, "scope": scope}
+
+
 @app.get("/retrain/jobs/{job_id}", response_model=RetrainJobOut, tags=["Retrain"])
 def get_retrain_job(
     job_id: int,
@@ -1104,6 +1131,30 @@ def get_hospital_application(
     if not obj:
         raise HTTPException(404, "Application not found")
     return obj
+
+
+@app.delete("/hospital/applications/{app_id}", tags=["Hospital"])
+def delete_hospital_application(
+    app_id: int,
+    admin: User = Depends(get_super_admin),
+    db: Session = Depends(get_db),
+):
+    obj = db.query(HospitalApplication).filter(HospitalApplication.id == app_id).first()
+    if not obj:
+        raise HTTPException(404, "Application not found")
+
+    app_name = obj.name
+    app_status = obj.status.value if hasattr(obj.status, "value") else str(obj.status)
+    linked_hospital_id = obj.hospital_id
+
+    db.delete(obj)
+    db.commit()
+    _audit(db, admin.id, "delete_hospital_application", "hospital_application", app_id, {
+        "name": app_name,
+        "status": app_status,
+        "hospital_id": linked_hospital_id,
+    })
+    return {"detail": f'Application "{app_name}" deleted permanently.'}
 # ─────────────────────────────────────────────────────────────
 # ADD THESE to main.py
 #
@@ -1144,7 +1195,7 @@ async def send_email(to: str, subject: str, html: str) -> bool:
                 timeout=10,
             )
         if res.status_code in (200, 201):
-            print(f"[email] Sent to {to} ✓")
+            print(f"[email] Sent to {to} successfully")
             return True
         else:
             print(f"[email] Failed: {res.status_code} {res.text}")
@@ -1176,7 +1227,7 @@ def meet_invite_html(hospital_name: str, contact_name: str, meet_link: str,
     <div style="background:linear-gradient(135deg,#0a2415,#1C5438);padding:32px 40px;">
       <p style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;">Ubuzima Connect</p>
       <h1 style="font-size:22px;font-weight:900;color:#fff;margin:0;line-height:1.3;">
-        Your Onboarding Meeting<br/>is Scheduled 📅
+        Your Onboarding Meeting<br/>is Scheduled
       </h1>
     </div>
 
@@ -1222,14 +1273,11 @@ def meet_invite_html(hospital_name: str, contact_name: str, meet_link: str,
 
       <div style="background:#fefce8;border:1px solid #fde68a;border-radius:12px;padding:16px;margin-bottom:24px;">
         <p style="font-size:12px;color:#92400e;margin:0;">
-          ⚠ Please ensure your Head of Radiology or IT Manager joins this call.
+          Please ensure your Head of Radiology or IT Manager joins this call.
           Credentials will only be issued after the meeting is completed.
         </p>
       </div>
 
-      <p style="font-size:13px;color:#6b7280;margin:0;">
-        Your application reference: <strong style="font-family:monospace;color:#1C5438;">{ref_number}</strong>
-      </p>
     </div>
 
     <!-- Footer -->
@@ -1255,7 +1303,7 @@ def approval_html(hospital_name: str, contact_name: str, ref_number: str) -> str
   <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
     <div style="background:linear-gradient(135deg,#0a2415,#1C5438);padding:32px 40px;">
       <p style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;">Ubuzima Connect</p>
-      <h1 style="font-size:22px;font-weight:900;color:#fff;margin:0;">Your Hospital is Approved ✅</h1>
+      <h1 style="font-size:22px;font-weight:900;color:#fff;margin:0;">Your Hospital is Approved</h1>
     </div>
     <div style="padding:32px 40px;">
       <p style="font-size:15px;color:#374151;margin:0 0 16px;">Dear <strong>{contact_name}</strong>,</p>
@@ -1272,7 +1320,6 @@ def approval_html(hospital_name: str, contact_name: str, ref_number: str) -> str
           <li>Invite your radiologists to register</li>
         </ol>
       </div>
-      <p style="font-size:13px;color:#6b7280;">Reference: <strong style="font-family:monospace;color:#1C5438;">{ref_number}</strong></p>
     </div>
     <div style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:20px 40px;">
       <p style="font-size:11px;color:#9ca3af;margin:0;">Ubuzima Connect · Rwanda · <a href="mailto:hospitals@ubuzimaconnect.rw" style="color:#1C5438;">hospitals@ubuzimaconnect.rw</a></p>
@@ -1312,7 +1359,6 @@ def rejection_html(hospital_name: str, contact_name: str, reason: str, ref_numbe
       <p style="font-size:13px;color:#6b7280;line-height:1.7;">
         You are welcome to reapply in the future or contact us for more information.
       </p>
-      <p style="font-size:13px;color:#6b7280;margin-top:16px;">Reference: <strong style="font-family:monospace;color:#991b1b;">{ref_number}</strong></p>
     </div>
     <div style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:20px 40px;">
       <p style="font-size:11px;color:#9ca3af;margin:0;">Ubuzima Connect · Rwanda · <a href="mailto:hospitals@ubuzimaconnect.rw" style="color:#1C5438;">hospitals@ubuzimaconnect.rw</a></p>
@@ -1349,17 +1395,7 @@ async def update_hospital_application_status(
     _audit(db, admin.id, f"hospital_app_{body.status}", "hospital_application", app_id)
 
     # ── Send email based on status ──
-    if body.status == "meeting" and body.meet_link:
-        html = meet_invite_html(
-            hospital_name=obj.name,
-            contact_name=obj.contact_name,
-            meet_link=body.meet_link,
-            meet_notes=getattr(body, "meet_notes", "") or "",
-            ref_number=obj.ref_number,
-        )
-        await send_email(obj.email, f"Your Onboarding Meeting — {obj.name}", html)
-
-    elif body.status == "rejected":
+    if body.status == "rejected":
         html = rejection_html(
             hospital_name=obj.name,
             contact_name=obj.contact_name,
