@@ -56,7 +56,7 @@ const Features: React.FC<FeaturesProps> = ({ onStartClick }) => {
 
               <div className="grid grid-cols-2 gap-10">
                 <div className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-100">
-                  <div className="text-5xl font-display font-bold text-med-emerald">98</div>
+                  <div className="text-5xl font-display font-bold text-med-emerald">98%</div>
                   <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-2">Hub Accuracy</div>
                 </div>
                 <div className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-100">
