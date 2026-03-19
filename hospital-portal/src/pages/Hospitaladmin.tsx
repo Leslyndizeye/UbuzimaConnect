@@ -412,6 +412,16 @@ export default function HospitalAdminDashboard() {
     finally { setActionLoading(false); }
   };
 
+  const getLinkedHospitalForApplication = (app: Application | null) => {
+    if (!app) return null;
+    return hospitals.find(h =>
+      h.name === app.name &&
+      h.province === app.province &&
+      h.district === app.district &&
+      h.address === app.address
+    ) || null;
+  };
+
   const fmt = (iso: string | null) => {
     if (!iso) return '—';
     return new Date(iso).toLocaleDateString('en-RW', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -426,6 +436,15 @@ export default function HospitalAdminDashboard() {
     if (appFilter === 'approved') return a.status === 'approved';
     return true;
   });
+
+  const selectedLinkedHospital = getLinkedHospitalForApplication(selected);
+  const selectedHospitalAdmin = selectedLinkedHospital ? hospitalAdmins[selectedLinkedHospital.id] : null;
+  const selectedOrgFields: Array<[string, string | null | undefined]> = selected ? [
+    ['Type', selected.type],
+    [selectedHospitalAdmin ? 'Admin Email' : 'Email', selectedHospitalAdmin?.email || selected.email],
+    ...(selectedHospitalAdmin && selectedHospitalAdmin.email !== selected.email ? [['Application Email', selected.email] as [string, string]] : []),
+    ['Phone', selected.phone],
+  ] : [];
 
   // ── LOGIN ──
   if (!authed) {
@@ -1091,7 +1110,7 @@ export default function HospitalAdminDashboard() {
                 className="btn-s w-full py-3 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
                 style={{ backgroundColor: DARK_GREEN }}>
                 {pwdLoading
-                  ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Processingâ€¦</>
+                  ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Processing...</>
                   : 'Auto Generate Password'}
               </button>
               <div>
@@ -1221,7 +1240,7 @@ export default function HospitalAdminDashboard() {
               <div className="p-8 space-y-5">
                 {/* Details */}
                 {[
-                  { title: 'Organisation', fields: [['Type', selected.type], ['Email', selected.email], ['Phone', selected.phone]] },
+                  { title: 'Organisation', fields: selectedOrgFields },
                   { title: 'Location', fields: [['Province', selected.province], ['District', selected.district], ['Contact', selected.contact_name], ['Role', selected.contact_role], ['Address', selected.address]] },
                   { title: 'Radiology Capacity', fields: [['Radiologists', selected.num_radiologists], ['X-Ray Machines', selected.num_machines], ['Monthly Volume', selected.monthly_volume]] },
                 ].map(section => (
