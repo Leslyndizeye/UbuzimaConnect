@@ -145,6 +145,7 @@ export default function HospitalAdminDashboard() {
   // Change admin password modal
   const [changePwdHospId, setChangePwdHospId] = useState<number | null>(null);
   const [newPwd, setNewPwd]     = useState('');
+  const [generatedPwd, setGeneratedPwd] = useState('');
   const [pwdLoading, setPwdLoading] = useState(false);
   const [pwdErr, setPwdErr]     = useState('');
   const [pwdSuccess, setPwdSuccess] = useState('');
@@ -343,18 +344,36 @@ export default function HospitalAdminDashboard() {
     finally { setAdminLoading(false); }
   };
 
+  const generateAdminPassword = async () => {
+    if (!changePwdHospId || !hospitalAdmins[changePwdHospId]) return;
+    setPwdErr(''); setPwdSuccess(''); setGeneratedPwd(''); setPwdLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/users/${hospitalAdmins[changePwdHospId]!.id}/generate-password`, {
+        method: 'POST',
+        headers: hdr(),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwdErr(data.detail || 'Failed to generate password'); return; }
+      setGeneratedPwd(data.password || '');
+      setPwdSuccess('Password generated successfully.');
+      setNewPwd('');
+    } catch (e: any) { setPwdErr(e.message); }
+    finally { setPwdLoading(false); }
+  };
+
   const changeAdminPassword = async () => {
-    if (!changePwdHospId) return;
+    if (!changePwdHospId || !hospitalAdmins[changePwdHospId]) return;
     setPwdErr(''); setPwdLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/hospitals/${changePwdHospId}/admin-password`, {
-        method: 'PATCH',
+      const res = await fetch(`${API_BASE}/users/${hospitalAdmins[changePwdHospId]!.id}/set-password`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json', ...hdr() },
         body: JSON.stringify({ password: newPwd }),
       });
       const data = await res.json();
       if (!res.ok) { setPwdErr(data.detail || 'Failed to update password'); return; }
       setPwdSuccess('Password updated successfully!');
+      setGeneratedPwd('');
       setNewPwd('');
       setTimeout(() => { setChangePwdHospId(null); setPwdSuccess(''); }, 2200);
     } catch (e: any) { setPwdErr(e.message); }
@@ -915,7 +934,7 @@ export default function HospitalAdminDashboard() {
                                       ? '● Active' : '○ Inactive'}
                                   </span>
                                   <button
-                                    onClick={() => { setChangePwdHospId(h.id); setNewPwd(''); setPwdErr(''); setPwdSuccess(''); }}
+                                    onClick={() => { setChangePwdHospId(h.id); setNewPwd(''); setGeneratedPwd(''); setPwdErr(''); setPwdSuccess(''); }}
                                     className="btn-s text-[10px] font-bold px-3 py-1.5 rounded-full text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200">
                                     Change Password
                                   </button>
@@ -1046,7 +1065,7 @@ export default function HospitalAdminDashboard() {
             <div className="w-full max-w-sm bg-white rounded-[28px] shadow-2xl p-8 space-y-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Change Admin Password</h2>
+                  <h2 className="text-lg font-bold text-slate-900">Manage Admin Password</h2>
                   {hospitalAdmins[changePwdHospId] && (
                     <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{hospitalAdmins[changePwdHospId]!.email}</p>
                   )}
@@ -1055,8 +1074,28 @@ export default function HospitalAdminDashboard() {
               </div>
               {pwdErr     && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 font-medium">{pwdErr}</div>}
               {pwdSuccess && <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs text-emerald-700 font-medium">{pwdSuccess}</div>}
+              {generatedPwd && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 space-y-2">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Generated Password</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <code className="text-xs font-mono font-bold text-slate-700 break-all">{generatedPwd}</code>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(generatedPwd)}
+                      className="btn-s shrink-0 px-3 py-1.5 rounded-full text-[10px] font-bold text-slate-600 bg-white border border-slate-200">
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
+              <button onClick={generateAdminPassword} disabled={pwdLoading}
+                className="btn-s w-full py-3 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
+                style={{ backgroundColor: DARK_GREEN }}>
+                {pwdLoading
+                  ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Processingâ€¦</>
+                  : 'Auto Generate Password'}
+              </button>
               <div>
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">New Password (min 8 characters)</label>
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Set Password Manually</label>
                 <input value={newPwd} onChange={e => setNewPwd(e.target.value)}
                   type="password" placeholder="••••••••"
                   onKeyDown={e => e.key === 'Enter' && newPwd.length >= 8 && changeAdminPassword()}
@@ -1067,7 +1106,7 @@ export default function HospitalAdminDashboard() {
                 style={{ backgroundColor: DARK_GREEN }}>
                 {pwdLoading
                   ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Updating…</>
-                  : 'Update Password'}
+                  : 'Set Password'}
               </button>
             </div>
           </div>
