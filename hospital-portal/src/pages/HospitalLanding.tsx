@@ -68,7 +68,9 @@ export default function HospitalLanding() {
 
         <div className="relative z-10 w-full max-w-7xl mx-auto px-6 flex flex-col items-center text-center">
 
-          <div className="fu mb-8 h-6" aria-hidden="true" />
+          <div className="fu mb-8 flex items-center gap-2.5">
+            <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-gray-500">Welcome to Ubuzima Connect</span>
+          </div>
 
           {/* Headline */}
           <h1 className="fu2 font-display font-medium tracking-tight text-gray-900 leading-[1.03] mb-8 max-w-5xl"
