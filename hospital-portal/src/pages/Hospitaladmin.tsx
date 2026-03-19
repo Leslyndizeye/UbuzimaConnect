@@ -32,7 +32,7 @@ const CSS = `
 
 // ── Types ──
 interface Application {
-  id: number; ref_number: string; name: string; type: string;
+  id: number; ref_number: string; hospital_id: number | null; name: string; type: string;
   email: string; phone: string; moh_license: string | null;
   license_document_name: string | null;
   province: string; district: string; address: string;
@@ -274,6 +274,22 @@ export default function HospitalAdminDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const hospitalId = selected?.hospital_id;
+    if (!hospitalId || hospitalAdmins[hospitalId] !== undefined || !token) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/hospitals/${hospitalId}/admin`, { headers: hdr() });
+        if (!res.ok) return;
+        const data = await res.json();
+        setHospitalAdmins(prev => ({ ...prev, [hospitalId]: data.admin || null }));
+      } catch {
+        // silent in modal
+      }
+    })();
+  }, [selected?.hospital_id, hospitalAdmins, token, hdr]);
+
   const doLogin = async () => {
     setLoginErr(''); setLoginLoading(true);
     try {
@@ -414,6 +430,9 @@ export default function HospitalAdminDashboard() {
 
   const getLinkedHospitalForApplication = (app: Application | null) => {
     if (!app) return null;
+    if (app.hospital_id) {
+      return hospitals.find(h => h.id === app.hospital_id) || null;
+    }
     return hospitals.find(h =>
       h.name === app.name &&
       h.province === app.province &&
@@ -441,7 +460,7 @@ export default function HospitalAdminDashboard() {
   const selectedHospitalAdmin = selectedLinkedHospital ? hospitalAdmins[selectedLinkedHospital.id] : null;
   const selectedOrgFields: Array<[string, string | null | undefined]> = selected ? [
     ['Type', selected.type],
-    [selectedHospitalAdmin ? 'Admin Email' : 'Email', selectedHospitalAdmin?.email || selected.email],
+    [selectedHospitalAdmin ? 'Admin Email' : selectedLinkedHospital ? 'Hospital Email' : 'Email', selectedHospitalAdmin?.email || selectedLinkedHospital?.email || selected.email],
     ...(selectedHospitalAdmin && selectedHospitalAdmin.email !== selected.email ? [['Application Email', selected.email] as [string, string]] : []),
     ['Phone', selected.phone],
   ] : [];
@@ -1116,7 +1135,7 @@ export default function HospitalAdminDashboard() {
               <div>
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Set Password Manually</label>
                 <input value={newPwd} onChange={e => setNewPwd(e.target.value)}
-                  type="password" placeholder="••••••••"
+                  type="password" placeholder="********"
                   onKeyDown={e => e.key === 'Enter' && newPwd.length >= 8 && changeAdminPassword()}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10" />
               </div>
@@ -1124,7 +1143,7 @@ export default function HospitalAdminDashboard() {
                 className="btn-s w-full py-3 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
                 style={{ backgroundColor: DARK_GREEN }}>
                 {pwdLoading
-                  ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Updating…</>
+                  ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Updating...</>
                   : 'Set Password'}
               </button>
             </div>
