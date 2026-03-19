@@ -68,6 +68,8 @@ export default function HospitalLanding() {
 
         <div className="relative z-10 w-full max-w-7xl mx-auto px-6 flex flex-col items-center text-center">
 
+          <div className="fu mb-8 h-6" aria-hidden="true" />
+
           {/* Headline */}
           <h1 className="fu2 font-display font-medium tracking-tight text-gray-900 leading-[1.03] mb-8 max-w-5xl"
             style={{ fontSize: 'clamp(2.8rem, 7vw, 5.5rem)', letterSpacing: '-0.03em' }}>
