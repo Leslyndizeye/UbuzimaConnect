@@ -176,6 +176,25 @@ const prettyAuditEntity=(entity?:string)=>{
   const map:Record<string,string>={patient:"Patient",diagnosis:"Diagnosis",user:"Radiologist",chat_message:"Chat message",xray_upload:"Training image"};
   return entity ? (map[entity] || entity) : "System";
 };
+const prettyRetrainStatus = (status?:string) => {
+  const s = normalizeStatus(status);
+  if(s==="pending") return "Queued";
+  if(s==="processing") return "In Progress";
+  if(s==="completed") return "Completed";
+  if(s==="failed") return "Failed";
+  return status || "Unknown";
+};
+const prettyRetrainError = (msg?:string) => {
+  if(!msg) return "";
+  if(msg.includes("could not convert string to float")) return "The retraining job completed model processing, but the history summary failed while being saved.";
+  if(msg.includes("No images found")) return "No retraining images were available. Upload labeled X-ray images before starting retraining.";
+  if(msg.includes("No module named 'sklearn'")) return "A required training dependency was missing on the server during this retraining attempt.";
+  if(msg.includes("GatherV2") || msg.includes("indices[0] = 3 is not in [0, 1)")) return "The uploaded training dataset was not aligned with the expected class structure for model retraining.";
+  if(msg.includes("Some uploaded classes need more images")) return msg.replace("Some uploaded classes need more images", "Some selected classes still need more training images");
+  if(msg.includes("Not enough images for some classes")) return msg.replace("Not enough images for some classes", "Some classes do not yet meet the minimum image requirement");
+  if(msg.includes("Not enough training images")) return msg.replace("Not enough training images", "The overall training dataset is still too small");
+  return msg;
+};
 
 const DARK_GREEN   = "#214D3B";
 const VERY_DARK    = "#16352A";
@@ -492,7 +511,7 @@ export default function AdminDashboard() {
       return;
     }
     if(job.status==="failed"){
-      setRtMsg(job.error_message?`Retraining failed: ${job.error_message}`:`Retraining job #${job.id} failed.`);
+      setRtMsg(job.error_message?`Retraining failed: ${prettyRetrainError(job.error_message)}`:`Retraining job #${job.id} failed.`);
       setRtOk(false);
       activeRtJobRef.current=null;
       if(typeof window!=="undefined") window.localStorage.removeItem(ACTIVE_RETRAIN_JOB_KEY);
@@ -542,7 +561,7 @@ export default function AdminDashboard() {
     finally{setMyPwdLoading(false);}
   };
 
-  const openEdit=(p:Patient)=>{setEditPatient({id:p.id,name:p.name,patient_ref_id:p.patient_ref_id||"",hospital:p.hospital||"",clinical_notes:p.clinical_notes||""});setEditError("");};
+  const openEdit=(p:Patient)=>{setEditPatient({id:p.id,name:p.name,patient_ref_id:p.patient_ref_id||"",hospital:p.hospital||apiUsers.find(u=>u.id===p.radiologist_id)?.hospital||myHospital?.name||me?.hospital||"",clinical_notes:p.clinical_notes||""});setEditError("");};
   const saveEdit=async()=>{
     if(!editPatient)return; if(!editPatient.name.trim()){setEditError("Name required");return;}
     if(editPatient.patient_ref_id&&!validateRwandaId(editPatient.patient_ref_id)){setEditError("National ID must be 16 digits");return;}
@@ -599,6 +618,7 @@ export default function AdminDashboard() {
   };
 
   const [clearing,setClearing]=useState(false);
+  const [cleaningJobs,setCleaningJobs]=useState<""|"failed"|"all">("");
   const clearStaged=async()=>{
     if(!window.confirm("Clear ALL staged images? This cannot be undone."))return;
     setClearing(true);setRtMsg("");
@@ -606,6 +626,16 @@ export default function AdminDashboard() {
       await adminFetch("/retrain/staged",{method:"DELETE"});
       setStagedC({});setRtFiles([]);setRtLabel("");setRtMsg("All staged images cleared.");setRtOk(true);
     }catch(e:any){setRtMsg(e.message);setRtOk(false);}finally{setClearing(false);}
+  };
+  const clearRetrainJobs=async(scope:"failed"|"all")=>{
+    const label=scope==="failed"?"failed retraining jobs":"all retraining job history";
+    if(!window.confirm(`Remove ${label} from the dashboard? This will permanently delete those job records.`))return;
+    setCleaningJobs(scope);setRtMsg("");
+    try{
+      const res=await adminFetch(`/retrain/jobs?scope=${scope}`,{method:"DELETE"});
+      setRetrainJobs(prev=>scope==="failed"?prev.filter(j=>normalizeStatus(j.status)!=="failed"):[]);
+      setRtMsg(`${res.deleted||0} retraining job record(s) removed from history.`);setRtOk(true);
+    }catch(e:any){setRtMsg(e.message);setRtOk(false);}finally{setCleaningJobs("");}
   };
 
   const triggerRetrain=async()=>{
@@ -649,6 +679,7 @@ export default function AdminDashboard() {
   const activeNavLabel = navItems.find(([id])=>id===tab)?.[1] || "Dashboard";
   const headerLogo = logoPreview || myHospital?.logo_base64 || null;
   const showInitialSkeleton = false;
+  const getPatientHospital = (p:Patient) => p.hospital || apiUsers.find(u=>u.id===p.radiologist_id)?.hospital || myHospital?.name || me?.hospital || "-";
 
   if(me && !isHospitalAdmin){
     return (
@@ -966,7 +997,7 @@ export default function AdminDashboard() {
                             {isExp?"-":"+"}
                           </button>
                           <div className="flex-1 grid grid-cols-5 gap-4 items-center min-w-0">
-                            {[{l:"Name",v:<span className="text-sm font-bold text-slate-900 truncate block">{p.name}</span>},{l:"National ID",v:<span className="text-xs font-mono text-slate-400 block truncate">{maskNationalId(p.patient_ref_id)}</span>},{l:"Hospital",v:<span className="text-xs text-slate-500 truncate block">{p.hospital||"-"}</span>},{l:"Scans",v:<span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:ptD.length>0?SOFT_GREY:"#9CA3AF"}}>{ptD.length} scan{ptD.length!==1?"s":""}</span>},{l:"Joined",v:<span className="text-xs text-slate-400 block">{fmt(p.created_at)}</span>}].map(col=>(
+                            {[{l:"Name",v:<span className="text-sm font-bold text-slate-900 truncate block">{p.name}</span>},{l:"National ID",v:<span className="text-xs font-mono text-slate-400 block truncate">{maskNationalId(p.patient_ref_id)}</span>},{l:"Hospital",v:<span className="text-xs text-slate-500 truncate block">{getPatientHospital(p)}</span>},{l:"Scans",v:<span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{backgroundColor:ptD.length>0?SOFT_GREY:"#9CA3AF"}}>{ptD.length} scan{ptD.length!==1?"s":""}</span>},{l:"Joined",v:<span className="text-xs text-slate-400 block">{fmt(p.created_at)}</span>}].map(col=>(
                               <div key={col.l}><div className="text-[8px] font-bold uppercase text-slate-300 mb-0.5">{col.l}</div>{col.v}</div>
                             ))}
                           </div>
@@ -1230,9 +1261,27 @@ export default function AdminDashboard() {
                   <Panel className="p-8 space-y-4">
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Retrain Job History</p>
+                      {retrainJobs.length>0&&(
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={()=>clearRetrainJobs("failed")}
+                            disabled={cleaningJobs!==""}
+                            className="btn-s px-3 py-2 rounded-full text-[11px] font-bold border border-slate-200 bg-white text-slate-600 disabled:opacity-40"
+                          >
+                            {cleaningJobs==="failed"?"Removing...":"Clear Failed"}
+                          </button>
+                          <button
+                            onClick={()=>clearRetrainJobs("all")}
+                            disabled={cleaningJobs!==""}
+                            className="btn-s px-3 py-2 rounded-full text-[11px] font-bold border border-slate-200 bg-slate-50 text-slate-600 disabled:opacity-40"
+                          >
+                            {cleaningJobs==="all"?"Removing...":"Clear History"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                     {retrainJobs.length===0
-                      ?<div className="h-40 flex flex-col items-center justify-center text-slate-300 gap-2 float-it"><svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg><p className="text-sm">No retrain jobs yet</p></div>
+                      ?<div className="h-40 flex flex-col items-center justify-center text-slate-300 gap-2 float-it"><svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg><p className="text-sm">No retraining jobs recorded yet</p></div>
                       :<div className="space-y-3 overflow-y-auto max-h-[500px]">{retrainJobs.map(j=>{
                         const isOk=j.status==="completed"; const isFail=j.status==="failed"; const isRun=j.status==="processing"||j.status==="pending";
                         const borderCol=isOk?"#B9D8C7":isFail?"#E7BBB0":"#D7DEE5";
@@ -1244,11 +1293,16 @@ export default function AdminDashboard() {
                             <div className="flex items-center gap-2">
                                 <span className="text-base font-bold" style={{color:textCol}}>Job #{j.id}</span>
                               </div>
-                              <StatusBadge status={j.status}/>
+                              <span
+                                className="text-[10px] font-bold px-2.5 py-1 rounded-full"
+                                style={{backgroundColor:isOk?"#DDF3E7":isFail?"#FCE4DE":"#E7ECF1",color:textCol}}
+                              >
+                                {prettyRetrainStatus(j.status)}
+                              </span>
                             </div>
-                            {isRun&&<p className="text-sm mb-1" style={{color:textCol}}>{j.status==="pending"?"Preparing retraining data...":"Training in progress..."}</p>}
+                            {isRun&&<p className="text-sm mb-1" style={{color:textCol}}>{j.status==="pending"?"Preparing retraining data for processing.":"Model retraining is currently in progress."}</p>}
                             {j.final_val_acc&&<p className="text-sm mb-1" style={{color:textCol}}>Validation accuracy: <strong>{(j.final_val_acc*100).toFixed(1)}%</strong></p>}
-                            {j.error_message&&<div className="mt-2 p-2.5 rounded-xl text-xs font-semibold bg-red-100 text-red-700 break-words">{j.error_message}</div>}
+                            {j.error_message&&<div className="mt-2 p-2.5 rounded-xl text-xs font-semibold bg-red-100 text-red-700 break-words">{prettyRetrainError(j.error_message)}</div>}
                             <p className="text-[9px] mt-2 text-slate-400">{fmt(j.created_at)}</p>
                           </div>
                         );
