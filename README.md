@@ -87,7 +87,7 @@ Current repository screenshots are still in `frontend/screenshoots/`.
 ![Admin Approvals](frontend/screenshoots/admin_approvals.png)
 
 ### Dashboard
-![Radiologist Dashboard](frontend/screenshoots/dashboard.png)
+![Radiologist Dashboard](frontend/screenshoots/dashboards.png)
 
 ### Diagnosis Form
 ![Diagnosis Form](frontend/screenshoots/diagnosis_form.png)
@@ -96,7 +96,7 @@ Current repository screenshots are still in `frontend/screenshoots/`.
 ![Diagnosis Result](frontend/screenshoots/diagnosis_result.png)
 
 ### Patient Records
-![Admin Patients](frontend/screenshoots/admin_patients.png)
+![Admin Patients](frontend/screenshoots/admin_patientss.png)
 
 ### Retraining
 ![Retraining](frontend/screenshoots/retrain.png)
