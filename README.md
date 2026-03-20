@@ -95,6 +95,8 @@ Current repository screenshots are still in `frontend/screenshoots/`.
 ### Diagnosis Result
 ![Diagnosis Result](frontend/screenshoots/diagnosis_result.png)
 
+### Patient Records
+![Admin Patients](frontend/screenshoots/admin_patients.png)
 
 ### Retraining
 ![Retraining](frontend/screenshoots/retrain.png)
