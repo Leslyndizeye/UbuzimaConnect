@@ -21,6 +21,7 @@ from fastapi import (
     BackgroundTasks, Query
 )
 from fastapi.responses import FileResponse, Response
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -69,6 +70,32 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    if os.getenv("OPEN_TEST_ACCESS", "1").strip().lower() in {"1", "true", "yes"}:
+        if "components" in schema:
+            schema["components"].pop("securitySchemes", None)
+        for path_item in schema.get("paths", {}).values():
+            for operation in path_item.values():
+                if isinstance(operation, dict):
+                    operation.pop("security", None)
+
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 app.add_middleware(
     CORSMiddleware,

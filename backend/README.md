@@ -1,6 +1,6 @@
 ---
 title: Ubuzima Backend
-emoji: hospital
+emoji: 🏥
 colorFrom: green
 colorTo: blue
 sdk: docker
