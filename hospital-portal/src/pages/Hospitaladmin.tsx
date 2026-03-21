@@ -73,7 +73,7 @@ interface GlobalStats {
 
 type DeleteDialogState =
   | { kind: 'application'; id: number; name: string }
-  | { kind: 'hospital'; id: number; name: string }
+  | { kind: 'hospital_access'; id: number; name: string }
   | null;
 
 const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
@@ -432,7 +432,7 @@ export default function HospitalAdminDashboard() {
   };
 
   const deleteHospital = async (h: Hospital) => {
-    setDeleteDialog({ kind: 'hospital', id: h.id, name: h.name });
+    setDeleteDialog({ kind: 'hospital_access', id: h.id, name: h.name });
     setDeleteReason('');
   };
 
@@ -447,9 +447,9 @@ export default function HospitalAdminDashboard() {
     try {
       const path = deleteDialog.kind === 'application'
         ? `${API_BASE}/hospital/applications/${deleteDialog.id}`
-        : `${API_BASE}/hospitals/${deleteDialog.id}`;
+        : `${API_BASE}/hospitals/${deleteDialog.id}/deactivate`;
       const res = await fetch(path, {
-        method: 'DELETE',
+        method: deleteDialog.kind === 'application' ? 'DELETE' : 'PATCH',
         headers: { 'Content-Type': 'application/json', ...hdr() },
         body: JSON.stringify({ reason }),
       });
@@ -1055,7 +1055,7 @@ export default function HospitalAdminDashboard() {
                               onClick={() => deleteHospital(h)}
                               disabled={actionLoading}
                               className="btn-s flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-40">
-                              Delete Hospital + All Data
+                              Remove Hospital Access
                             </button>
                           </div>
                         </div>
