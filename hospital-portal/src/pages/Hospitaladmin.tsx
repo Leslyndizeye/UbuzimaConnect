@@ -71,6 +71,11 @@ interface GlobalStats {
   active_hospitals: number; total_radiologists: number;
 }
 
+type DeleteDialogState =
+  | { kind: 'application'; id: number; name: string }
+  | { kind: 'hospital'; id: number; name: string }
+  | null;
+
 const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   pending:   { bg: '#F8FAFC', text: SLATE },
   reviewing: { bg: '#F8FAFC', text: SLATE },
@@ -127,6 +132,8 @@ export default function HospitalAdminDashboard() {
   const [meetDuration, setMeetDuration] = useState('30');
   const [meetNotes, setMeetNotes]       = useState('');
   const [rejectReason, setRejectReason] = useState('');
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState>(null);
+  const [deleteReason, setDeleteReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError]             = useState('');
 
@@ -411,13 +418,8 @@ export default function HospitalAdminDashboard() {
   };
 
   const deleteApp = async (a: Application) => {
-    if (!confirm(`Delete application from "${a.name}"?\n\nThis will permanently remove it from your dashboard.`)) return;
-    try {
-      const res = await fetch(`${API_BASE}/hospital/applications/${a.id}`, { method: 'DELETE', headers: hdr() });
-      if (!res.ok) { const e = await res.json(); setError(e.detail || 'Delete failed'); return; }
-      setApps(prev => prev.filter(x => x.id !== a.id));
-      if (selected?.id === a.id) setSelected(null);
-    } catch (e: any) { setError(e.message); }
+    setDeleteDialog({ kind: 'application', id: a.id, name: a.name });
+    setDeleteReason('');
   };
 
   const removeLogo = async (h: Hospital) => {
@@ -430,14 +432,38 @@ export default function HospitalAdminDashboard() {
   };
 
   const deleteHospital = async (h: Hospital) => {
-    if (!confirm(`Permanently delete "${h.name}"?\n\nThis will delete:\n- The hospital admin account\n- All radiologists\n- All patients and diagnoses\n\nThis cannot be undone.`)) return;
+    setDeleteDialog({ kind: 'hospital', id: h.id, name: h.name });
+    setDeleteReason('');
+  };
+
+  const submitDeleteAction = async () => {
+    if (!deleteDialog) return;
+    const reason = deleteReason.trim();
+    if (reason.length < 5) {
+      setError('Please enter a clear reason before continuing.');
+      return;
+    }
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/hospitals/${h.id}`, { method: 'DELETE', headers: hdr() });
+      const path = deleteDialog.kind === 'application'
+        ? `${API_BASE}/hospital/applications/${deleteDialog.id}`
+        : `${API_BASE}/hospitals/${deleteDialog.id}`;
+      const res = await fetch(path, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...hdr() },
+        body: JSON.stringify({ reason }),
+      });
       const data = await res.json();
       if (!res.ok) { setError(data.detail || 'Delete failed'); return; }
-      setSelectedHosp(null);
+      if (deleteDialog.kind === 'application') {
+        setApps(prev => prev.filter(x => x.id !== deleteDialog.id));
+        if (selected?.id === deleteDialog.id) setSelected(null);
+      } else {
+        setSelectedHosp(null);
+      }
       await fetchData(token);
+      setDeleteDialog(null);
+      setDeleteReason('');
     } catch (e: any) { setError(e.message); }
     finally { setActionLoading(false); }
   };
@@ -1110,6 +1136,58 @@ export default function HospitalAdminDashboard() {
         </div>
 
         {/* ── Change Admin Password modal ── */}
+        {deleteDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ backgroundColor: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)' }}
+            onClick={e => e.target === e.currentTarget && !actionLoading && setDeleteDialog(null)}>
+            <div className="w-full max-w-md bg-white rounded-[28px] shadow-2xl p-8 space-y-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {deleteDialog.kind === 'application' ? 'Delete Application' : 'Remove Hospital Access'}
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {deleteDialog.kind === 'application'
+                      ? `Explain why "${deleteDialog.name}" is being removed from onboarding.`
+                      : `Explain why "${deleteDialog.name}" is losing access to Ubuzima Connect.`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => !actionLoading && setDeleteDialog(null)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 font-bold">
+                  X
+                </button>
+              </div>
+              <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-xs text-red-700">
+                This reason is required and will be emailed to the hospital contact.
+              </div>
+              <textarea
+                value={deleteReason}
+                onChange={e => setDeleteReason(e.target.value)}
+                placeholder="Enter the reason for this action"
+                className="w-full min-h-[120px] px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-sm outline-none resize-none"
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteDialog(null)}
+                  disabled={actionLoading}
+                  className="flex-1 py-3 rounded-full bg-slate-100 text-slate-600 font-bold text-sm disabled:opacity-40">
+                  Cancel
+                </button>
+                <button
+                  onClick={submitDeleteAction}
+                  disabled={actionLoading}
+                  className="btn-s flex-1 py-3 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: SOFT_RED }}>
+                  {actionLoading
+                    ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Sending...</>
+                    : deleteDialog.kind === 'application' ? 'Delete & Notify' : 'Remove Access & Notify'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {changePwdHospId !== null && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
             style={{ backgroundColor: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)' }}
@@ -1398,14 +1476,17 @@ export default function HospitalAdminDashboard() {
                       </button>
                     </div>
                     <input value={rejectReason} onChange={e => setRejectReason(e.target.value)}
-                      placeholder="Rejection reason (optional - sent to applicant)"
+                      placeholder="Rejection reason (required)"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-xs outline-none" />
                     <div className="flex gap-2">
                       <button onClick={() => approveApp(selected.id)} disabled={actionLoading}
                         className="btn-s flex-1 py-2.5 rounded-full text-white font-bold text-[12px] disabled:opacity-40" style={{ backgroundColor: DARK_GREEN }}>
                         Approve & Go Live
                       </button>
-                      <button onClick={() => updateStatus(selected.id, 'rejected', rejectReason ? { rejection_reason: rejectReason } : {})} disabled={actionLoading}
+                      <button onClick={() => {
+                        if (!rejectReason.trim()) { setError('Rejection reason is required.'); return; }
+                        updateStatus(selected.id, 'rejected', { rejection_reason: rejectReason.trim() });
+                      }} disabled={actionLoading}
                         className="btn-s px-4 py-2.5 rounded-full font-bold text-[12px] bg-red-50 border border-red-200 disabled:opacity-40"
                         style={{ color: SOFT_RED }}>
                         Reject
