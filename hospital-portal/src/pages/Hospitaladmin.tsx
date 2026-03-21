@@ -122,6 +122,10 @@ export default function HospitalAdminDashboard() {
 
   const [meetLink, setMeetLink]         = useState('');
   const [meetLinkErr, setMeetLinkErr]   = useState('');
+  const [meetDate, setMeetDate]         = useState('');
+  const [meetTime, setMeetTime]         = useState('');
+  const [meetDuration, setMeetDuration] = useState('30');
+  const [meetNotes, setMeetNotes]       = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError]             = useState('');
@@ -242,6 +246,16 @@ export default function HospitalAdminDashboard() {
     return true;
   };
 
+  useEffect(() => {
+    setMeetLink(selected?.meet_link || '');
+    setMeetLinkErr('');
+    setMeetDate('');
+    setMeetTime('');
+    setMeetDuration('30');
+    setMeetNotes('');
+    setRejectReason(selected?.rejection_reason || '');
+  }, [selected?.id]);
+
   const fetchHospitalStats = async (hospitalId: number) => {
     setLoadingStats(hospitalId);
     try {
@@ -311,7 +325,7 @@ export default function HospitalAdminDashboard() {
     await supabase.auth.signOut();
   };
 
-  const updateStatus = async (id: number, status: string, extra: Record<string, string> = {}) => {
+  const updateStatus = async (id: number, status: string, extra: Record<string, string | number> = {}) => {
     setActionLoading(true);
     try {
       await fetch(`${API_BASE}/hospital/applications/${id}/status`, {
@@ -320,7 +334,7 @@ export default function HospitalAdminDashboard() {
         body: JSON.stringify({ status, ...extra }),
       });
       await fetchData(token);
-      setSelected(null); setMeetLink(''); setMeetLinkErr(''); setRejectReason('');
+      setSelected(null); setMeetLink(''); setMeetLinkErr(''); setMeetDate(''); setMeetTime(''); setMeetDuration('30'); setMeetNotes(''); setRejectReason('');
     } catch (e: any) { setError(e.message); }
     finally { setActionLoading(false); }
   };
@@ -1324,7 +1338,7 @@ export default function HospitalAdminDashboard() {
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                         <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-2">Meeting Status</p>
                         <p className="text-xs text-slate-600 leading-relaxed">
-                          Save a valid Google Meet link here to move the application to <strong>meeting</strong>. This link is stored internally only and is not emailed to the applicant.
+                          Add the Google Meet link, meeting date, time, and duration. When you save, the applicant will receive a scheduled meeting email with those details.
                         </p>
                       </div>
                       <div className="relative">
@@ -1337,11 +1351,50 @@ export default function HospitalAdminDashboard() {
                       </div>
                       {meetLinkErr && <p className="text-[10px] text-red-500 font-semibold ml-0.5">{meetLinkErr}</p>}
                       <p className="text-[9px] text-slate-400 ml-0.5">Required format: https://meet.google.com/xxx-xxxx-xxx</p>
-                      <button onClick={() => { if (validateMeetLink(meetLink)) updateStatus(selected.id, 'meeting', { meet_link: meetLink.trim() }); }}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <input
+                          type="date"
+                          value={meetDate}
+                          onChange={e => setMeetDate(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-xs outline-none"
+                        />
+                        <input
+                          type="time"
+                          value={meetTime}
+                          onChange={e => setMeetTime(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-xs outline-none"
+                        />
+                        <input
+                          type="number"
+                          min="5"
+                          step="5"
+                          value={meetDuration}
+                          onChange={e => setMeetDuration(e.target.value)}
+                          placeholder="Duration (min)"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-xs outline-none"
+                        />
+                      </div>
+                      <textarea
+                        value={meetNotes}
+                        onChange={e => setMeetNotes(e.target.value)}
+                        placeholder="Optional note to include in the email, for example: Please join 10 minutes early with your Head of Radiology or IT Manager."
+                        className="w-full px-3.5 py-3 rounded-xl border border-gray-200 bg-gray-50 text-xs outline-none min-h-[84px] resize-none"
+                      />
+                      <button onClick={() => {
+                        if (!validateMeetLink(meetLink)) return;
+                        if (!meetDate || !meetTime) { setError('Meeting date and time are required before sending the invitation email.'); return; }
+                        updateStatus(selected.id, 'meeting', {
+                          meet_link: meetLink.trim(),
+                          meet_date: meetDate,
+                          meet_time: meetTime,
+                          meet_duration_minutes: Number(meetDuration || 0),
+                          meet_notes: meetNotes.trim(),
+                        });
+                      }}
                         disabled={actionLoading}
                         className="btn-s w-full py-2.5 rounded-xl text-white text-xs font-bold disabled:opacity-40 flex items-center justify-center gap-2"
                         style={{ backgroundColor: SLATE }}>
-                        {actionLoading ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Saving...</> : 'Mark as Meeting Scheduled'}
+                        {actionLoading ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Sending...</> : 'Schedule Meeting & Send Email'}
                       </button>
                     </div>
                     <input value={rejectReason} onChange={e => setRejectReason(e.target.value)}
