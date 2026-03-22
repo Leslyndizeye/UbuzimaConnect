@@ -120,6 +120,7 @@ export default function HospitalAdminDashboard() {
   const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null);
   const [hospitalStats, setHospitalStats] = useState<Record<number, HospitalStats>>({});
   const [hospitalRads, setHospitalRads]   = useState<Record<number, Radiologist[]>>({});
+  const [hospitalLoadErrors, setHospitalLoadErrors] = useState<Record<number, string>>({});
 
   const [selected, setSelected]     = useState<Application | null>(null);
   const [selectedHosp, setSelectedHosp] = useState<Hospital | null>(null);
@@ -134,6 +135,7 @@ export default function HospitalAdminDashboard() {
   const [rejectReason, setRejectReason] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState>(null);
   const [deleteReason, setDeleteReason] = useState('');
+  const [modalErr, setModalErr]         = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError]             = useState('');
 
@@ -144,7 +146,7 @@ export default function HospitalAdminDashboard() {
   const [adminPass, setAdminPass]       = useState('');
   const [adminErr, setAdminErr]         = useState('');
   const [adminLoading, setAdminLoading] = useState(false);
-  const [adminCreated, setAdminCreated] = useState<{ email: string; hospital_name: string } | null>(null);
+  const [adminCreated, setAdminCreated] = useState<{ email: string; hospital_name: string; password: string } | null>(null);
 
   // Hospital admin info per hospital
   const [hospitalAdmins, setHospitalAdmins] = useState<Record<number, { id: number; email: string; full_name: string; last_login: string | null } | null>>({});
@@ -161,9 +163,32 @@ export default function HospitalAdminDashboard() {
   const [pwdErr, setPwdErr]     = useState('');
   const [pwdSuccess, setPwdSuccess] = useState('');
 
+  const buildStarterPassword = useCallback(() => {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    const symbols = '!@#$%';
+    let base = '';
+    for (let i = 0; i < 10; i += 1) {
+      base += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return `${base}${symbols[Math.floor(Math.random() * symbols.length)]}`;
+  }, []);
+
   const hdr = useCallback((): Record<string, string> => ({
     Authorization: `Bearer ${token}`,
   }), [token]);
+
+  const getFreshAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    const { data } = await supabase.auth.getSession();
+    const freshToken = data.session?.access_token || token;
+    if (!freshToken) {
+      throw new Error('Your session has expired. Please sign in again.');
+    }
+    if (freshToken !== token) {
+      localStorage.setItem('hosp_admin_token', freshToken);
+      setToken(freshToken);
+    }
+    return { Authorization: `Bearer ${freshToken}` };
+  }, [token]);
 
   const openProtectedFile = useCallback(async (path: string, _fallbackName: string) => {
     try {
@@ -261,20 +286,50 @@ export default function HospitalAdminDashboard() {
     setMeetDuration('30');
     setMeetNotes('');
     setRejectReason(selected?.rejection_reason || '');
+    setModalErr('');
   }, [selected?.id]);
 
   const fetchHospitalStats = async (hospitalId: number) => {
     setLoadingStats(hospitalId);
     try {
+      const headers = await getFreshAuthHeaders();
       const [statsRes, radsRes, adminRes] = await Promise.all([
-        fetch(`${API_BASE}/hospitals/${hospitalId}/stats`,       { headers: hdr() }),
-        fetch(`${API_BASE}/hospitals/${hospitalId}/radiologists`,{ headers: hdr() }),
-        fetch(`${API_BASE}/hospitals/${hospitalId}/admin`,       { headers: hdr() }),
+        fetch(`${API_BASE}/hospitals/${hospitalId}/stats`,       { headers }),
+        fetch(`${API_BASE}/hospitals/${hospitalId}/radiologists`,{ headers }),
+        fetch(`${API_BASE}/hospitals/${hospitalId}/admin`,       { headers }),
       ]);
-      if (statsRes.ok)  { const s = await statsRes.json(); setHospitalStats(prev => ({ ...prev, [hospitalId]: s })); }
-      if (radsRes.ok)   { const r = await radsRes.json(); setHospitalRads(prev  => ({ ...prev, [hospitalId]: r })); }
-      if (adminRes.ok)  { const a = await adminRes.json(); setHospitalAdmins(prev => ({ ...prev, [hospitalId]: a.admin })); }
-    } catch (e: any) { setError(e.message); }
+      const failures: string[] = [];
+
+      if (statsRes.ok) {
+        const s = await statsRes.json();
+        setHospitalStats(prev => ({ ...prev, [hospitalId]: s }));
+      } else {
+        failures.push('operational statistics');
+      }
+      if (radsRes.ok) {
+        const r = await radsRes.json();
+        setHospitalRads(prev  => ({ ...prev, [hospitalId]: r }));
+      } else {
+        failures.push('radiologist list');
+      }
+      if (adminRes.ok) {
+        const a = await adminRes.json();
+        setHospitalAdmins(prev => ({ ...prev, [hospitalId]: a.admin }));
+      } else {
+        setHospitalAdmins(prev => ({ ...prev, [hospitalId]: null }));
+        failures.push('admin account');
+      }
+
+      setHospitalLoadErrors(prev => {
+        const next = { ...prev };
+        if (failures.length) next[hospitalId] = `Some hospital details could not be loaded yet: ${failures.join(', ')}.`;
+        else delete next[hospitalId];
+        return next;
+      });
+    } catch (e: any) {
+      setHospitalLoadErrors(prev => ({ ...prev, [hospitalId]: e.message || 'Could not load this hospital.' }));
+      setError(e.message);
+    }
     finally { setLoadingStats(null); }
   };
 
@@ -301,7 +356,8 @@ export default function HospitalAdminDashboard() {
 
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/hospitals/${hospitalId}/admin`, { headers: hdr() });
+        const headers = await getFreshAuthHeaders();
+        const res = await fetch(`${API_BASE}/hospitals/${hospitalId}/admin`, { headers });
         if (!res.ok) return;
         const data = await res.json();
         setHospitalAdmins(prev => ({ ...prev, [hospitalId]: data.admin || null }));
@@ -309,7 +365,31 @@ export default function HospitalAdminDashboard() {
         // silent in modal
       }
     })();
-  }, [selected?.hospital_id, hospitalAdmins, token, hdr]);
+  }, [selected?.hospital_id, hospitalAdmins, token, getFreshAuthHeaders]);
+
+  const createHospitalAdminAccount = useCallback(async (
+    hospital: Hospital,
+    email: string,
+    fullName: string,
+    password: string,
+  ) => {
+    const headers = await getFreshAuthHeaders();
+    const res = await fetch(`${API_BASE}/hospitals/${hospital.id}/create-admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ email, full_name: fullName, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.detail || 'Failed to create the hospital admin account.');
+    }
+    setAdminCreated({ email, hospital_name: hospital.name, password });
+    setAdminEmail('');
+    setAdminName('');
+    setAdminPass('');
+    await fetchHospitalStats(hospital.id);
+    return data;
+  }, [getFreshAuthHeaders]);
 
   const doLogin = async () => {
     setLoginErr(''); setLoginLoading(true);
@@ -334,6 +414,7 @@ export default function HospitalAdminDashboard() {
 
   const updateStatus = async (id: number, status: string, extra: Record<string, string | number> = {}) => {
     setActionLoading(true);
+    setModalErr('');
     try {
       await fetch(`${API_BASE}/hospital/applications/${id}/status`, {
         method: 'PATCH',
@@ -342,7 +423,7 @@ export default function HospitalAdminDashboard() {
       });
       await fetchData(token);
       setSelected(null); setMeetLink(''); setMeetLinkErr(''); setMeetDate(''); setMeetTime(''); setMeetDuration('30'); setMeetNotes(''); setRejectReason('');
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) { setModalErr(e.message); }
     finally { setActionLoading(false); }
   };
 
@@ -350,17 +431,38 @@ export default function HospitalAdminDashboard() {
     if (!confirm('Approve this hospital and create their account?')) return;
     setActionLoading(true);
     try {
+      const headers = await getFreshAuthHeaders();
+      const activeToken = headers.Authorization.replace(/^Bearer\s+/i, '');
       const res = await fetch(`${API_BASE}/hospital/applications/${id}/approve`, {
-        method: 'POST', headers: hdr(),
+        method: 'POST', headers,
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
       const hospital = await res.json();
-      await fetchData(token);
+      const sourceApp = apps.find(app => app.id === id);
+      const starterEmail = (sourceApp?.email || hospital.email || '').trim().toLowerCase();
+      const starterName = (sourceApp?.contact_name || hospital.contact_name || '').trim();
+      const starterPassword = buildStarterPassword();
+      setHospitals(prev => {
+        const next = [hospital, ...prev.filter(existing => existing.id !== hospital.id)];
+        return next.sort((a, b) => new Date(b.approved_at || b.created_at).getTime() - new Date(a.approved_at || a.created_at).getTime());
+      });
+      await fetchData(activeToken);
       setSelected(null);
-      // Immediately open the Create Admin modal for the newly approved hospital
-      setAdminCreated(null); setAdminErr(''); setAdminEmail(''); setAdminName(''); setAdminPass('');
-      setCreateAdminHosp(hospital);
+      setSelectedHosp(hospital);
+      void fetchHospitalStats(hospital.id);
+      setAdminCreated(null);
+      setAdminErr('');
+      setAdminEmail(starterEmail);
+      setAdminName(starterName);
+      setAdminPass(starterPassword);
       setTab('hospitals');
+      try {
+        await createHospitalAdminAccount(hospital, starterEmail, starterName, starterPassword);
+        setCreateAdminHosp(hospital);
+      } catch (adminErr: any) {
+        setAdminErr(adminErr.message || 'Hospital approved, but admin account setup still needs attention.');
+        setCreateAdminHosp(hospital);
+      }
     } catch (e: any) { setError(e.message); }
     finally { setActionLoading(false); }
   };
@@ -368,15 +470,9 @@ export default function HospitalAdminDashboard() {
   const createAdmin = async () => {
     setAdminErr(''); setAdminLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/hospitals/${createAdminHosp!.id}/create-admin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...hdr() },
-        body: JSON.stringify({ email: adminEmail, full_name: adminName, password: adminPass }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setAdminErr(data.detail || 'Failed'); return; }
-      setAdminCreated({ email: adminEmail, hospital_name: createAdminHosp!.name });
-      setAdminEmail(''); setAdminName(''); setAdminPass('');
+      await createHospitalAdminAccount(createAdminHosp!, adminEmail, adminName, adminPass);
+      const headers = await getFreshAuthHeaders();
+      await fetchData(headers.Authorization.replace(/^Bearer\s+/i, ''));
     } catch (e: any) { setAdminErr(e.message); }
     finally { setAdminLoading(false); }
   };
@@ -420,6 +516,7 @@ export default function HospitalAdminDashboard() {
   const deleteApp = async (a: Application) => {
     setDeleteDialog({ kind: 'application', id: a.id, name: a.name });
     setDeleteReason('');
+    setModalErr('');
   };
 
   const removeLogo = async (h: Hospital) => {
@@ -434,13 +531,14 @@ export default function HospitalAdminDashboard() {
   const deleteHospital = async (h: Hospital) => {
     setDeleteDialog({ kind: 'hospital_access', id: h.id, name: h.name });
     setDeleteReason('');
+    setModalErr('');
   };
 
   const submitDeleteAction = async () => {
     if (!deleteDialog) return;
     const reason = deleteReason.trim();
     if (reason.length < 5) {
-      setError('Please enter a clear reason before continuing.');
+      setModalErr('Please enter a clear reason before continuing.');
       return;
     }
     setActionLoading(true);
@@ -454,7 +552,7 @@ export default function HospitalAdminDashboard() {
         body: JSON.stringify({ reason }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.detail || 'Delete failed'); return; }
+      if (!res.ok) { setModalErr(data.detail || 'Delete failed'); return; }
       if (deleteDialog.kind === 'application') {
         setApps(prev => prev.filter(x => x.id !== deleteDialog.id));
         if (selected?.id === deleteDialog.id) setSelected(null);
@@ -464,7 +562,8 @@ export default function HospitalAdminDashboard() {
       await fetchData(token);
       setDeleteDialog(null);
       setDeleteReason('');
-    } catch (e: any) { setError(e.message); }
+      setModalErr('');
+    } catch (e: any) { setModalErr(e.message); }
     finally { setActionLoading(false); }
   };
 
@@ -843,6 +942,7 @@ export default function HospitalAdminDashboard() {
                 {hospitals.map(h => {
                   const s  = hospitalStats[h.id];
                   const rs = hospitalRads[h.id];
+                  const loadErr = hospitalLoadErrors[h.id];
                   const isExpanded = selectedHosp?.id === h.id;
 
                   return (
@@ -887,8 +987,13 @@ export default function HospitalAdminDashboard() {
                       </div>
 
                       {/* Expanded details */}
-                      {isExpanded && s && (
+                      {isExpanded && (
                         <div className="border-t border-slate-200/80 bg-slate-50/55 px-6 py-6 space-y-6">
+                          {loadErr && (
+                            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold" style={{ color: SOFT_RED }}>
+                              {loadErr}
+                            </div>
+                          )}
 
                           {/* Hospital info */}
                           <div>
@@ -975,7 +1080,7 @@ export default function HospitalAdminDashboard() {
                           )}
 
                           {/* Last activity */}
-                          {s.last_activity && (
+                          {s?.last_activity && (
                             <p className="text-[10px] text-slate-400">
                               Last diagnosis activity: <strong className="text-slate-600">{fmtFull(s.last_activity)}</strong>
                             </p>
@@ -1161,9 +1266,10 @@ export default function HospitalAdminDashboard() {
               <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-xs text-red-700">
                 This reason is required and will be emailed to the hospital contact.
               </div>
+              {modalErr && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 font-medium">{modalErr}</div>}
               <textarea
                 value={deleteReason}
-                onChange={e => setDeleteReason(e.target.value)}
+                onChange={e => { setDeleteReason(e.target.value); setModalErr(''); }}
                 placeholder="Enter the reason for this action"
                 className="w-full min-h-[120px] px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-sm outline-none resize-none"
               />
@@ -1408,6 +1514,11 @@ export default function HospitalAdminDashboard() {
                     <p className="text-xs text-red-700">{selected.rejection_reason}</p>
                   </div>
                 )}
+                {modalErr && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                    <p className="text-xs text-red-700 font-medium">{modalErr}</p>
+                  </div>
+                )}
 
                 {/* Action area for pending */}
                 {!['approved', 'rejected'].includes(selected.status) && (
@@ -1433,13 +1544,13 @@ export default function HospitalAdminDashboard() {
                         <input
                           type="date"
                           value={meetDate}
-                          onChange={e => setMeetDate(e.target.value)}
+                          onChange={e => { setMeetDate(e.target.value); setModalErr(''); }}
                           className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-xs outline-none"
                         />
                         <input
                           type="time"
                           value={meetTime}
-                          onChange={e => setMeetTime(e.target.value)}
+                          onChange={e => { setMeetTime(e.target.value); setModalErr(''); }}
                           className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-xs outline-none"
                         />
                         <input
@@ -1460,7 +1571,7 @@ export default function HospitalAdminDashboard() {
                       />
                       <button onClick={() => {
                         if (!validateMeetLink(meetLink)) return;
-                        if (!meetDate || !meetTime) { setError('Meeting date and time are required before sending the invitation email.'); return; }
+                        if (!meetDate || !meetTime) { setModalErr('Meeting date and time are required before sending the invitation email.'); return; }
                         updateStatus(selected.id, 'meeting', {
                           meet_link: meetLink.trim(),
                           meet_date: meetDate,
@@ -1475,7 +1586,7 @@ export default function HospitalAdminDashboard() {
                         {actionLoading ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Sending...</> : 'Schedule Meeting & Send Email'}
                       </button>
                     </div>
-                    <input value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                    <input value={rejectReason} onChange={e => { setRejectReason(e.target.value); setModalErr(''); }}
                       placeholder="Rejection reason (required)"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-xs outline-none" />
                     <div className="flex gap-2">
@@ -1484,7 +1595,7 @@ export default function HospitalAdminDashboard() {
                         Approve & Go Live
                       </button>
                       <button onClick={() => {
-                        if (!rejectReason.trim()) { setError('Rejection reason is required.'); return; }
+                        if (!rejectReason.trim()) { setModalErr('Rejection reason is required.'); return; }
                         updateStatus(selected.id, 'rejected', { rejection_reason: rejectReason.trim() });
                       }} disabled={actionLoading}
                         className="btn-s px-4 py-2.5 rounded-full font-bold text-[12px] bg-red-50 border border-red-200 disabled:opacity-40"
