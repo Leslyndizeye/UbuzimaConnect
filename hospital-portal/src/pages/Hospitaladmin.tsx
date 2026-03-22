@@ -2,7 +2,7 @@
 // Hospital partnership dashboard — manages hospital applications + sees live stats per hospital
 // byakwelianiela@gmail.com only
 // Uses localStorage to persist login across refreshes
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseConfig';
 
@@ -12,6 +12,7 @@ const DARK_GREEN = '#166534';
 const SLATE = '#475569';
 const SOFT_RED = '#DC2626';
 const BG_APP     = '#F2F4F7';
+const AUDIT_PAGE_SIZE = 10;
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -154,6 +155,8 @@ export default function HospitalAdminDashboard() {
   // Audit log
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [auditHasMore, setAuditHasMore] = useState(true);
+  const auditBodyRef = useRef<HTMLDivElement | null>(null);
 
   // Change admin password modal
   const [changePwdHospId, setChangePwdHospId] = useState<number | null>(null);
@@ -247,14 +250,30 @@ export default function HospitalAdminDashboard() {
     } catch (e: any) { setError(e.message); }
   }, []);
 
-  const loadAudit = useCallback(async () => {
+  const loadAudit = useCallback(async (reset = false) => {
+    if (auditLoading && !reset) return;
     setAuditLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/audit?limit=500`, { headers: hdr() });
-      if (res.ok) setAuditLogs(await res.json());
-    } catch { /* silent */ }
-    finally { setAuditLoading(false); }
-  }, [hdr]);
+      const headers = await getFreshAuthHeaders();
+      const offset = reset ? 0 : auditLogs.length;
+      const res = await fetch(`${API_BASE}/audit?limit=${AUDIT_PAGE_SIZE}&offset=${offset}`, { headers });
+      if (!res.ok) return;
+      const data: AuditEntry[] = await res.json();
+      setAuditLogs(prev => reset ? data : [...prev, ...data]);
+      setAuditHasMore(data.length === AUDIT_PAGE_SIZE);
+    } catch {
+      /* silent */
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [auditLoading, auditLogs.length, getFreshAuthHeaders]);
+
+  const handleAuditScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (!auditHasMore || auditLoading) return;
+    const target = e.currentTarget;
+    const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 80;
+    if (nearBottom) void loadAudit();
+  }, [auditHasMore, auditLoading, loadAudit]);
 
   const sendForgot = async () => {
     if (!loginEmail) { setLoginErr('Enter your email address first'); return; }
@@ -705,7 +724,7 @@ export default function HospitalAdminDashboard() {
             {navItems.map(({ id, label, badge }) => (
               <button
                 key={id}
-                onClick={() => { setTab(id); if (id === 'audit') loadAudit(); }}
+                onClick={() => { setTab(id); if (id === 'audit') void loadAudit(true); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all text-[13px] ${tab === id ? 'font-bold' : 'text-slate-500 hover:bg-slate-50 font-semibold'}`}
                 style={tab === id ? { backgroundColor: '#ECFDF3', color: DARK_GREEN } : undefined}
               >
@@ -748,7 +767,7 @@ export default function HospitalAdminDashboard() {
                 {navItems.map(({ id, label, badge }) => (
                   <button
                     key={id}
-                    onClick={() => { setTab(id); if (id === 'audit') loadAudit(); }}
+                    onClick={() => { setTab(id); if (id === 'audit') void loadAudit(true); }}
                     className={`px-4 py-2 rounded-full text-[11px] font-bold transition-all ${
                       tab === id ? 'text-white' : 'bg-slate-50 text-slate-500 border border-slate-200'
                     }`}
@@ -1175,8 +1194,8 @@ export default function HospitalAdminDashboard() {
             {tab === 'audit' && (
               <div className="space-y-4 anim-in">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-slate-400">All system actions — last 500 events. No patient data is shown here.</p>
-                  <button onClick={loadAudit} disabled={auditLoading}
+                  <p className="text-xs text-slate-400">System activity loads 10 records at a time as you scroll. No patient data is shown here.</p>
+                  <button onClick={() => void loadAudit(true)} disabled={auditLoading}
                     className="btn-s flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-slate-600 bg-white border border-slate-200 disabled:opacity-40">
                     {auditLoading
                       ? <><div className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"/>Loading…</>
@@ -1188,7 +1207,11 @@ export default function HospitalAdminDashboard() {
                 )}
                 {auditLogs.length > 0 && (
                   <Panel className="overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div
+                      ref={auditBodyRef}
+                      className="overflow-x-auto overflow-y-auto max-h-[68vh]"
+                      onScroll={handleAuditScroll}
+                    >
                       <table className="w-full">
                         <thead>
                           <tr className="border-b border-slate-100">
@@ -1231,6 +1254,13 @@ export default function HospitalAdminDashboard() {
                           })}
                         </tbody>
                       </table>
+                      <div className="px-5 py-4 border-t border-slate-100 text-center text-xs text-slate-400">
+                        {auditLoading && auditLogs.length > 0
+                          ? 'Loading more audit events...'
+                          : auditHasMore
+                            ? 'Scroll down to load 10 more'
+                            : 'End of audit log'}
+                      </div>
                     </div>
                   </Panel>
                 )}
