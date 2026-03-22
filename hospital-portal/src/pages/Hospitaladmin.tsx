@@ -1298,15 +1298,27 @@ export default function HospitalAdminDashboard() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
             style={{ backgroundColor: 'rgba(0,0,0,.45)', backdropFilter: 'blur(6px)' }}
             onClick={e => e.target === e.currentTarget && setChangePwdHospId(null)}>
-            <div className="w-full max-w-sm bg-white rounded-[28px] shadow-2xl p-8 space-y-5">
-              <div className="flex items-center justify-between">
+            <div className="w-full max-w-md bg-white rounded-[28px] shadow-2xl p-8 space-y-5">
+              <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Manage Admin Password</h2>
                   {hospitalAdmins[changePwdHospId] && (
-                    <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{hospitalAdmins[changePwdHospId]!.email}</p>
+                    <>
+                      <p className="text-sm font-semibold text-slate-700 mt-1">{hospitalAdmins[changePwdHospId]!.full_name}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5 font-mono">{hospitalAdmins[changePwdHospId]!.email}</p>
+                    </>
                   )}
+                  <p className="text-xs text-slate-500 mt-2">
+                    Choose one option below. You can either generate a secure password automatically or set a custom password manually.
+                  </p>
                 </div>
                 <button onClick={() => setChangePwdHospId(null)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 font-bold">X</button>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">What happens next</p>
+                <p className="text-xs text-slate-600 leading-6">
+                  The hospital admin will use this email and password to sign in, then change the password to one they prefer after login.
+                </p>
               </div>
               {pwdErr     && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600 font-medium">{pwdErr}</div>}
               {pwdSuccess && <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs text-emerald-700 font-medium">{pwdSuccess}</div>}
@@ -1323,27 +1335,42 @@ export default function HospitalAdminDashboard() {
                   </div>
                 </div>
               )}
-              <button onClick={generateAdminPassword} disabled={pwdLoading}
-                className="btn-s w-full py-3 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
-                style={{ backgroundColor: DARK_GREEN }}>
-                {pwdLoading
-                  ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Processing...</>
-                  : 'Auto Generate Password'}
-              </button>
-              <div>
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Set Password Manually</label>
-                <input value={newPwd} onChange={e => setNewPwd(e.target.value)}
-                  type="password" placeholder="********"
-                  onKeyDown={e => e.key === 'Enter' && newPwd.length >= 8 && changeAdminPassword()}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10" />
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Option 1</p>
+                  <h3 className="text-sm font-bold text-slate-900 mt-1">Generate a secure password automatically</h3>
+                  <p className="text-xs text-slate-500 mt-1">Use this if you want the system to create a ready-to-share password immediately.</p>
+                </div>
+                <button onClick={generateAdminPassword} disabled={pwdLoading}
+                  className="btn-s w-full py-3 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: DARK_GREEN }}>
+                  {pwdLoading
+                    ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Processing...</>
+                    : 'Generate Password'}
+                </button>
               </div>
-              <button onClick={changeAdminPassword} disabled={pwdLoading || newPwd.length < 8}
-                className="btn-s w-full py-3 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
-                style={{ backgroundColor: DARK_GREEN }}>
-                {pwdLoading
-                  ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Updating...</>
-                  : 'Set Password'}
-              </button>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Option 2</p>
+                  <h3 className="text-sm font-bold text-slate-900 mt-1">Set a custom password manually</h3>
+                  <p className="text-xs text-slate-500 mt-1">Use at least 8 characters so the admin can sign in safely on first login.</p>
+                </div>
+                <div>
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Custom Password</label>
+                  <input value={newPwd} onChange={e => setNewPwd(e.target.value)}
+                    type="password" placeholder="Enter a new password"
+                    onKeyDown={e => e.key === 'Enter' && newPwd.length >= 8 && changeAdminPassword()}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10" />
+                  <p className="text-[10px] text-slate-400 mt-2">Minimum 8 characters.</p>
+                </div>
+                <button onClick={changeAdminPassword} disabled={pwdLoading || newPwd.length < 8}
+                  className="btn-s w-full py-3 rounded-full text-white font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
+                  style={{ backgroundColor: DARK_GREEN }}>
+                  {pwdLoading
+                    ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>Updating...</>
+                    : 'Save Custom Password'}
+                </button>
+              </div>
             </div>
           </div>
         )}
