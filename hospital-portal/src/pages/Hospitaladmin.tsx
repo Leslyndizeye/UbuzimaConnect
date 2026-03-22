@@ -599,6 +599,11 @@ export default function HospitalAdminDashboard() {
     ) || null;
   };
 
+  const getApplicationDisplayLogo = (app: Application | null) => {
+    const linkedHospital = getLinkedHospitalForApplication(app);
+    return linkedHospital?.logo_base64 || app?.logo_base64 || null;
+  };
+
   const fmt = (iso: string | null) => {
     if (!iso) return '—';
     return new Date(iso).toLocaleDateString('en-RW', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -817,8 +822,8 @@ export default function HospitalAdminDashboard() {
                   <div className="space-y-3">
                     {apps.filter(a => ['pending','reviewing','meeting'].includes(a.status)).slice(0, 5).map(a => (
                       <div key={a.id} className="flex items-center gap-4 p-3 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => { setSelected(a); setTab('applications'); }}>
-                        {a.logo_base64
-                          ? <img src={a.logo_base64} alt="" className="w-9 h-9 rounded-xl object-contain border border-slate-200 p-0.5 bg-white" />
+                        {getApplicationDisplayLogo(a)
+                          ? <img src={getApplicationDisplayLogo(a)!} alt="" className="w-9 h-9 rounded-xl object-contain border border-slate-200 p-0.5 bg-white" />
                           : <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-black">{a.name.charAt(0)}</div>
                         }
                         <div className="flex-1 min-w-0">
@@ -916,8 +921,8 @@ export default function HospitalAdminDashboard() {
                           <tr key={a.id} className="trow border-b border-slate-50 last:border-0">
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-3">
-                                {a.logo_base64
-                                  ? <img src={a.logo_base64} alt="" className="w-8 h-8 rounded-lg object-contain border border-slate-100 p-0.5" />
+                                {getApplicationDisplayLogo(a)
+                                  ? <img src={getApplicationDisplayLogo(a)!} alt="" className="w-8 h-8 rounded-lg object-contain border border-slate-100 p-0.5" />
                                   : <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-black">{a.name.charAt(0)}</div>
                                 }
                                 <div>
@@ -1495,8 +1500,8 @@ export default function HospitalAdminDashboard() {
               <div className="px-8 pt-7 pb-6 border-b border-slate-100" style={{ background: `linear-gradient(135deg,${DARK_GREEN},${SLATE})` }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {selected.logo_base64
-                      ? <img src={selected.logo_base64} alt="" className="w-12 h-12 rounded-xl object-contain bg-white/10 p-1" />
+                    {getApplicationDisplayLogo(selected)
+                      ? <img src={getApplicationDisplayLogo(selected)!} alt="" className="w-12 h-12 rounded-xl object-contain bg-white/10 p-1" />
                       : <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-white font-black text-lg">{selected.name.charAt(0)}</div>
                     }
                     <div>
