@@ -234,9 +234,9 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
   const setManual=async()=>{if(pw.length<8){setMsg("Min 8 chars");setOk(false);return;}setLoading(true);setMsg("");try{await adminFetch(`/users/${user.id}/set-password`,{method:"POST",body:JSON.stringify({password:pw})});setMsg("Updated!");setOk(true);setPw("");}catch(e:any){setMsg(e.message);setOk(false);}finally{setLoading(false);}};
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={{backgroundColor:"rgba(0,0,0,.5)",backdropFilter:"blur(4px)"}}>
-      <div className="anim-pop w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
+      <div className="anim-pop w-full max-w-sm bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-5 py-4 text-white flex items-center justify-between" style={{background:`linear-gradient(135deg,${DARK_GREEN},#267347)`}}>
+        <div className="px-5 py-4 text-white flex items-center justify-between shrink-0" style={{background:`linear-gradient(135deg,${DARK_GREEN},#267347)`}}>
           <div className="min-w-0">
             <h2 className="text-base font-bold leading-tight">Manage Admin Password</h2>
             <p className="text-xs text-white/70 truncate">{user.full_name} · {user.email}</p>
@@ -244,7 +244,7 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
           <button onClick={onClose} className="ml-3 shrink-0 w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-xs font-bold">✕</button>
         </div>
         {/* Body */}
-        <div className="p-4 space-y-3 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 space-y-3 overflow-y-auto flex-1">
           {!hasAuth&&<div className="px-3 py-2 rounded-xl text-xs font-medium" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>Approve this user first before setting a password.</div>}
           {/* Option 1 – Auto Generate */}
           <div className="p-3 rounded-xl space-y-2" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
@@ -306,6 +306,15 @@ export default function AdminDashboard() {
   const [assignHospId,setAssignHospId]=useState<number|"">("");
   const [assignLoading,setAssignLoading]=useState(false);
   const [assignMsg,setAssignMsg]=useState("");
+  // Create new hospital admin account
+  const [createAdminModal,setCreateAdminModal]=useState(false);
+  const [newAdminName,setNewAdminName]=useState("");
+  const [newAdminEmail,setNewAdminEmail]=useState("");
+  const [newAdminPw,setNewAdminPw]=useState("");
+  const [newAdminShowPw,setNewAdminShowPw]=useState(false);
+  const [createAdminLoading,setCreateAdminLoading]=useState(false);
+  const [createAdminMsg,setCreateAdminMsg]=useState("");
+  const [createAdminOk,setCreateAdminOk]=useState(true);
 
   const [dxRadiologist,setDxRadiologist]=useState<number|"">("");
   const [dxRadSearch,setDxRadSearch]=useState("");
@@ -429,6 +438,23 @@ export default function AdminDashboard() {
       setTimeout(()=>{setAssignUser(null);setAssignHospId("");setAssignMsg("");loadAll();},1500);
     }catch(e:any){setAssignMsg("Error: "+e.message);}
     finally{setAssignLoading(false);}
+  };
+
+  const closeCreateAdmin=()=>{setCreateAdminModal(false);setCreateAdminMsg("");setNewAdminName("");setNewAdminEmail("");setNewAdminPw("");setNewAdminShowPw(false);};
+  const createHospAdmin=async()=>{
+    if(!me?.hospital_id)return;
+    if(!newAdminName.trim()){setCreateAdminMsg("Full name is required");setCreateAdminOk(false);return;}
+    if(!newAdminEmail.trim()){setCreateAdminMsg("Email is required");setCreateAdminOk(false);return;}
+    if(newAdminPw.length<8){setCreateAdminMsg("Password must be at least 8 characters");setCreateAdminOk(false);return;}
+    setCreateAdminLoading(true);setCreateAdminMsg("");
+    try{
+      await adminFetch(`/hospitals/${me.hospital_id}/create-admin`,{method:"POST",body:JSON.stringify({full_name:newAdminName,email:newAdminEmail,password:newAdminPw})});
+      setCreateAdminMsg(`Admin account created! Credentials sent to ${newAdminEmail}.`);
+      setCreateAdminOk(true);
+      setNewAdminName("");setNewAdminEmail("");setNewAdminPw("");
+      setTimeout(()=>{closeCreateAdmin();loadAll();},2000);
+    }catch(e:any){setCreateAdminMsg(e.message);setCreateAdminOk(false);}
+    finally{setCreateAdminLoading(false);}
   };
 
   const uploadLogo=async(file:File)=>{
@@ -634,38 +660,73 @@ export default function AdminDashboard() {
         )}
 
         {assignUser&&(
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{backgroundColor:"rgba(0,0,0,.45)",backdropFilter:"blur(6px)"}}>
-            <div className="anim-pop w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden">
-              <div className="px-8 pt-7 pb-6 text-white" style={{background:"linear-gradient(135deg,#1C5438,#267347)"}}>
-                <div className="flex items-center justify-between">
-                  <div><h2 className="text-lg font-bold">Assign as Middle Admin</h2><p className="text-sm text-white/70 mt-0.5">{assignUser.full_name}  -  {assignUser.email}</p></div>
-                  <button onClick={()=>{setAssignUser(null);setAssignMsg("");}} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center font-bold">X</button>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={{backgroundColor:"rgba(0,0,0,.5)",backdropFilter:"blur(4px)"}}>
+            <div className="anim-pop w-full max-w-sm bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+              <div className="px-5 py-4 text-white flex items-center justify-between shrink-0" style={{background:"linear-gradient(135deg,#1C5438,#267347)"}}>
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold leading-tight">Assign as Middle Admin</h2>
+                  <p className="text-xs text-white/70 truncate mt-0.5">{assignUser.full_name} · {assignUser.email}</p>
                 </div>
+                <button onClick={()=>{setAssignUser(null);setAssignMsg("");}} className="ml-3 shrink-0 w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-xs font-bold">✕</button>
               </div>
-              <div className="p-8 space-y-5">
-                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-sm">
-                  <strong>This will:</strong>
-                  <ul className="mt-2 space-y-1 text-xs list-disc list-inside">
-                    <li>Set this user as admin for the selected hospital</li>
-                    <li>Link them to the hospital so their radiologists see the hospital branding</li>
-                    <li>Allow them to upload the hospital logo from their Profile tab</li>
-                  </ul>
+              <div className="p-4 space-y-3 overflow-y-auto flex-1">
+                <div className="px-3 py-2.5 rounded-xl text-xs" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`,color:"#166534"}}>
+                  This links the user to a hospital, grants admin access, and lets them manage their radiologists and upload the hospital logo.
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Select Hospital</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Select Hospital</label>
                   <select value={assignHospId} onChange={e=>setAssignHospId(Number(e.target.value)||"")}
-                    className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-900 text-sm outline-none focus:border-[#86EFAC]">
+                    className={INP_RECT}>
                     <option value="">Select an approved hospital...</option>
                     {hospitals.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}
                   </select>
-                  {hospitals.length===0&&<p className="text-xs mt-1" style={{color:SOFT_RED}}>No approved hospitals yet. Approve a hospital application first.</p>}
+                  {hospitals.length===0&&<p className="text-xs mt-1" style={{color:SOFT_RED}}>No approved hospitals yet.</p>}
                 </div>
-                {assignMsg&&<div className={`p-4 rounded-2xl text-sm font-semibold ${assignMsg.startsWith("Middle admin assigned!")?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{assignMsg}</div>}
-                <div className="flex gap-3">
-                  <button onClick={()=>{setAssignUser(null);setAssignMsg("");}} className="flex-1 py-3 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200">Cancel</button>
-                  <button onClick={assignHospital} disabled={assignLoading||!assignHospId} className="btn-s flex-1 py-3 rounded-full text-white font-bold disabled:opacity-40" style={{backgroundColor:"#1C5438"}}>
-                    {assignLoading?"Assigning...":"Assign as Admin"}
+                {assignMsg&&<div className={`px-3 py-2 rounded-xl text-sm font-semibold ${assignMsg.startsWith("Middle admin assigned!")?"bg-green-50 border border-green-200 text-green-800":"bg-red-50 border border-red-200 text-red-700"}`}>{assignMsg}</div>}
+                <div className="flex gap-2 pt-1">
+                  <button onClick={()=>{setAssignUser(null);setAssignMsg("");}} className="flex-1 py-2.5 rounded-full bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200">Cancel</button>
+                  <button onClick={assignHospital} disabled={assignLoading||!assignHospId} className="btn-s flex-1 py-2.5 rounded-full text-white text-sm font-semibold disabled:opacity-40" style={{backgroundColor:"#1C5438"}}>
+                    {assignLoading?"Assigning…":"Assign as Admin"}
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {createAdminModal&&(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={{backgroundColor:"rgba(0,0,0,.5)",backdropFilter:"blur(4px)"}}>
+            <div className="anim-pop w-full max-w-sm bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+              <div className="px-5 py-4 text-white flex items-center justify-between shrink-0" style={{background:`linear-gradient(135deg,${DARK_GREEN},#267347)`}}>
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold leading-tight">New Admin Account</h2>
+                  <p className="text-xs text-white/70 truncate mt-0.5">{myHospital?.name||me?.hospital||"This hospital"}</p>
+                </div>
+                <button onClick={closeCreateAdmin} className="ml-3 shrink-0 w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-xs font-bold">✕</button>
+              </div>
+              <div className="p-4 space-y-3 overflow-y-auto flex-1">
+                <div className="px-3 py-2.5 rounded-xl text-xs" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`,color:"#166534"}}>
+                  Hospital approved. Now set up their admin account. Credentials will be emailed to the new admin.
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Full Name</label>
+                  <input type="text" value={newAdminName} onChange={e=>setNewAdminName(e.target.value)} placeholder="e.g. Dr. Jean Bosco" className={INP_RECT}/>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Email Address</label>
+                  <input type="email" value={newAdminEmail} onChange={e=>setNewAdminEmail(e.target.value)} placeholder="admin@hospital.rw" className={INP_RECT}/>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Password (min 8 characters)</label>
+                  <div className="relative">
+                    <input type={newAdminShowPw?"text":"password"} value={newAdminPw} onChange={e=>setNewAdminPw(e.target.value)} placeholder="••••••••••••" className={INP_RECT+" pr-14"}/>
+                    <button type="button" onClick={()=>setNewAdminShowPw(s=>!s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-slate-300 text-slate-600">{newAdminShowPw?"Hide":"Show"}</button>
+                  </div>
+                </div>
+                {createAdminMsg&&<div className="px-3 py-2 rounded-xl text-sm font-semibold" style={createAdminOk?{background:"#E6F4EC",border:"1px solid #B9D8C7",color:DARK_GREEN}:{background:"#F7E7E3",border:"1px solid #E7BBB0",color:"#8D4A3A"}}>{createAdminMsg}</div>}
+                <div className="flex gap-2 pt-1">
+                  <button onClick={closeCreateAdmin} className="flex-1 py-2.5 rounded-full bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200">Cancel</button>
+                  <button onClick={createHospAdmin} disabled={createAdminLoading||!newAdminName.trim()||!newAdminEmail.trim()||newAdminPw.length<8} className="btn-s flex-1 py-2.5 rounded-full text-white text-sm font-semibold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{createAdminLoading?"Creating…":"Create Admin Account"}</button>
                 </div>
               </div>
             </div>
@@ -852,7 +913,10 @@ export default function AdminDashboard() {
 
             {tab==="users"&&(
               <div className="space-y-5 max-w-[1400px] mx-auto anim-in">
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between gap-3">
+                  <button onClick={()=>setCreateAdminModal(true)} className="btn-s flex items-center gap-2 px-4 py-2.5 rounded-full text-white text-sm font-semibold shrink-0" style={{backgroundColor:DARK_GREEN}}>
+                    <span className="text-base leading-none">+</span> Create Admin Account
+                  </button>
                   <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search team..." className={INP+" w-[220px]"}/>
                 </div>
                 <Tbl heads={["Name","Email","Hospital","License","Role","Status","Joined","Actions"]} empty={apiUsers.length===0?"No users yet":undefined}>
