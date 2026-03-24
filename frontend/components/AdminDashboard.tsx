@@ -15,112 +15,6 @@ async function adminFetch(path: string, options: RequestInit = {}) {
   return res.json();
 }
 
-const CRC32_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let i = 0; i < 256; i += 1) {
-    let c = i;
-    for (let j = 0; j < 8; j += 1) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-    table[i] = c >>> 0;
-  }
-  return table;
-})();
-
-function crc32(bytes: Uint8Array) {
-  let crc = 0xffffffff;
-  for (let i = 0; i < bytes.length; i += 1) crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function pushU16(target: number[], value: number) {
-  target.push(value & 0xff, (value >>> 8) & 0xff);
-}
-
-function pushU32(target: number[], value: number) {
-  target.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
-}
-
-function toDosDateTime(date: Date) {
-  const year = Math.max(date.getFullYear(), 1980);
-  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
-  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
-  return { dosTime, dosDate };
-}
-
-async function packFilesAsZip(files: File[], zipName: string) {
-  const encoder = new TextEncoder();
-  const archiveParts: Uint8Array[] = [];
-  const centralParts: Uint8Array[] = [];
-  const { dosTime, dosDate } = toDosDateTime(new Date());
-  let offset = 0;
-
-  for (let i = 0; i < files.length; i += 1) {
-    const file = files[i];
-    const safeName = (file.name || `image-${i + 1}.bin`).replace(/[\\/:*?"<>|]+/g, "_");
-    const nameBytes = encoder.encode(safeName);
-    const data = new Uint8Array(await file.arrayBuffer());
-    const checksum = crc32(data);
-
-    const localHeader: number[] = [];
-    pushU32(localHeader, 0x04034b50);
-    pushU16(localHeader, 20);
-    pushU16(localHeader, 0);
-    pushU16(localHeader, 0);
-    pushU16(localHeader, dosTime);
-    pushU16(localHeader, dosDate);
-    pushU32(localHeader, checksum);
-    pushU32(localHeader, data.length);
-    pushU32(localHeader, data.length);
-    pushU16(localHeader, nameBytes.length);
-    pushU16(localHeader, 0);
-    const localBlock = new Uint8Array(localHeader.length + nameBytes.length);
-    localBlock.set(localHeader, 0);
-    localBlock.set(nameBytes, localHeader.length);
-    archiveParts.push(localBlock, data);
-
-    const centralHeader: number[] = [];
-    pushU32(centralHeader, 0x02014b50);
-    pushU16(centralHeader, 20);
-    pushU16(centralHeader, 20);
-    pushU16(centralHeader, 0);
-    pushU16(centralHeader, 0);
-    pushU16(centralHeader, dosTime);
-    pushU16(centralHeader, dosDate);
-    pushU32(centralHeader, checksum);
-    pushU32(centralHeader, data.length);
-    pushU32(centralHeader, data.length);
-    pushU16(centralHeader, nameBytes.length);
-    pushU16(centralHeader, 0);
-    pushU16(centralHeader, 0);
-    pushU16(centralHeader, 0);
-    pushU16(centralHeader, 0);
-    pushU32(centralHeader, 0);
-    pushU32(centralHeader, offset);
-    const centralBlock = new Uint8Array(centralHeader.length + nameBytes.length);
-    centralBlock.set(centralHeader, 0);
-    centralBlock.set(nameBytes, centralHeader.length);
-    centralParts.push(centralBlock);
-
-    offset += localBlock.length + data.length;
-  }
-
-  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
-  const centralOffset = offset;
-  archiveParts.push(...centralParts);
-
-  const endRecord: number[] = [];
-  pushU32(endRecord, 0x06054b50);
-  pushU16(endRecord, 0);
-  pushU16(endRecord, 0);
-  pushU16(endRecord, files.length);
-  pushU16(endRecord, files.length);
-  pushU32(endRecord, centralSize);
-  pushU32(endRecord, centralOffset);
-  pushU16(endRecord, 0);
-  archiveParts.push(new Uint8Array(endRecord));
-
-  return new File(archiveParts, zipName, { type: "application/zip" });
-}
-
 interface ApiUser { id:number; email:string; full_name:string; hospital?:string; hospital_id?:number; is_admin?:boolean; license_number?:string; role:string; status:string; created_at:string; firebase_uid?:string; }
 interface HospitalOption { id:number; name:string; }
 interface Diagnosis { id:number; patient_id:number; radiologist_id?:number; ai_classification:string; confidence_score:number; tb_probability:number; pneumonia_probability:number; normal_probability:number; unknown_probability?:number; radiologist_verified:boolean; created_at:string; }
@@ -339,31 +233,36 @@ function PwModal({user,onClose}:{user:ApiUser;onClose:()=>void}) {
   const generate=async()=>{setLoading(true);setMsg("");setGen("");try{const r=await adminFetch(`/users/${user.id}/generate-password`,{method:"POST"});setGen(r.password);setMsg(`Set for ${r.email}`);setOk(true);}catch(e:any){setMsg(e.message);setOk(false);}finally{setLoading(false);}};
   const setManual=async()=>{if(pw.length<8){setMsg("Min 8 chars");setOk(false);return;}setLoading(true);setMsg("");try{await adminFetch(`/users/${user.id}/set-password`,{method:"POST",body:JSON.stringify({password:pw})});setMsg("Updated!");setOk(true);setPw("");}catch(e:any){setMsg(e.message);setOk(false);}finally{setLoading(false);}};
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{backgroundColor:"rgba(0,0,0,.45)",backdropFilter:"blur(6px)"}}>
-      <div className="anim-pop w-full max-w-md bg-white rounded-[32px] shadow-2xl overflow-hidden">
-        <div className="px-8 pt-7 pb-6 text-white" style={{background:`linear-gradient(135deg,${DARK_GREEN},#267347)`}}>
-          <div className="flex items-center justify-between">
-            <div><h2 className="text-lg font-bold">Manage Password</h2><p className="text-sm text-white/70 mt-0.5">{user.full_name}  -  {user.email}</p></div>
-            <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center font-bold">X</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={{backgroundColor:"rgba(0,0,0,.5)",backdropFilter:"blur(4px)"}}>
+      <div className="anim-pop w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="px-5 py-4 text-white flex items-center justify-between" style={{background:`linear-gradient(135deg,${DARK_GREEN},#267347)`}}>
+          <div className="min-w-0">
+            <h2 className="text-base font-bold leading-tight">Manage Admin Password</h2>
+            <p className="text-xs text-white/70 truncate">{user.full_name} · {user.email}</p>
           </div>
+          <button onClick={onClose} className="ml-3 shrink-0 w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-xs font-bold">✕</button>
         </div>
-        <div className="p-8 space-y-5">
-          {!hasAuth&&<div className="p-4 rounded-2xl text-sm font-medium" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>Approve user first before setting a password.</div>}
-          <div className="p-5 rounded-3xl space-y-3" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-green-700">Auto-Generate</p>
-            <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating...":"Generate & Set Password"}</button>
-            {gen&&<div className="rounded-2xl p-4 bg-white border border-green-200">
-              <p className="text-[9px] font-bold uppercase text-slate-400 mb-2">Share with user</p>
-              <div className="flex items-center gap-2"><code className="flex-1 text-sm font-bold font-mono px-3 py-2 rounded-xl" style={{background:"#E6F4EC",color:DARK_GREEN}}>{gen}</code><button onClick={()=>{navigator.clipboard.writeText(gen);setCopied(true);setTimeout(()=>setCopied(false),2000);}} className="btn-s px-4 py-2 rounded-full text-white text-xs font-bold" style={{backgroundColor:DARK_GREEN}}>{copied?"Copied":"Copy"}</button></div>
+        {/* Body */}
+        <div className="p-4 space-y-3 max-h-[75vh] overflow-y-auto">
+          {!hasAuth&&<div className="px-3 py-2 rounded-xl text-xs font-medium" style={{background:"#EEF1F4",border:"1px solid #D7DEE5",color:"#4A5A68"}}>Approve this user first before setting a password.</div>}
+          {/* Option 1 – Auto Generate */}
+          <div className="p-3 rounded-xl space-y-2" style={{background:"#F0FDF4",border:`1px solid ${BRAND}`}}>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-green-700">Option 1 · Auto-Generate</p>
+            <button onClick={generate} disabled={loading||!hasAuth} className="btn-s w-full py-2 rounded-full text-white text-sm font-semibold disabled:opacity-40" style={{backgroundColor:DARK_GREEN}}>{loading?"Generating…":"Generate Password"}</button>
+            {gen&&<div className="rounded-xl p-2.5 bg-white border border-green-200">
+              <p className="text-[9px] font-bold uppercase text-slate-400 mb-1.5">Share with user</p>
+              <div className="flex items-center gap-2"><code className="flex-1 text-sm font-bold font-mono px-2 py-1.5 rounded-lg break-all" style={{background:"#E6F4EC",color:DARK_GREEN}}>{gen}</code><button onClick={()=>{navigator.clipboard.writeText(gen);setCopied(true);setTimeout(()=>setCopied(false),2000);}} className="btn-s shrink-0 px-3 py-1.5 rounded-full text-white text-xs font-bold" style={{backgroundColor:DARK_GREEN}}>{copied?"✓ Copied":"Copy"}</button></div>
             </div>}
           </div>
-          <div className="p-5 rounded-3xl space-y-3" style={{background:"#EEF1F4",border:"1px solid #D7DEE5"}}>
-            <p className="text-[10px] font-bold uppercase tracking-widest" style={{color:SOFT_GREY}}>Set Custom Password</p>
-            <div className="relative"><input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 8 characters" className={INP_RECT+" pr-16"}/><button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold px-2 py-1 rounded-xl bg-slate-200 text-slate-500">{show?"Hide":"Show"}</button></div>
-            <button onClick={setManual} disabled={loading||!hasAuth||!pw} className="btn-s w-full py-3 rounded-full text-white text-sm font-bold disabled:opacity-40" style={{backgroundColor:SOFT_GREY}}>Set Password</button>
+          {/* Option 2 – Custom */}
+          <div className="p-3 rounded-xl space-y-2" style={{background:"#EEF1F4",border:"1px solid #D7DEE5"}}>
+            <p className="text-[10px] font-bold uppercase tracking-widest" style={{color:SOFT_GREY}}>Option 2 · Custom Password</p>
+            <div className="relative"><input type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 8 characters" className={INP_RECT+" pr-14 text-sm"}/><button type="button" onClick={()=>setShow(s=>!s)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-slate-300 text-slate-600">{show?"Hide":"Show"}</button></div>
+            <button onClick={setManual} disabled={loading||!hasAuth||!pw} className="btn-s w-full py-2 rounded-full text-white text-sm font-semibold disabled:opacity-40" style={{backgroundColor:SOFT_GREY}}>Set Password</button>
           </div>
-          {msg&&<div className="p-4 rounded-2xl text-sm font-semibold" style={ok?{background:"#E6F4EC",border:"1px solid #B9D8C7",color:DARK_GREEN}:{background:"#F7E7E3",border:"1px solid #E7BBB0",color:"#8D4A3A"}}>{msg}</div>}
-          <button onClick={onClose} className="w-full py-3 rounded-full bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-colors">Close</button>
+          {msg&&<div className="px-3 py-2 rounded-xl text-sm font-semibold" style={ok?{background:"#E6F4EC",border:"1px solid #B9D8C7",color:DARK_GREEN}:{background:"#F7E7E3",border:"1px solid #E7BBB0",color:"#8D4A3A"}}>{msg}</div>}
+          <button onClick={onClose} className="w-full py-2 rounded-full bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition-colors">Close</button>
         </div>
       </div>
     </div>
@@ -606,8 +505,11 @@ export default function AdminDashboard() {
       const zipFiles=rtFiles.filter(f=>f.name.toLowerCase().endsWith(".zip"));
       if(zipFiles.length>1 || (zipFiles.length===1 && rtFiles.length>1)){setRtMsg("Select either image files or one ZIP archive.");setRtOk(false);setUploading(false);return;}
       const fd=new FormData();
-      const archive = zipFiles[0] || await packFilesAsZip(rtFiles, `retrain-${rtLabel.toLowerCase()}-${Date.now()}.zip`);
-      fd.append("archive", archive);
+      if(zipFiles.length===1){
+        fd.append("archive", zipFiles[0]);
+      }else{
+        rtFiles.forEach(file=>fd.append("files", file));
+      }
       const{data}=await supabase.auth.getSession();const token=data.session?.access_token;
       const res=await fetch(`${API_BASE}/retrain/upload?label=${encodeURIComponent(rtLabel)}`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
       if(!res.ok){const e=await res.json();throw new Error(e.detail);}
@@ -1199,8 +1101,8 @@ export default function AdminDashboard() {
                         className="border-2 border-dashed rounded-3xl p-7 text-center cursor-pointer transition-all"
                         style={{borderColor:rtDrag?DARK_GREEN:rtFiles.length>0?BRAND:"#E2E8F0",backgroundColor:rtDrag||rtFiles.length>0?"#F0FDF4":"#FAFAFA",opacity:rtLabel?1:.6,cursor:rtLabel?"pointer":"not-allowed"}}>
                         {rtFiles.length>0
-                          ?<div><p className="text-base font-bold" style={{color:DARK_GREEN}}>{rtFiles.length} file{rtFiles.length!==1?"s":""} selected</p><p className="text-xs text-slate-400 mt-1">{rtFiles.some(f=>f.name.toLowerCase().endsWith(".zip"))?"ZIP archive ready":"Will be packed into a ZIP on upload"}</p></div>
-                          :<div className="float-it"><p className="text-sm font-bold text-slate-500">{rtLabel?"Drop files here or click to browse":"Select a class first"}</p><p className="text-xs text-slate-400 mt-1">{rtLabel?"Multiple images or one ZIP archive":"No class label selected yet"}</p></div>}
+                          ?<div><p className="text-base font-bold" style={{color:DARK_GREEN}}>{rtFiles.length} file{rtFiles.length!==1?"s":""} selected</p><p className="text-xs text-slate-400 mt-1">{rtFiles.some(f=>f.name.toLowerCase().endsWith(".zip"))?"ZIP archive ready":"Image files ready for direct upload"}</p></div>
+                          :<div className="float-it"><p className="text-sm font-bold text-slate-500">{rtLabel?"Drop files here or click to browse":"Select a class first"}</p><p className="text-xs text-slate-400 mt-1">{rtLabel?"Upload multiple images directly or choose one ZIP archive":"No class label selected yet"}</p></div>}
                         <input ref={rtRef} type="file" accept="image/*,.zip" multiple onChange={e=>setRtFiles(Array.from(e.target.files||[]))} className="hidden"/>
                       </div>
                       <button onClick={uploadForRetrain} disabled={uploading||!rtFiles.length||!rtLabel}
