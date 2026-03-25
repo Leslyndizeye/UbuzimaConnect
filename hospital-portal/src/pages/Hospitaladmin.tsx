@@ -245,7 +245,10 @@ export default function HospitalAdminDashboard() {
         fetch(`${API_BASE}/hospitals/stats/summary`, { headers: h }),
       ]);
       if (appsRes.ok) setApps(await appsRes.json());
-      if (hospitalsRes.ok) setHospitals(await hospitalsRes.json());
+      if (hospitalsRes.ok) {
+        const hospitalData: Hospital[] = await hospitalsRes.json();
+        setHospitals(hospitalData.filter(h => h.is_active));
+      }
       if (statsRes.ok) setGlobalStats(await statsRes.json());
     } catch (e: any) { setError(e.message); }
   }, []);
@@ -571,11 +574,25 @@ export default function HospitalAdminDashboard() {
         body: JSON.stringify({ reason }),
       });
       const data = await res.json();
-      if (!res.ok) { setModalErr(data.detail || 'Delete failed'); return; }
+      if (!res.ok) {
+        const detail = data.detail || 'Delete failed';
+        if (deleteDialog.kind === 'hospital_access' && /already removed/i.test(detail)) {
+          setHospitals(prev => prev.filter(x => x.id !== deleteDialog.id));
+          if (selectedHosp?.id === deleteDialog.id) setSelectedHosp(null);
+          await fetchData(token);
+          setDeleteDialog(null);
+          setDeleteReason('');
+          setModalErr('');
+          return;
+        }
+        setModalErr(detail);
+        return;
+      }
       if (deleteDialog.kind === 'application') {
         setApps(prev => prev.filter(x => x.id !== deleteDialog.id));
         if (selected?.id === deleteDialog.id) setSelected(null);
       } else {
+        setHospitals(prev => prev.filter(x => x.id !== deleteDialog.id));
         setSelectedHosp(null);
       }
       await fetchData(token);
@@ -1204,7 +1221,7 @@ export default function HospitalAdminDashboard() {
                     className="btn-s flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-slate-600 bg-white border border-slate-200 disabled:opacity-40">
                     {auditLoading
                       ? <><div className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"/>Loading…</>
-                      : '↻ Refresh'}
+                      : 'Refresh'}
                   </button>
                 </div>
                 {auditLogs.length === 0 && !auditLoading && (
