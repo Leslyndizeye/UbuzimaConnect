@@ -70,30 +70,24 @@ const DISTRICTS: Record<string, string[]> = {
   'Western Province':  ['Karongi', 'Ngororero', 'Nyabihu', 'Nyamasheke', 'Rubavu', 'Rutsiro', 'Rusizi'],
 };
 
-const TERMS = `1. SCOPE OF SERVICE
-Ubuzima Connect provides AI-assisted chest X-ray diagnostic support to approved healthcare institutions in Rwanda. The Platform is intended to assist, not replace, qualified radiologists in clinical decision-making.
-
-2. APPROVED USE
-The Platform may only be used by licensed healthcare professionals. Hospital administrators are responsible for ensuring only approved radiologists access the system. Credentials must not be shared outside approved personnel.
-
-3. CLINICAL RESPONSIBILITY
-All AI-generated diagnoses are decision-support tools only. Final clinical decisions remain the sole responsibility of the attending radiologist or physician. Ubuzima Connect does not assume liability for clinical outcomes.
-
-4. DATA PRIVACY & SECURITY
-Patient data must comply with Rwanda's data protection regulations. Hospitals are responsible for obtaining patient consent for digital X-ray processing. Data is stored securely and not shared with third parties without consent.
-
-5. HOSPITAL LOGO & BRANDING
-6. MODEL RETRAINING
-X-ray data submitted for model retraining may be used to improve the AI model. All data is anonymised. Hospitals retain ownership and may request deletion at any time.
-
-7. GOOGLE MEET ONBOARDING CALL
-Prior to receiving credentials, approved applicants must attend a mandatory 30-minute onboarding call.
-
-8. ACCESS REVOCATION
-Ubuzima Connect reserves the right to suspend or revoke hospital access in cases of misuse or breach of these terms.
-
-9. GOVERNING LAW
-This agreement is governed by the laws of the Republic of Rwanda.`;
+const TERMS_SECTIONS = [
+  {
+    title: 'System Classification & Clinical Disclaimer',
+    body: 'Ubuzima Connect is classified strictly as a Clinical Decision Support System (CDSS). The artificial intelligence models (ResNet-50) deployed within this platform provide probabilistic classifications and Grad-CAM heatmaps to assist in detecting Tuberculosis, Pneumonia, and Normal chest X-ray images. This system does not provide autonomous or definitive medical diagnoses. Final diagnostic authority and legal liability remain with the licensed clinician or clinical administrator.',
+  },
+  {
+    title: 'Data Privacy & Patient Anonymization',
+    body: 'To comply with Rwanda Law No. 058/2021 relating to the protection of personal data, uploaded chest X-rays are structurally separated from personally identifiable information. Images are stored securely using UUID-based filenames, while metadata is stored in a separate PostgreSQL database. Rwanda 16-digit National IDs are masked in read-only, export, and audit views.',
+  },
+  {
+    title: 'Role-Based Access Control & Auditing',
+    body: 'Access to patient records is strictly scoped to the originating hospital boundary. Every state-changing action, including registration, image upload, AI prediction, radiologist override, and retraining activity, is recorded in an audit log. Platform access is granted only to clinicians holding a valid Rwanda Medical and Dental Council (RMDC) license, subject to approval by a clinical administrator.',
+  },
+  {
+    title: 'Continuous Learning & Data Retention',
+    body: 'By utilizing the platform, hospital administrators consent to the secure use of verified, anonymized chest X-rays for the background retraining pipeline. This data is used exclusively to fine-tune model accuracy for the Rwandan demographic and mitigate distribution shift. Data is never sold or transferred to third-party commercial entities.',
+  },
+];
 
 interface FormData {
   name: string; type: string; email: string; phone: string;
@@ -133,8 +127,9 @@ export default function HospitalApply() {
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors]   = useState<Record<string, string>>({});
   const [termsChecked, setTermsChecked] = useState(false);
-  const [dataChecked, setDataChecked]   = useState(false);
   const licenseRef = useRef<HTMLInputElement>(null);
+  const termsScrollRef = useRef<HTMLDivElement>(null);
+  const [hasReachedTermsEnd, setHasReachedTermsEnd] = useState(false);
 
   const [form, setForm] = useState<FormData>({
     name: '', type: '', email: '', phone: '', website: '', license_document_name: '', license_document_base64: '',
@@ -142,6 +137,27 @@ export default function HospitalApply() {
     num_radiologists: '', num_machines: '', monthly_volume: '',
     current_system: '', primary_conditions: '', heard_from: '', notes: '',
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const accepted = params.get('legal') === 'accepted' || localStorage.getItem('ubuzima_legal_ack') === 'accepted';
+    if (accepted) {
+      setTermsChecked(true);
+      setHasReachedTermsEnd(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (step !== 4 || termsChecked) return;
+    const el = termsScrollRef.current;
+    if (!el) return;
+    if (el.scrollHeight <= el.clientHeight + 8) {
+      setHasReachedTermsEnd(true);
+      return;
+    }
+    setHasReachedTermsEnd(false);
+  }, [step, termsChecked]);
 
   const set = (k: keyof FormData, v: string) => {
     setForm(f => ({ ...f, [k]: v, ...(k === 'province' ? { district: '' } : {}) }));
@@ -159,8 +175,8 @@ export default function HospitalApply() {
     for (const k of required[s]) {
       if (!form[k].trim()) errs[k] = 'Required';
     }
-    if (s === 4 && (!termsChecked || !dataChecked)) {
-      errs['terms'] = 'Please accept all agreements to continue';
+    if (s === 4 && !termsChecked) {
+      errs['terms'] = 'Please agree to the terms and conditions to continue';
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -435,7 +451,7 @@ export default function HospitalApply() {
                     <Label text="How did you hear about us?" />
                     <select className={sel} value={form.heard_from} onChange={e => set('heard_from', e.target.value)}>
                       <option value="">Select…</option>
-                      {['Rwanda Biomedical Centre', 'Ministry of Health', 'Colleague / Referral', 'Social media', 'ALU / Academic network', 'Other'].map(v => <option key={v}>{v}</option>)}
+                      {['Rwanda Biomedical Centre', 'Ministry of Health', 'Colleague / Referral', 'Social media', 'Other'].map(v => <option key={v}>{v}</option>)}
                     </select>
                   </div>
                   <div>
@@ -454,32 +470,62 @@ export default function HospitalApply() {
             {step === 4 && (
               <div className="space-y-4">
                 <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 border-b border-gray-50 pb-3 mb-1">Terms & Conditions</p>
-                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4">
-                  <p className="text-[10px] font-bold text-gray-700 mb-2">Ubuzima Connect — Hospital Partner Agreement</p>
-                  <div className="max-h-36 overflow-y-auto text-[10px] text-gray-400 leading-relaxed whitespace-pre-line pr-1 mb-3"
-                    style={{ scrollbarWidth: 'thin' }}>
-                    {TERMS}
-                  </div>
-                  <label className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" checked={termsChecked} onChange={e => setTermsChecked(e.target.checked)}
-                      className="mt-0.5 w-3.5 h-3.5 accent-emerald-600 flex-shrink-0" />
-                    <span className="text-[10px] text-gray-500 leading-relaxed">
-                      I am an authorised representative of the applying institution and agree to the Hospital Partner Terms & Conditions.
-                    </span>
-                  </label>
-                </div>
-                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4">
-                  <p className="text-[10px] font-bold text-gray-700 mb-2">Data Processing Agreement</p>
-                  <p className="text-[10px] text-gray-400 leading-relaxed mb-3">
-                    By submitting, you acknowledge that Ubuzima Connect will process your organisation's information — including hospital name and contact details — to evaluate your partnership application and configure system access if approved. Data is stored securely and not shared with third parties except as required by Rwandan law.
+                <div className="rounded-[2rem] border border-emerald-100 bg-[#f7fffb] p-6 md:p-7 shadow-[0_18px_40px_rgba(21,128,61,0.08)]">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-med-emerald/70">Ubuzima Connect</p>
+                  <h3 className="text-[17px] font-bold text-gray-900 mt-1">Institution Terms & Conditions</h3>
+                  <p className="text-[11px] text-gray-500 leading-relaxed mt-2">
+                    Please review the legal terms below before submitting your hospital application.
                   </p>
-                  <label className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" checked={dataChecked} onChange={e => setDataChecked(e.target.checked)}
-                      className="mt-0.5 w-3.5 h-3.5 accent-emerald-600 flex-shrink-0" />
-                    <span className="text-[10px] text-gray-500">
-                      I consent to the processing of my organisation's data as described above.
-                    </span>
-                  </label>
+
+                  <div className="mt-4 rounded-[1.5rem] border border-slate-100 bg-white overflow-hidden">
+                    <div
+                      ref={termsScrollRef}
+                      onScroll={(e) => {
+                        const el = e.currentTarget;
+                        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) {
+                          setHasReachedTermsEnd(true);
+                        }
+                      }}
+                      className="max-h-[22rem] overflow-y-auto px-5 py-5 md:px-6 md:py-6 space-y-4"
+                      style={{ scrollbarWidth: 'thin' }}
+                    >
+                      <p className="text-[11px] leading-relaxed text-gray-600">
+                        Before you request access, Ubuzima Connect requires confirmation that your institution understands the clinical disclaimer, privacy commitments, role-based access controls, and anonymized retraining terms that govern use of the platform.
+                      </p>
+                      {TERMS_SECTIONS.map((section, index) => (
+                        <div
+                          key={section.title}
+                          className={index === 0 ? 'space-y-1.5' : 'space-y-1.5 border-t border-slate-100 pt-4'}
+                        >
+                          <h4 className="text-[11px] font-bold text-gray-900">{section.title}</h4>
+                          <p className="text-[11px] leading-relaxed text-gray-600">{section.body}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="border-t border-slate-100 bg-[#fbfffd] px-5 py-4 md:px-6">
+                      <p className="text-[10px] font-medium text-gray-600 leading-relaxed">
+                        By selecting agree, your institution confirms acceptance of the terms and conditions shown above.
+                      </p>
+
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <p className="text-[10px] text-gray-500">
+                          {termsChecked ? 'You have accepted these terms.' : hasReachedTermsEnd ? 'You can now agree.' : 'Scroll to the end to enable agreement.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTermsChecked(true);
+                            setErrors(e => ({ ...e, terms: '' }));
+                          }}
+                          disabled={termsChecked || !hasReachedTermsEnd}
+                          className="py-2 px-3.5 bg-med-emerald hover:bg-black text-white font-bold rounded-xl transition-all text-[10px] whitespace-nowrap disabled:bg-emerald-100 disabled:text-med-emerald disabled:cursor-not-allowed"
+                        >
+                          {termsChecked ? 'Agreed' : 'Agree to Terms'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 {errors.terms && (
                   <div className="p-3 rounded-xl bg-red-50 border border-red-100 flex items-center gap-2">
@@ -512,8 +558,8 @@ export default function HospitalApply() {
                   Continue →
                 </button>
               ) : (
-                <button onClick={submit} disabled={loading}
-                  className="py-3 px-8 bg-med-emerald hover:bg-black text-white font-bold rounded-2xl transition-all text-sm disabled:opacity-50 flex items-center gap-2">
+                <button onClick={submit} disabled={loading || !termsChecked}
+                  className="py-3 px-8 bg-med-emerald hover:bg-black text-white font-bold rounded-2xl transition-all text-sm disabled:opacity-50 disabled:hover:bg-med-emerald flex items-center gap-2">
                   {loading
                     ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Submitting…</>
                     : 'Submit Application'
