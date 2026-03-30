@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, createContext, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Services from './components/Services';
@@ -11,6 +11,7 @@ import Footer from './components/Footer';
 import AuthPage from './components/AuthPage';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
+import LegalPage from './components/LegalPage';
 import { supabase } from './components/supabaseConfig';
 import IntroSequence from './components/IntroSequence';
 
@@ -237,16 +238,30 @@ function ProtectedRoute({ children, allow }: { children: React.ReactNode; allow:
 //  Auth Route — redirect if already logged in ─
 function AuthRoute() {
   const role = useContext(AuthContext);
-  if (role === 'loading') return <Spinner />;
+  const location = useLocation();
+  const fromLegalAccept =
+    typeof window !== 'undefined' &&
+    sessionStorage.getItem('ubuzima_legal_redirect') === '1' &&
+    location.search.includes('legal=accepted');
+
+  if (role === 'loading') {
+    if (fromLegalAccept) {
+      sessionStorage.removeItem('ubuzima_legal_redirect');
+      return <AuthPage onAuth={() => { window.location.href = '/'; }} />;
+    }
+    return <Spinner />;
+  }
   if (role === 'admin') return <Navigate to="/admin" replace />;
   if (role === 'approved') return <Navigate to="/dashboard" replace />;
   if (role === 'pending') return <Navigate to="/pending" replace />;
   return <AuthPage onAuth={() => { window.location.href = '/'; }} />;
 }
 
-//  App — shows IntroSequence on every page load ──
-const App: React.FC = () => {
+function AppRouter() {
   const [introFinished, setIntroFinished] = useState(false);
+  const location = useLocation();
+  const isLegalRoute = location.pathname === '/terms' || location.pathname === '/privacy';
+  const skipIntroForLegalAccept = location.pathname === '/auth' && location.search.includes('legal=accepted');
 
   const handleIntroFinish = () => {
     setIntroFinished(true);
@@ -254,27 +269,36 @@ const App: React.FC = () => {
 
   return (
     <>
-      {!introFinished && <IntroSequence onFinish={handleIntroFinish} />}
-      <BrowserRouter>
-        <Routes>
+      {!introFinished && !isLegalRoute && !skipIntroForLegalAccept && <IntroSequence onFinish={handleIntroFinish} />}
+      <Routes>
+        <Route path="/terms" element={<LegalPage />} />
+        <Route path="/privacy" element={<LegalPage />} />
 
-          {/* ── All radiologist/platform routes — wrapped in AuthProvider ── */}
-          <Route path="/*" element={
-            <AuthProvider>
-              <Routes>
-                <Route path="/" element={<RootPage />} />
-                <Route path="/auth" element={<AuthRoute />} />
-                <Route path="/reset-password" element={<ResetPasswordPage />} />
-                <Route path="/pending" element={<PendingPage />} />
-                <Route path="/dashboard" element={<ProtectedRoute allow="approved"><Dashboard /></ProtectedRoute>} />
-                <Route path="/admin" element={<ProtectedRoute allow="admin"><AdminDashboard /></ProtectedRoute>} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </AuthProvider>
-          } />
-        </Routes>
-      </BrowserRouter>
+        {/* ── All radiologist/platform routes — wrapped in AuthProvider ── */}
+        <Route path="/*" element={
+          <AuthProvider>
+            <Routes>
+              <Route path="/" element={<RootPage />} />
+              <Route path="/auth" element={<AuthRoute />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/pending" element={<PendingPage />} />
+              <Route path="/dashboard" element={<ProtectedRoute allow="approved"><Dashboard /></ProtectedRoute>} />
+              <Route path="/admin" element={<ProtectedRoute allow="admin"><AdminDashboard /></ProtectedRoute>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </AuthProvider>
+        } />
+      </Routes>
     </>
+  );
+}
+
+//  App — skips intro on legal pages ──
+const App: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <AppRouter />
+    </BrowserRouter>
   );
 };
 

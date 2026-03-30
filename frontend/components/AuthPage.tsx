@@ -126,7 +126,17 @@ function InputField({ label, type = 'text', value, onChange, placeholder, requir
 }
 
 export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
-  const [mode, setMode] = useState<Mode>('login');
+  const getInitialMode = (): Mode => {
+    if (typeof window === 'undefined') return 'login';
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get('mode');
+    if (requested === 'register' || requested === 'forgot' || requested === 'reset' || requested === 'login') {
+      return requested;
+    }
+    return 'login';
+  };
+
+  const [mode, setMode] = useState<Mode>(getInitialMode);
   const [lang, setLang] = useState<Language>('En');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -149,6 +159,7 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
   const [phone, setPhone] = useState('');
   const [specialization, setSpecialization] = useState('');
   const [yearsExp, setYearsExp] = useState('');
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
 
   // Forgot
   const [forgotEmail, setForgotEmail] = useState('');
@@ -168,6 +179,22 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
         .catch(() => {});
     }
   }, [mode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('ubuzima_legal_ack') === 'accepted') {
+      setAcceptedLegal(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get('mode');
+    if (requested === 'register' || requested === 'forgot' || requested === 'reset' || requested === 'login') {
+      setMode(requested);
+    }
+  }, []);
 
   const clear = useCallback(() => { setError(''); setRegistered(false); setForgotSent(false); }, []);
   const switchMode = useCallback((m: Mode) => { clear(); setMode(m); }, [clear]);
@@ -232,6 +259,7 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
     if (!yearsExp.trim()) { setError('Years of experience is required'); return; }
     if (!Number.isInteger(expYears) || expYears < 0 || expYears > 50) { setError('Years of experience must be between 0 and 50.'); return; }
     if (cleanSpecialization && !NAME_RE.test(cleanSpecialization)) { setError('Specialization should use letters only.'); return; }
+    if (!acceptedLegal) { setError('You must agree to the EULA & Privacy Policy before submitting.'); return; }
     setLoading(true);
     try {
       if (!hospitalId) { setError('Please select your hospital'); setLoading(false); return; }
@@ -460,6 +488,35 @@ export default function AuthPage({ onAuth }: { onAuth: (user: any) => void }) {
                   <p className="text-[9px] text-gray-400 leading-relaxed auth-fade">
                     Use a Rwanda mobile number, a 16-digit national ID, and your professional license number.
                   </p>
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3.5 auth-fade">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={acceptedLegal}
+                        onChange={e => {
+                          setAcceptedLegal(e.target.checked);
+                          if (e.target.checked) {
+                            setError(prev => prev === 'You must agree to the EULA & Privacy Policy before submitting.' ? '' : prev);
+                          }
+                        }}
+                        className="mt-1 h-4 w-4 accent-emerald-600 shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] text-gray-700 leading-relaxed">
+                          I agree to the{' '}
+                          <a
+                            href="/terms"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-emerald-700 underline underline-offset-4"
+                          >
+                            Terms & Conditions
+                          </a>
+                          .
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                   <button type="submit" disabled={loading}
                     className="w-full py-3 bg-gray-900 text-white font-bold uppercase tracking-[0.2em] text-[10px] rounded-xl hover:bg-black transition-all shadow-lg shadow-gray-200 auth-fade mt-2 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-60">
                     {loading ? <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : t.submitApp}
