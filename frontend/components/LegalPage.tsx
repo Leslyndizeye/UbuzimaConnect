@@ -10,7 +10,7 @@ const LEGAL_SECTIONS = [
     ],
   },
   {
-    title: '2. Data Privacy & Patient Anonymization (Law No. 058/2021 Compliance)',
+    title: '2. Data Minimization & Patient Anonymization (Law No. 058/2021 Compliance)',
     paragraphs: [
       "To comply with Rwanda Law No. 058/2021 relating to the protection of personal data, all uploaded chest X-rays are structurally separated from Personally Identifiable Information (PII). Images are stored securely using UUID-based filenames, while metadata is stored in a separate PostgreSQL database.",
       'Rwanda 16-digit National IDs are strictly masked in read-only, export, and audit views to reduce unauthorized data scraping and accidental exposure.',
