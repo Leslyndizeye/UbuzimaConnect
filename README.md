@@ -2,10 +2,34 @@
 
 Ubuzima Connect is a web-based clinical decision support system designed to help radiologists in Rwanda detect Tuberculosis, Pneumonia, and Normal chest conditions from X-ray images using deep learning. The platform combines AI-assisted diagnosis, Grad-CAM explainability, patient record management, report sharing, hospital onboarding, and administrative control in a single deployed system.
 
-Ubuzima Connect currently includes:
-- a radiologist and platform-admin web app
-- a hospital application and super-admin portal
-- a FastAPI backend with TensorFlow inference and retraining
+##  Technology Stack
+*   **Frontend:** React 18, TypeScript, Vite, Tailwind CSS (Deployed on Vercel)
+*   **Backend:** Python, FastAPI, SQLAlchemy (Deployed on Hugging Face Spaces via Docker)
+*   **Database & Auth:** Supabase PostgreSQL, JWT Authentication
+*   **Storage:** Cloudflare R2 (S3-Compatible)
+*   **Machine Learning:** TensorFlow/Keras (ResNet-50)
+
+## Local Installation & Setup
+### Frontend Setup
+1. Clone the repository: `git clone https://github.com/Leslyndizeye/UbuzimaConnect.git`
+2. Navigate to frontend: `cd frontend`
+3. Install dependencies: `npm install`
+4. Set environment variables: Create a `.env` file with `VITE_API_BASE_URL=http://localhost:8000`
+5. Run the server: `npm run dev`
+
+### Backend Setup
+1. Navigate to backend: `cd backend`
+2. Create virtual environment: `python -m venv venv`
+3. Activate environment: `source venv/bin/activate` (Mac) or `venv\Scripts\activate` (Windows)
+4. Install dependencies: `pip install -r requirements.txt`
+5. Set environment variables: Create a `.env` file with your Supabase and Cloudflare R2 credentials.
+6. Run the API: `uvicorn main:app --reload`
+
+## 4. How to Run the Project (Usage Guide)
+1. **Admin Login:** Access the portal using the default Super Admin credentials to approve pending hospitals.
+2. **Radiologist Workflow:** Log in as an approved radiologist. Enter a 16-digit Rwanda NID to create a patient.
+3. **Inference:** Upload a JPEG/PNG chest X-ray. The system will return a probability score and a Grad-CAM heatmap within 30 seconds.
+4. **Verification:** The radiologist MUST click "Verify Diagnosis" to commit the record to the database.
 
 ## Live Links
 
