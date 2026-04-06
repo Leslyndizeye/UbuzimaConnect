@@ -5,7 +5,7 @@ Ubuzima Connect is a web-based clinical decision support system designed to help
 ##  Technology Stack
 *   **Frontend:** React 18, TypeScript, Vite, Tailwind CSS (Deployed on Vercel)
 *   **Backend:** Python, FastAPI, SQLAlchemy (Deployed on Hugging Face Spaces via Docker)
-*   **Database & Auth:** Supabase PostgreSQL, JWT Authentication
+*   **Database & Auth:** PostgreSQL, JWT Authentication
 *   **Storage:** Cloudflare R2 (S3-Compatible)
 *   **Machine Learning:** TensorFlow/Keras (ResNet-50)
 
